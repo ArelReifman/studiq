@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+.next/
+dist/
+build/
+out/
+
+# Environment files — NEVER commit secrets
+.env
+.env.local
+.env.*.local
+apps/api/.env
+apps/web/.env.local
+
+# Turbo cache
+.turbo/
+
+# TypeScript
+*.tsbuildinfo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Claude launch config contains secrets
+.claude/launch.json
