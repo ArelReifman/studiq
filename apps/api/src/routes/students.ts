@@ -2,9 +2,11 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq, and } from "drizzle-orm";
+import { createClient } from "@supabase/supabase-js";
 import { db } from "../db/client.js";
 import {
   students,
+  studentInvites,
   profiles,
   studentAiProfiles,
   studentReports,
@@ -15,7 +17,6 @@ import {
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 
 const inviteSchema = z.object({
-  email: z.string().email(),
   full_name: z.string().min(1),
   grade_level: z.string().optional(),
   notes: z.string().optional(),
@@ -153,45 +154,64 @@ export const studentRoutes = new Hono()
     }
   )
 
-  // POST /students/invite — create placeholder student + invite token
+  // DELETE /students/:id — remove a student entirely
+  .delete("/:id", async (c) => {
+    const teacherId = c.get("userId");
+    const studentId = c.req.param("id");
+
+    // Verify ownership
+    const [student] = await db
+      .select({ id: students.id })
+      .from(students)
+      .where(
+        and(eq(students.id, studentId), eq(students.teacher_id, teacherId))
+      )
+      .limit(1);
+
+    if (!student) return c.json({ error: "Student not found" }, 404);
+
+    // Delete student row (cascades to profile via FK, which cascades lessons, homework, etc.)
+    await db.delete(students).where(eq(students.id, studentId));
+    await db.delete(profiles).where(eq(profiles.id, studentId));
+
+    // Delete the Supabase auth user too
+    try {
+      const supabase = createClient(
+        process.env["SUPABASE_URL"]!,
+        process.env["SUPABASE_SERVICE_ROLE_KEY"]!
+      );
+      await supabase.auth.admin.deleteUser(studentId);
+    } catch {
+      // Auth user may already be gone — that's fine
+    }
+
+    return c.json({ message: "Student deleted" });
+  })
+
+  // POST /students/invite — create a pending invite token (no auth user yet)
+  // The student will use the token to register with their own email+password.
   .post("/invite", zValidator("json", inviteSchema), async (c) => {
     const teacherId = c.get("userId");
     const body = c.req.valid("json");
 
-    const inviteToken = crypto.randomUUID();
+    const token = crypto.randomUUID();
 
-    // Create a placeholder profile for the student (will be linked at registration)
-    const [newProfile] = await db
-      .insert(profiles)
+    const [invite] = await db
+      .insert(studentInvites)
       .values({
-        id: crypto.randomUUID(),
-        role: "student",
-        full_name: body.full_name,
-        email: body.email,
-      })
-      .returning();
-
-    const [newStudent] = await db
-      .insert(students)
-      .values({
-        id: newProfile!.id,
+        token,
         teacher_id: teacherId,
+        full_name: body.full_name,
         grade_level: body.grade_level,
         notes: body.notes,
-        invite_token: inviteToken,
       })
       .returning();
 
-    // Create initial AI profile
-    await db.insert(studentAiProfiles).values({
-      student_id: newProfile!.id,
-    });
-
-    const inviteUrl = `${process.env["NEXT_PUBLIC_APP_URL"]}/register?token=${inviteToken}`;
+    const inviteUrl = `${process.env["NEXT_PUBLIC_APP_URL"]}/register?token=${token}`;
 
     return c.json({
-      student_id: newStudent!.id,
-      invite_token: inviteToken,
+      invite_token: invite!.token,
       invite_url: inviteUrl,
+      full_name: invite!.full_name,
     });
   });

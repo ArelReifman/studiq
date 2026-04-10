@@ -108,6 +108,26 @@ export const students = pgTable(
   (t) => [index("idx_students_teacher_id").on(t.teacher_id)]
 );
 
+// ─── Student Invites (pending — student not yet registered) ───────────────────
+
+export const studentInvites = pgTable(
+  "student_invites",
+  {
+    token: text("token").primaryKey(),
+    teacher_id: uuid("teacher_id")
+      .notNull()
+      .references(() => teachers.id, { onDelete: "cascade" }),
+    full_name: text("full_name").notNull(),
+    grade_level: text("grade_level"),
+    notes: text("notes"),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    used_at: timestamp("used_at", { withTimezone: true }),
+  },
+  (t) => [index("idx_student_invites_teacher").on(t.teacher_id)]
+);
+
 // ─── Student Topics ───────────────────────────────────────────────────────────
 
 export const studentTopics = pgTable(

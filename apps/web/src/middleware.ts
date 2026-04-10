@@ -21,12 +21,15 @@ export function middleware(request: NextRequest) {
   const isAuthenticated = !!user;
   const role = user?.role;
 
+  // Public routes that don't require authentication
+  const isPublicRoute =
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/register") ||
+    pathname.startsWith("/auth/callback") ||
+    pathname.startsWith("/auth/set-password");
+
   // Redirect unauthenticated users to login
-  if (
-    !isAuthenticated &&
-    !pathname.startsWith("/login") &&
-    !pathname.startsWith("/register")
-  ) {
+  if (!isAuthenticated && !isPublicRoute) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 

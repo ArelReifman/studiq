@@ -23,8 +23,15 @@ interface StudentRow {
 export default function TeacherDashboard() {
   const qc = useQueryClient();
   const [showInvite, setShowInvite] = useState(false);
-  const [inviteForm, setInviteForm] = useState({ full_name: "", email: "", grade_level: "" });
-  const [inviteResult, setInviteResult] = useState<{ invite_url: string } | null>(null);
+  const [inviteForm, setInviteForm] = useState({
+    full_name: "",
+    grade_level: "",
+  });
+  const [inviteResult, setInviteResult] = useState<{
+    invite_url: string;
+    full_name: string;
+  } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const { data: students = [] } = useQuery<StudentRow[]>({
     queryKey: ["students"],
@@ -42,8 +49,10 @@ export default function TeacherDashboard() {
   const inviteMutation = useMutation({
     mutationFn: (body: typeof inviteForm) => api.post("/students/invite", body),
     onSuccess: (data: any) => {
-      setInviteResult({ invite_url: data.invite_url });
-      qc.invalidateQueries({ queryKey: ["students"] });
+      setInviteResult({
+        invite_url: data.invite_url,
+        full_name: data.full_name,
+      });
     },
   });
 
@@ -81,40 +90,68 @@ export default function TeacherDashboard() {
             {inviteResult ? (
               <div>
                 <p className="text-sm text-green-700 bg-green-50 rounded-lg p-3 mb-3">
-                  Student created! Share this invite link:
+                  Invite created for <strong>{inviteResult.full_name}</strong>!
+                  Share this link — the student will set their own email and
+                  password.
                 </p>
-                <div className="bg-gray-50 border rounded-lg p-3 text-xs font-mono break-all text-gray-700">
-                  {inviteResult.invite_url}
+                <div className="mb-3">
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    Invite link
+                  </label>
+                  <div className="bg-gray-50 border rounded-lg p-2 text-xs font-mono break-all text-gray-700">
+                    {inviteResult.invite_url}
+                  </div>
                 </div>
                 <Button
-                  className="mt-3 w-full"
+                  className="w-full"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(inviteResult.invite_url);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                >
+                  {copied ? "Copied!" : "Copy link"}
+                </Button>
+                <Button
+                  className="mt-2 w-full"
                   variant="secondary"
-                  onClick={() => { setShowInvite(false); setInviteResult(null); setInviteForm({ full_name: "", email: "", grade_level: "" }); }}
+                  onClick={() => {
+                    setShowInvite(false);
+                    setInviteResult(null);
+                    setInviteForm({ full_name: "", grade_level: "" });
+                  }}
                 >
                   Done
                 </Button>
               </div>
             ) : (
               <div className="space-y-3">
-                {(["full_name", "email", "grade_level"] as const).map((f) => (
+                {(["full_name", "grade_level"] as const).map((f) => (
                   <div key={f}>
                     <label className="block text-sm font-medium text-gray-700 mb-1 capitalize">
-                      {f.replace("_", " ")}{f === "grade_level" ? " (optional)" : ""}
+                      {f.replace("_", " ")}
+                      {f === "grade_level" ? " (optional)" : ""}
                     </label>
                     <input
-                      type={f === "email" ? "email" : "text"}
+                      type="text"
                       value={inviteForm[f]}
-                      onChange={(e) => setInviteForm((p) => ({ ...p, [f]: e.target.value }))}
+                      onChange={(e) =>
+                        setInviteForm((p) => ({ ...p, [f]: e.target.value }))
+                      }
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                     />
                   </div>
                 ))}
                 <Button
                   className="w-full"
-                  disabled={!inviteForm.full_name || !inviteForm.email || inviteMutation.isPending}
+                  disabled={
+                    !inviteForm.full_name || inviteMutation.isPending
+                  }
                   onClick={() => inviteMutation.mutate(inviteForm)}
                 >
-                  {inviteMutation.isPending ? "Sending..." : "Create invite link"}
+                  {inviteMutation.isPending
+                    ? "Creating..."
+                    : "Create invite link"}
                 </Button>
               </div>
             )}
