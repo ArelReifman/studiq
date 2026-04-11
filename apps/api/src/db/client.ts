@@ -2,17 +2,31 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema.js";
 
-const connectionString = process.env["DATABASE_URL"];
-if (!connectionString) {
-  throw new Error("DATABASE_URL environment variable is required");
+let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
+
+function getDb() {
+  if (!_db) {
+    const connectionString = process.env["DATABASE_URL"];
+    if (!connectionString) {
+      throw new Error("DATABASE_URL environment variable is required");
+    }
+
+    const queryClient = postgres(connectionString, {
+      max: 10,
+      idle_timeout: 20,
+      connect_timeout: 10,
+    });
+
+    _db = drizzle(queryClient, { schema });
+  }
+  return _db;
 }
 
-// Use a single connection for migrations, pool for app
-const queryClient = postgres(connectionString, {
-  max: 10,
-  idle_timeout: 20,
-  connect_timeout: 10,
+// Lazy proxy: db is accessed as if it's a drizzle instance, but initializes on first use
+export const db = new Proxy({} as ReturnType<typeof drizzle<typeof schema>>, {
+  get(_target, prop) {
+    return (getDb() as any)[prop];
+  },
 });
 
-export const db = drizzle(queryClient, { schema });
-export type Db = typeof db;
+export type Db = ReturnType<typeof drizzle<typeof schema>>;
