@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, XCircle, Circle } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useT } from "@/i18n";
 import type { HomeworkItem, TodoItem } from "@studiq/types";
 
 interface TaskItemProps {
@@ -15,6 +16,7 @@ interface TaskItemProps {
 
 export function TaskItem({ item, type, lessonId }: TaskItemProps) {
   const qc = useQueryClient();
+  const t = useT();
   const queryKey = type === "homework" ? ["homework", lessonId] : ["todos", lessonId];
 
   const { mutate, isPending } = useMutation({
@@ -85,7 +87,7 @@ export function TaskItem({ item, type, lessonId }: TaskItemProps) {
             className="flex items-center gap-1 text-xs px-2.5 py-1.5 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:opacity-50 transition-colors"
           >
             <CheckCircle2 size={13} />
-            Done
+            {t("student.markDone")}
           </button>
           <button
             onClick={() => mutate("failed")}
@@ -93,7 +95,7 @@ export function TaskItem({ item, type, lessonId }: TaskItemProps) {
             className="flex items-center gap-1 text-xs px-2.5 py-1.5 bg-red-400 text-white rounded-md hover:bg-red-500 disabled:opacity-50 transition-colors"
           >
             <XCircle size={13} />
-            Stuck
+            {t("student.markStuck")}
           </button>
         </div>
       )}

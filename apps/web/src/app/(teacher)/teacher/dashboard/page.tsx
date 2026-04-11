@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StudentCard } from "@/components/teacher/student-card";
 import { formatDate } from "@/lib/utils";
+import { useT } from "@/i18n";
 import type { DifficultyReport } from "@studiq/types";
 import { AlertTriangle, Users, UserPlus, X } from "lucide-react";
 
@@ -22,6 +23,7 @@ interface StudentRow {
 
 export default function TeacherDashboard() {
   const qc = useQueryClient();
+  const t = useT();
   const [showInvite, setShowInvite] = useState(false);
   const [inviteForm, setInviteForm] = useState({
     full_name: "",
@@ -38,10 +40,12 @@ export default function TeacherDashboard() {
     queryFn: () => api.get("/students"),
   });
 
-  const { data: difficulties = [] } = useQuery<(DifficultyReport & { student_name: string })[]>({
+  const { data: difficulties = [] } = useQuery<
+    (DifficultyReport & { student_name: string })[]
+  >({
     queryKey: ["difficulties"],
     queryFn: () => api.get("/difficulties"),
-    refetchInterval: 30_000, // Poll every 30s
+    refetchInterval: 30_000,
   });
 
   const unreviewed = difficulties.filter((d) => !d.reviewed);
@@ -62,17 +66,20 @@ export default function TeacherDashboard() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["difficulties"] }),
   });
 
+  const studentCountText =
+    students.length === 1
+      ? t("teacher.studentCount", { count: students.length })
+      : t("teacher.studentCountPlural", { count: students.length });
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="text-gray-500 text-sm mt-0.5">
-            {students.length} student{students.length !== 1 ? "s" : ""}
-          </p>
+          <h1 className="text-2xl font-bold">{t("teacher.dashboard")}</h1>
+          <p className="text-gray-500 text-sm mt-0.5">{studentCountText}</p>
         </div>
         <Button onClick={() => setShowInvite(true)}>
-          <UserPlus size={15} /> Invite Student
+          <UserPlus size={15} /> {t("teacher.inviteStudent")}
         </Button>
       </div>
 
@@ -81,8 +88,13 @@ export default function TeacherDashboard() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <Card className="w-full max-w-md">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold">Invite a Student</h2>
-              <button onClick={() => { setShowInvite(false); setInviteResult(null); }}>
+              <h2 className="font-semibold">{t("teacher.inviteTitle")}</h2>
+              <button
+                onClick={() => {
+                  setShowInvite(false);
+                  setInviteResult(null);
+                }}
+              >
                 <X size={18} className="text-gray-400" />
               </button>
             </div>
@@ -90,13 +102,13 @@ export default function TeacherDashboard() {
             {inviteResult ? (
               <div>
                 <p className="text-sm text-green-700 bg-green-50 rounded-lg p-3 mb-3">
-                  Invite created for <strong>{inviteResult.full_name}</strong>!
-                  Share this link — the student will set their own email and
-                  password.
+                  {t("teacher.inviteCreated", {
+                    name: inviteResult.full_name,
+                  })}
                 </p>
                 <div className="mb-3">
                   <label className="block text-xs font-medium text-gray-500 mb-1">
-                    Invite link
+                    {t("teacher.inviteLink")}
                   </label>
                   <div className="bg-gray-50 border rounded-lg p-2 text-xs font-mono break-all text-gray-700">
                     {inviteResult.invite_url}
@@ -105,12 +117,14 @@ export default function TeacherDashboard() {
                 <Button
                   className="w-full"
                   onClick={async () => {
-                    await navigator.clipboard.writeText(inviteResult.invite_url);
+                    await navigator.clipboard.writeText(
+                      inviteResult.invite_url
+                    );
                     setCopied(true);
                     setTimeout(() => setCopied(false), 2000);
                   }}
                 >
-                  {copied ? "Copied!" : "Copy link"}
+                  {copied ? t("teacher.copied") : t("teacher.copyLink")}
                 </Button>
                 <Button
                   className="mt-2 w-full"
@@ -121,37 +135,51 @@ export default function TeacherDashboard() {
                     setInviteForm({ full_name: "", grade_level: "" });
                   }}
                 >
-                  Done
+                  {t("common.done")}
                 </Button>
               </div>
             ) : (
               <div className="space-y-3">
-                {(["full_name", "grade_level"] as const).map((f) => (
-                  <div key={f}>
-                    <label className="block text-sm font-medium text-gray-700 mb-1 capitalize">
-                      {f.replace("_", " ")}
-                      {f === "grade_level" ? " (optional)" : ""}
-                    </label>
-                    <input
-                      type="text"
-                      value={inviteForm[f]}
-                      onChange={(e) =>
-                        setInviteForm((p) => ({ ...p, [f]: e.target.value }))
-                      }
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                    />
-                  </div>
-                ))}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {t("teacher.fullName")}
+                  </label>
+                  <input
+                    type="text"
+                    value={inviteForm.full_name}
+                    onChange={(e) =>
+                      setInviteForm((p) => ({
+                        ...p,
+                        full_name: e.target.value,
+                      }))
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {t("teacher.gradeLevel")} {t("common.optional")}
+                  </label>
+                  <input
+                    type="text"
+                    value={inviteForm.grade_level}
+                    onChange={(e) =>
+                      setInviteForm((p) => ({
+                        ...p,
+                        grade_level: e.target.value,
+                      }))
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                </div>
                 <Button
                   className="w-full"
-                  disabled={
-                    !inviteForm.full_name || inviteMutation.isPending
-                  }
+                  disabled={!inviteForm.full_name || inviteMutation.isPending}
                   onClick={() => inviteMutation.mutate(inviteForm)}
                 >
                   {inviteMutation.isPending
-                    ? "Creating..."
-                    : "Create invite link"}
+                    ? t("teacher.creating")
+                    : t("teacher.createInvite")}
                 </Button>
               </div>
             )}
@@ -164,13 +192,15 @@ export default function TeacherDashboard() {
         <div className="lg:col-span-2">
           <div className="flex items-center gap-2 mb-3">
             <Users size={16} className="text-gray-400" />
-            <h2 className="font-semibold text-sm text-gray-600">Your Students</h2>
+            <h2 className="font-semibold text-sm text-gray-600">
+              {t("teacher.yourStudents")}
+            </h2>
           </div>
 
           {students.length === 0 ? (
             <Card>
               <p className="text-gray-400 text-sm text-center py-4">
-                No students yet. Invite your first student above.
+                {t("teacher.noStudents")}
               </p>
             </Card>
           ) : (
@@ -187,10 +217,10 @@ export default function TeacherDashboard() {
           <div className="flex items-center gap-2 mb-3">
             <AlertTriangle size={16} className="text-red-400" />
             <h2 className="font-semibold text-sm text-gray-600">
-              Difficulties
+              {t("teacher.difficulties")}
               {unreviewed.length > 0 && (
-                <Badge variant="danger" className="ml-2">
-                  {unreviewed.length} new
+                <Badge variant="danger" className="ms-2">
+                  {unreviewed.length} {t("teacher.new")}
                 </Badge>
               )}
             </h2>
@@ -209,9 +239,13 @@ export default function TeacherDashboard() {
                     </p>
                     {d.topic_tags.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1">
-                        {d.topic_tags.map((t) => (
-                          <Badge key={t} variant="warning" className="text-xs">
-                            {t}
+                        {d.topic_tags.map((tag) => (
+                          <Badge
+                            key={tag}
+                            variant="warning"
+                            className="text-xs"
+                          >
+                            {tag}
                           </Badge>
                         ))}
                       </div>
@@ -223,7 +257,7 @@ export default function TeacherDashboard() {
                   {!d.reviewed && (
                     <button
                       onClick={() => markReviewed.mutate(d.id)}
-                      className="ml-2 text-xs text-gray-400 hover:text-green-500 flex-shrink-0"
+                      className="ms-2 text-xs text-gray-400 hover:text-green-500 flex-shrink-0"
                     >
                       ✓
                     </button>
@@ -235,7 +269,7 @@ export default function TeacherDashboard() {
             {difficulties.length === 0 && (
               <Card>
                 <p className="text-gray-400 text-sm text-center py-2">
-                  No difficulties yet.
+                  {t("teacher.noDifficulties")}
                 </p>
               </Card>
             )}

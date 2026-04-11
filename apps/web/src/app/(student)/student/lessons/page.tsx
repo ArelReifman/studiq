@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 import type { LessonSession } from "@studiq/types";
 import { ArrowRight } from "lucide-react";
+import { useT } from "@/i18n";
 
 const statusBadge: Record<string, "default" | "success" | "neutral"> = {
   active: "default",
@@ -16,18 +17,19 @@ const statusBadge: Record<string, "default" | "success" | "neutral"> = {
 };
 
 export default function LessonsPage() {
+  const t = useT();
   const { data: lessons = [], isLoading } = useQuery<LessonSession[]>({
     queryKey: ["lessons"],
     queryFn: () => api.get("/lessons"),
   });
 
-  if (isLoading) return <div className="text-gray-400">Loading...</div>;
+  if (isLoading) return <div className="text-gray-400">{t("common.loading")}</div>;
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Lesson History</h1>
+      <h1 className="text-2xl font-bold mb-6">{t("lessons.history")}</h1>
       {lessons.length === 0 ? (
-        <p className="text-gray-500">No lessons yet.</p>
+        <p className="text-gray-500">{t("lessons.noLessons")}</p>
       ) : (
         <div className="space-y-3">
           {lessons.map((lesson) => (
@@ -37,7 +39,7 @@ export default function LessonsPage() {
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <Badge variant={statusBadge[lesson.status] ?? "neutral"}>
-                        {lesson.status}
+                        {t(`status.${lesson.status}`)}
                       </Badge>
                       {lesson.ai_generated && (
                         <Badge variant="neutral">AI</Badge>
@@ -48,7 +50,7 @@ export default function LessonsPage() {
                       {formatDate(lesson.generated_at)}
                     </p>
                   </div>
-                  <ArrowRight size={16} className="text-gray-300" />
+                  <ArrowRight size={16} className="text-gray-300 rtl:rotate-180" />
                 </div>
               </Card>
             </Link>

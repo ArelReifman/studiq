@@ -6,23 +6,25 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate, formatPercent } from "@/lib/utils";
 import type { StudentReport } from "@studiq/types";
+import { useT } from "@/i18n";
 
 export default function StudentReportsPage() {
+  const t = useT();
   const { data: reports = [], isLoading } = useQuery<StudentReport[]>({
     queryKey: ["reports"],
     queryFn: () => api.get("/reports"),
   });
 
-  if (isLoading) return <div className="text-gray-400">Loading...</div>;
+  if (isLoading) return <div className="text-gray-400">{t("common.loading")}</div>;
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">My Progress</h1>
+      <h1 className="text-2xl font-bold mb-6">{t("reports.myProgress")}</h1>
 
       {reports.length === 0 ? (
         <Card>
           <p className="text-gray-500 text-sm">
-            Your first progress report will appear here after your teacher generates it.
+            {t("reports.empty")}
           </p>
         </Card>
       ) : (
@@ -40,13 +42,13 @@ export default function StudentReportsPage() {
                         Number(report.completion_rate) >= 0.7 ? "success" : "warning"
                       }
                     >
-                      {formatPercent(report.completion_rate)} completion
+                      {formatPercent(report.completion_rate)} {t("reports.completion")}
                     </Badge>
                   )}
                 </div>
                 {report.difficulty_count !== null && (
                   <span className="text-xs text-gray-400">
-                    {report.difficulty_count} difficulties
+                    {report.difficulty_count} {t("reports.difficulties")}
                   </span>
                 )}
               </div>
@@ -57,7 +59,7 @@ export default function StudentReportsPage() {
 
               {report.ai_recommendations && (
                 <div className="bg-brand-50 rounded-lg p-3 text-sm text-brand-700">
-                  <span className="font-medium">AI Recommendation: </span>
+                  <span className="font-medium">{t("reports.aiRecommendation")}</span>
                   {(report.ai_recommendations as any).notes}
                 </div>
               )}

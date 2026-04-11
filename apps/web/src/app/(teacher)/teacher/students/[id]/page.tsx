@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { formatDate, formatPercent } from "@/lib/utils";
 import type { LessonSession, DifficultyReport, StudentAiProfile } from "@studiq/types";
 import { ArrowLeft, Sparkles, AlertTriangle } from "lucide-react";
+import { useT } from "@/i18n";
 
 interface StudentDetail {
   id: string;
@@ -21,6 +22,7 @@ interface StudentDetail {
 
 export default function StudentDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const t = useT();
   const qc = useQueryClient();
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackType, setFeedbackType] = useState<
@@ -71,7 +73,7 @@ export default function StudentDetailPage() {
         href="/teacher/students"
         className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-6"
       >
-        <ArrowLeft size={14} /> Back to students
+        <ArrowLeft size={14} className="rtl:rotate-180" /> {t("studentDetail.backToStudents")}
       </Link>
 
       <div className="flex items-center justify-between mb-6">
@@ -86,7 +88,7 @@ export default function StudentDetailPage() {
           disabled={generateLesson.isPending}
         >
           <Sparkles size={15} />
-          {generateLesson.isPending ? "Generating..." : "Generate New Lesson"}
+          {generateLesson.isPending ? t("studentDetail.generating") : t("studentDetail.generateLesson")}
         </Button>
       </div>
 
@@ -94,12 +96,12 @@ export default function StudentDetailPage() {
         {/* AI Profile */}
         <div className="lg:col-span-1">
           <Card>
-            <h2 className="font-semibold mb-3 text-sm text-gray-600">AI Profile</h2>
+            <h2 className="font-semibold mb-3 text-sm text-gray-600">{t("studentDetail.aiProfile")}</h2>
 
             {profile ? (
               <div className="space-y-3">
                 <div>
-                  <p className="text-xs text-gray-400 mb-1">Completion Rate</p>
+                  <p className="text-xs text-gray-400 mb-1">{t("studentDetail.completionRate")}</p>
                   <p className="font-semibold text-lg">
                     {formatPercent(profile.avg_completion_rate)}
                   </p>
@@ -107,10 +109,10 @@ export default function StudentDetailPage() {
 
                 {profile.strong_topics.length > 0 && (
                   <div>
-                    <p className="text-xs text-gray-400 mb-1">Strong Topics</p>
+                    <p className="text-xs text-gray-400 mb-1">{t("studentDetail.strongTopics")}</p>
                     <div className="flex flex-wrap gap-1">
-                      {profile.strong_topics.map((t) => (
-                        <Badge key={t} variant="success">{t}</Badge>
+                      {profile.strong_topics.map((topic) => (
+                        <Badge key={topic} variant="success">{topic}</Badge>
                       ))}
                     </div>
                   </div>
@@ -118,10 +120,10 @@ export default function StudentDetailPage() {
 
                 {profile.weak_topics.length > 0 && (
                   <div>
-                    <p className="text-xs text-gray-400 mb-1">Needs Work</p>
+                    <p className="text-xs text-gray-400 mb-1">{t("studentDetail.needsWork")}</p>
                     <div className="flex flex-wrap gap-1">
-                      {profile.weak_topics.map((t) => (
-                        <Badge key={t} variant="danger">{t}</Badge>
+                      {profile.weak_topics.map((topic) => (
+                        <Badge key={topic} variant="danger">{topic}</Badge>
                       ))}
                     </div>
                   </div>
@@ -129,40 +131,40 @@ export default function StudentDetailPage() {
 
                 {profile.ai_summary && (
                   <div>
-                    <p className="text-xs text-gray-400 mb-1">AI Summary</p>
+                    <p className="text-xs text-gray-400 mb-1">{t("studentDetail.aiSummary")}</p>
                     <p className="text-sm text-gray-700">{profile.ai_summary}</p>
                   </div>
                 )}
 
                 <div className="flex gap-4 pt-2 border-t border-gray-50 text-xs text-gray-400">
-                  <span>{profile.total_lessons} lessons</span>
-                  <span>{profile.total_failures} failures</span>
+                  <span>{profile.total_lessons} {t("studentDetail.lessons")}</span>
+                  <span>{profile.total_failures} {t("studentDetail.failures")}</span>
                 </div>
               </div>
             ) : (
-              <p className="text-gray-400 text-sm">No AI profile yet.</p>
+              <p className="text-gray-400 text-sm">{t("studentDetail.noAiProfile")}</p>
             )}
           </Card>
 
           {/* AI Feedback */}
           <Card className="mt-4">
             <h2 className="font-semibold mb-3 text-sm text-gray-600">
-              Give AI Feedback
+              {t("studentDetail.giveFeedback")}
             </h2>
             <select
               value={feedbackType}
               onChange={(e) => setFeedbackType(e.target.value as any)}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
             >
-              <option value="general">General</option>
-              <option value="lesson_quality">Lesson Quality</option>
-              <option value="difficulty_level">Difficulty Level</option>
-              <option value="topic_relevance">Topic Relevance</option>
+              <option value="general">{t("studentDetail.general")}</option>
+              <option value="lesson_quality">{t("studentDetail.lessonQuality")}</option>
+              <option value="difficulty_level">{t("studentDetail.difficultyLevel")}</option>
+              <option value="topic_relevance">{t("studentDetail.topicRelevance")}</option>
             </select>
             <textarea
               value={feedbackText}
               onChange={(e) => setFeedbackText(e.target.value)}
-              placeholder="E.g. 'Lessons are too easy', 'Focus more on fractions'"
+              placeholder={t("studentDetail.feedbackPlaceholder")}
               rows={3}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2 resize-none focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
@@ -172,11 +174,11 @@ export default function StudentDetailPage() {
               disabled={!feedbackText.trim() || submitFeedback.isPending}
               onClick={() => submitFeedback.mutate()}
             >
-              {submitFeedback.isPending ? "Sending..." : "Send Feedback to AI"}
+              {submitFeedback.isPending ? t("studentDetail.sending") : t("studentDetail.sendFeedback")}
             </Button>
             {submitFeedback.isSuccess && (
               <p className="text-green-600 text-xs mt-2 text-center">
-                Feedback will be included in the next generated lesson.
+                {t("studentDetail.feedbackNote")}
               </p>
             )}
           </Card>
@@ -190,7 +192,7 @@ export default function StudentDetailPage() {
               <div className="flex items-center gap-2 mb-3">
                 <AlertTriangle size={15} className="text-red-400" />
                 <h2 className="font-semibold text-sm text-gray-600">
-                  Recent Difficulties ({difficulties.filter((d) => !d.reviewed).length} unreviewed)
+                  {t("studentDetail.recentDifficulties", { count: difficulties.filter((d) => !d.reviewed).length })}
                 </h2>
               </div>
               <div className="space-y-2">
@@ -200,14 +202,14 @@ export default function StudentDetailPage() {
                       <div>
                         <p className="text-xs text-gray-700">{d.description}</p>
                         <div className="flex flex-wrap gap-1 mt-1">
-                          {d.topic_tags.map((t) => (
-                            <Badge key={t} variant="warning" className="text-xs">{t}</Badge>
+                          {d.topic_tags.map((tag) => (
+                            <Badge key={tag} variant="warning" className="text-xs">{tag}</Badge>
                           ))}
                         </div>
                         <p className="text-xs text-gray-300 mt-1">{formatDate(d.created_at)}</p>
                       </div>
                       {!d.reviewed && (
-                        <Badge variant="danger" className="flex-shrink-0 ml-2">New</Badge>
+                        <Badge variant="danger" className="flex-shrink-0 ms-2">{t("studentDetail.new")}</Badge>
                       )}
                     </div>
                   </Card>
@@ -219,7 +221,7 @@ export default function StudentDetailPage() {
           {/* Lessons */}
           <div>
             <h2 className="font-semibold text-sm text-gray-600 mb-3">
-              Lessons ({lessons.length})
+              {t("lessons.count", { count: lessons.length })}
             </h2>
             <div className="space-y-2">
               {lessons.map((l) => (
@@ -238,13 +240,13 @@ export default function StudentDetailPage() {
                           : "neutral"
                       }
                     >
-                      {l.status}
+                      {t(`status.${l.status}`)}
                     </Badge>
                   </div>
                 </Card>
               ))}
               {lessons.length === 0 && (
-                <p className="text-gray-400 text-sm">No lessons yet.</p>
+                <p className="text-gray-400 text-sm">{t("studentDetail.noLessons")}</p>
               )}
             </div>
           </div>

@@ -4,16 +4,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/store/auth";
+import { useT } from "@/i18n";
 
-/**
- * Set-password page — shown after a student clicks the invite link
- * and is successfully authenticated via /auth/callback.
- * Lets the student set their own password, then forwards them to
- * onboarding (if student) or dashboard.
- */
 export default function SetPasswordPage() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const t = useT();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
@@ -24,12 +20,12 @@ export default function SetPasswordPage() {
     setError("");
 
     if (password.length < 8) {
-      setError("Password must be at least 8 characters");
+      setError(t("register.password8"));
       return;
     }
 
     if (password !== confirm) {
-      setError("Passwords do not match");
+      setError(t("setPassword.mismatch"));
       return;
     }
 
@@ -45,14 +41,13 @@ export default function SetPasswordPage() {
         return;
       }
 
-      // Password set — go to onboarding (students) or dashboard (teachers)
       if (user?.role === "student") {
         router.replace("/student/onboarding");
       } else {
         router.replace("/teacher/dashboard");
       }
     } catch (e: any) {
-      setError(e.message ?? "Failed to update password");
+      setError(e.message ?? t("error.passwordUpdate"));
       setLoading(false);
     }
   }
@@ -60,17 +55,18 @@ export default function SetPasswordPage() {
   return (
     <div className="bg-white rounded-2xl shadow-lg p-8">
       <div className="mb-6 text-center">
-        <h1 className="text-2xl font-bold text-brand-700">Welcome to Studiq</h1>
+        <h1 className="text-2xl font-bold text-brand-700">
+          {t("setPassword.title")}
+        </h1>
         <p className="text-gray-500 text-sm mt-1">
-          {user?.full_name ? `Hi ${user.full_name}, ` : ""}
-          set a password to secure your account
+          {t("setPassword.subtitle")}
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            New password
+            {t("setPassword.newPassword")}
           </label>
           <input
             type="password"
@@ -84,7 +80,7 @@ export default function SetPasswordPage() {
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Confirm password
+            {t("setPassword.confirm")}
           </label>
           <input
             type="password"
@@ -106,7 +102,7 @@ export default function SetPasswordPage() {
           disabled={loading}
           className="w-full bg-brand-600 text-white rounded-lg py-2.5 font-medium hover:bg-brand-700 disabled:opacity-50 transition-colors"
         >
-          {loading ? "Saving..." : "Set password & continue"}
+          {loading ? t("setPassword.saving") : t("setPassword.save")}
         </button>
       </form>
     </div>

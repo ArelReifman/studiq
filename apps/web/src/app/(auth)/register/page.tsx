@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
+import { useT } from "@/i18n";
+import { LanguageToggle } from "@/components/ui/language-toggle";
 
 interface InviteInfo {
   token: string;
@@ -18,6 +20,7 @@ export default function RegisterPage() {
   const inviteToken = searchParams.get("token");
   const isStudent = !!inviteToken;
   const setAuth = useAuthStore((s) => s.setAuth);
+  const t = useT();
 
   const [invite, setInvite] = useState<InviteInfo | null>(null);
   const [inviteError, setInviteError] = useState("");
@@ -29,7 +32,6 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Fetch invite details to prefill student name
   useEffect(() => {
     if (!inviteToken) return;
     (async () => {
@@ -38,7 +40,7 @@ export default function RegisterPage() {
         setInvite(data);
         setForm((p) => ({ ...p, full_name: data.full_name }));
       } catch (err: any) {
-        setInviteError(err.message ?? "Invalid invite link");
+        setInviteError(err.message ?? t("error.invalidInvite"));
       }
     })();
   }, [inviteToken]);
@@ -59,7 +61,6 @@ export default function RegisterPage() {
         teacher_invite_token: inviteToken ?? undefined,
       });
 
-      // Auto-login right after registration
       const loginData = await api.post<{
         access_token: string;
         user: {
@@ -78,7 +79,7 @@ export default function RegisterPage() {
           : "/student/dashboard"
       );
     } catch (err: any) {
-      setError(err.message ?? "Registration failed");
+      setError(err.message ?? t("error.registrationFailed"));
     } finally {
       setLoading(false);
     }
@@ -86,15 +87,18 @@ export default function RegisterPage() {
 
   if (isStudent && inviteError) {
     return (
-      <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
-        <h1 className="text-2xl font-bold text-brand-700 mb-2">Studiq</h1>
-        <p className="text-red-600 font-medium mb-2">Invite link invalid</p>
+      <div className="bg-white rounded-2xl shadow-lg p-8 text-center relative">
+        <div className="absolute top-4 end-4">
+          <LanguageToggle />
+        </div>
+        <h1 className="text-2xl font-bold text-brand-700 mb-2">{t("register.title")}</h1>
+        <p className="text-red-600 font-medium mb-2">{t("register.inviteInvalid")}</p>
         <p className="text-sm text-gray-500">{inviteError}</p>
         <Link
           href="/login"
           className="mt-4 inline-block text-brand-600 hover:underline text-sm"
         >
-          Go to login
+          {t("register.goToLogin")}
         </Link>
       </div>
     );
@@ -103,34 +107,34 @@ export default function RegisterPage() {
   if (isStudent && !invite) {
     return (
       <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
-        <h1 className="text-2xl font-bold text-brand-700 mb-2">Studiq</h1>
-        <p className="text-gray-500">Loading invitation…</p>
+        <h1 className="text-2xl font-bold text-brand-700 mb-2">{t("register.title")}</h1>
+        <p className="text-gray-500">{t("register.loadingInvite")}</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-lg p-8">
+    <div className="bg-white rounded-2xl shadow-lg p-8 relative">
+      <div className="absolute top-4 end-4">
+        <LanguageToggle />
+      </div>
       <div className="mb-6 text-center">
-        <h1 className="text-3xl font-bold text-brand-700">Studiq</h1>
+        <h1 className="text-3xl font-bold text-brand-700">{t("register.title")}</h1>
         <p className="text-gray-500 mt-1">
-          {isStudent
-            ? "Set up your student account"
-            : "Create a teacher account"}
+          {isStudent ? t("register.studentSetup") : t("register.teacherSetup")}
         </p>
       </div>
 
       {isStudent && invite && (
         <div className="mb-4 bg-brand-50 border border-brand-100 rounded-lg px-4 py-3 text-sm text-brand-700">
-          Welcome, <strong>{invite.full_name}</strong>! Choose an email and
-          password to create your student account.
+          {t("register.welcomeStudent", { name: invite.full_name })}
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Full name
+            {t("register.fullName")}
           </label>
           <input
             type="text"
@@ -144,7 +148,7 @@ export default function RegisterPage() {
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Email
+            {t("common.email")}
           </label>
           <input
             type="email"
@@ -158,7 +162,7 @@ export default function RegisterPage() {
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Password
+            {t("common.password")}
           </label>
           <input
             type="password"
@@ -169,7 +173,7 @@ export default function RegisterPage() {
             minLength={8}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
-          <p className="text-xs text-gray-400 mt-1">At least 8 characters.</p>
+          <p className="text-xs text-gray-400 mt-1">{t("register.password8")}</p>
         </div>
 
         {error && (
@@ -183,15 +187,15 @@ export default function RegisterPage() {
           disabled={loading}
           className="w-full bg-brand-600 text-white rounded-lg py-2.5 font-medium hover:bg-brand-700 disabled:opacity-50 transition-colors"
         >
-          {loading ? "Creating account..." : "Create account"}
+          {loading ? t("register.creatingAccount") : t("register.createAccount")}
         </button>
       </form>
 
       {!isStudent && (
         <p className="text-center text-sm text-gray-500 mt-6">
-          Already have an account?{" "}
+          {t("register.alreadyHave")}{" "}
           <Link href="/login" className="text-brand-600 hover:underline">
-            Sign in
+            {t("register.signIn")}
           </Link>
         </p>
       )}

@@ -3,14 +3,10 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
+import { useT } from "@/i18n";
+import { LanguageToggle } from "@/components/ui/language-toggle";
 import { cn } from "@/lib/utils";
 import { BookOpen, CheckSquare, BarChart2, LogOut } from "lucide-react";
-
-const nav = [
-  { href: "/student/dashboard", label: "My Lesson", icon: BookOpen },
-  { href: "/student/lessons", label: "History", icon: CheckSquare },
-  { href: "/student/reports", label: "Progress", icon: BarChart2 },
-];
 
 export default function StudentLayout({
   children,
@@ -20,6 +16,13 @@ export default function StudentLayout({
   const pathname = usePathname();
   const router = useRouter();
   const { user, clearAuth } = useAuthStore();
+  const t = useT();
+
+  const nav = [
+    { href: "/student/dashboard", label: t("student.myLesson"), icon: BookOpen },
+    { href: "/student/lessons", label: t("student.history"), icon: CheckSquare },
+    { href: "/student/reports", label: t("student.progress"), icon: BarChart2 },
+  ];
 
   function logout() {
     clearAuth();
@@ -29,7 +32,7 @@ export default function StudentLayout({
   return (
     <div className="min-h-screen flex">
       {/* Sidebar */}
-      <aside className="w-60 bg-white border-r border-gray-100 flex flex-col">
+      <aside className="w-60 bg-white border-e border-gray-100 flex flex-col">
         <div className="px-6 py-5 border-b border-gray-100">
           <span className="text-xl font-bold text-brand-700">Studiq</span>
           <p className="text-xs text-gray-500 mt-0.5">{user?.full_name}</p>
@@ -53,13 +56,14 @@ export default function StudentLayout({
           ))}
         </nav>
 
-        <div className="px-3 py-4 border-t border-gray-100">
+        <div className="px-3 py-4 border-t border-gray-100 space-y-1">
+          <LanguageToggle className="w-full justify-center" />
           <button
             onClick={logout}
             className="flex items-center gap-3 px-3 py-2 w-full text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
           >
             <LogOut size={16} />
-            Sign out
+            {t("common.signOut")}
           </button>
         </div>
       </aside>

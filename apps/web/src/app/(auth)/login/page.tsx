@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
+import { useT } from "@/i18n";
+import { LanguageToggle } from "@/components/ui/language-toggle";
 import { GraduationCap, BookOpen } from "lucide-react";
 
 type Mode = "pick" | "student" | "teacher";
@@ -14,6 +16,7 @@ export default function LoginPage() {
   const searchParams = useSearchParams();
   const justRegistered = searchParams.get("registered") === "1";
   const setAuth = useAuthStore((s) => s.setAuth);
+  const t = useT();
 
   const [mode, setMode] = useState<Mode>(
     justRegistered ? "student" : "pick"
@@ -39,14 +42,13 @@ export default function LoginPage() {
         };
       }>("/auth/login", { email, password });
 
-      // Verify role matches selected mode
       if (mode === "student" && data.user.role !== "student") {
-        setError("This account is not a student account.");
+        setError(t("login.wrongRoleStudent"));
         setLoading(false);
         return;
       }
       if (mode === "teacher" && data.user.role !== "teacher") {
-        setError("This account is not a teacher account.");
+        setError(t("login.wrongRoleTeacher"));
         setLoading(false);
         return;
       }
@@ -59,7 +61,7 @@ export default function LoginPage() {
           : "/student/dashboard"
       );
     } catch (err: any) {
-      setError(err.message ?? "Login failed");
+      setError(err.message ?? t("error.loginFailed"));
     } finally {
       setLoading(false);
     }
@@ -68,10 +70,13 @@ export default function LoginPage() {
   // ── Role picker screen ──
   if (mode === "pick") {
     return (
-      <div className="bg-white rounded-2xl shadow-lg p-8">
+      <div className="bg-white rounded-2xl shadow-lg p-8 relative">
+        <div className="absolute top-4 end-4">
+          <LanguageToggle />
+        </div>
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-brand-700">Studiq</h1>
-          <p className="text-gray-500 mt-1">Welcome! Who are you?</p>
+          <h1 className="text-3xl font-bold text-brand-700">{t("login.title")}</h1>
+          <p className="text-gray-500 mt-1">{t("login.welcome")}</p>
         </div>
 
         <div className="space-y-3">
@@ -82,11 +87,9 @@ export default function LoginPage() {
             <div className="w-12 h-12 rounded-full bg-brand-100 flex items-center justify-center group-hover:bg-brand-200 transition-colors">
               <GraduationCap size={24} className="text-brand-600" />
             </div>
-            <div className="text-left">
-              <p className="font-semibold text-gray-800">I&apos;m a Student</p>
-              <p className="text-xs text-gray-400">
-                Sign in to view your lessons
-              </p>
+            <div className="text-start">
+              <p className="font-semibold text-gray-800">{t("login.imStudent")}</p>
+              <p className="text-xs text-gray-400">{t("login.studentSubtext")}</p>
             </div>
           </button>
 
@@ -97,11 +100,9 @@ export default function LoginPage() {
             <div className="w-12 h-12 rounded-full bg-brand-100 flex items-center justify-center group-hover:bg-brand-200 transition-colors">
               <BookOpen size={24} className="text-brand-600" />
             </div>
-            <div className="text-left">
-              <p className="font-semibold text-gray-800">I&apos;m a Teacher</p>
-              <p className="text-xs text-gray-400">
-                Manage students &amp; lessons
-              </p>
+            <div className="text-start">
+              <p className="font-semibold text-gray-800">{t("login.imTeacher")}</p>
+              <p className="text-xs text-gray-400">{t("login.teacherSubtext")}</p>
             </div>
           </button>
         </div>
@@ -111,24 +112,27 @@ export default function LoginPage() {
 
   // ── Login form (student or teacher) ──
   return (
-    <div className="bg-white rounded-2xl shadow-lg p-8">
+    <div className="bg-white rounded-2xl shadow-lg p-8 relative">
+      <div className="absolute top-4 end-4">
+        <LanguageToggle />
+      </div>
       <div className="mb-6 text-center">
-        <h1 className="text-3xl font-bold text-brand-700">Studiq</h1>
+        <h1 className="text-3xl font-bold text-brand-700">{t("login.title")}</h1>
         <p className="text-gray-500 mt-1">
-          {mode === "student" ? "Student sign in" : "Teacher sign in"}
+          {mode === "student" ? t("login.studentSignIn") : t("login.teacherSignIn")}
         </p>
       </div>
 
       {justRegistered && (
         <div className="mb-4 bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">
-          Account created successfully! Sign in with your email and password.
+          {t("login.registered")}
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Email
+            {t("common.email")}
           </label>
           <input
             type="email"
@@ -141,7 +145,7 @@ export default function LoginPage() {
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Password
+            {t("common.password")}
           </label>
           <input
             type="password"
@@ -163,23 +167,21 @@ export default function LoginPage() {
           disabled={loading}
           className="w-full bg-brand-600 text-white rounded-lg py-2.5 font-medium hover:bg-brand-700 disabled:opacity-50 transition-colors"
         >
-          {loading ? "Signing in..." : "Sign in"}
+          {loading ? t("login.signingIn") : t("login.signIn")}
         </button>
       </form>
 
       <div className="mt-6 space-y-2 text-center">
         {mode === "teacher" && (
           <p className="text-sm text-gray-500">
-            New teacher?{" "}
+            {t("login.newTeacher")}{" "}
             <Link href="/register" className="text-brand-600 hover:underline">
-              Create an account
+              {t("login.createAccount")}
             </Link>
           </p>
         )}
         {mode === "student" && (
-          <p className="text-xs text-gray-400">
-            Don&apos;t have an account? Ask your teacher for an invite link.
-          </p>
+          <p className="text-xs text-gray-400">{t("login.noAccount")}</p>
         )}
         <button
           onClick={() => {
@@ -190,7 +192,7 @@ export default function LoginPage() {
           }}
           className="text-xs text-gray-400 hover:text-brand-600 hover:underline"
         >
-          &larr; Back to role selection
+          &larr; {t("login.backToRoles")}
         </button>
       </div>
     </div>

@@ -10,17 +10,19 @@ import { formatDate } from "@/lib/utils";
 import type { LessonWithItems } from "@studiq/types";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { useT } from "@/i18n";
 
 export default function LessonDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const t = useT();
 
   const { data: lesson, isLoading } = useQuery<LessonWithItems>({
     queryKey: ["lessons", id],
     queryFn: () => api.get(`/lessons/${id}`),
   });
 
-  if (isLoading) return <div className="text-gray-400">Loading...</div>;
-  if (!lesson) return <div className="text-gray-400">Lesson not found.</div>;
+  if (isLoading) return <div className="text-gray-400">{t("common.loading")}</div>;
+  if (!lesson) return <div className="text-gray-400">{t("lessons.notFound")}</div>;
 
   return (
     <div>
@@ -28,13 +30,13 @@ export default function LessonDetailPage() {
         href="/student/lessons"
         className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-6"
       >
-        <ArrowLeft size={14} /> Back to lessons
+        <ArrowLeft size={14} className="rtl:rotate-180" /> {t("lessons.backToLessons")}
       </Link>
 
       <div className="flex items-start justify-between mb-6">
         <div>
           <Badge variant="default" className="mb-2">
-            {lesson.status}
+            {t(`status.${lesson.status}`)}
           </Badge>
           <h1 className="text-2xl font-bold">{lesson.title}</h1>
           {lesson.description && (
@@ -48,7 +50,7 @@ export default function LessonDetailPage() {
 
       {lesson.homework_items.length > 0 && (
         <div className="mb-6">
-          <h2 className="text-base font-semibold mb-3">Homework</h2>
+          <h2 className="text-base font-semibold mb-3">{t("student.homework")}</h2>
           <div className="space-y-2">
             {lesson.homework_items.map((item) => (
               <TaskItem key={item.id} item={item} type="homework" lessonId={id} />
@@ -59,7 +61,7 @@ export default function LessonDetailPage() {
 
       {lesson.todo_items.length > 0 && (
         <div>
-          <h2 className="text-base font-semibold mb-3">Practice Tasks</h2>
+          <h2 className="text-base font-semibold mb-3">{t("student.practiceTasks")}</h2>
           <div className="space-y-2">
             {lesson.todo_items.map((item) => (
               <TaskItem key={item.id} item={item} type="todo" lessonId={id} />

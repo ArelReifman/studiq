@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { formatPercent } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { useT } from "@/i18n";
 import { User, ArrowRight, Trash2 } from "lucide-react";
 
 interface StudentCardProps {
@@ -28,6 +29,7 @@ export function StudentCard({
 }: StudentCardProps) {
   const rate = avg_completion_rate ? Number(avg_completion_rate) : null;
   const qc = useQueryClient();
+  const t = useT();
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const deleteMutation = useMutation({
@@ -39,42 +41,42 @@ export function StudentCard({
 
   return (
     <Card className="hover:shadow-md transition-shadow h-full relative group">
-      {/* Delete confirmation overlay */}
       {confirmDelete && (
         <div className="absolute inset-0 bg-white/95 rounded-xl z-10 flex flex-col items-center justify-center gap-3 p-4">
           <p className="text-sm text-gray-700 text-center">
-            Delete <strong>{full_name}</strong>?
+            {t("teacher.deleteStudent", { name: full_name })}
           </p>
           <p className="text-xs text-gray-400 text-center">
-            This will remove all their data permanently.
+            {t("teacher.deleteWarning")}
           </p>
           <div className="flex gap-2">
             <button
               onClick={() => setConfirmDelete(false)}
               className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
             >
-              Cancel
+              {t("common.cancel")}
             </button>
             <button
               onClick={() => deleteMutation.mutate()}
               disabled={deleteMutation.isPending}
               className="px-3 py-1.5 text-xs rounded-lg bg-red-500 text-white hover:bg-red-600 disabled:opacity-50"
             >
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+              {deleteMutation.isPending
+                ? t("common.deleting")
+                : t("common.delete")}
             </button>
           </div>
         </div>
       )}
 
-      {/* Delete button (top-right, visible on hover) */}
       <button
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
           setConfirmDelete(true);
         }}
-        className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-50 z-[5]"
-        title="Delete student"
+        className="absolute top-3 end-3 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-50 z-[5]"
+        title={t("common.delete")}
       >
         <Trash2 size={14} className="text-gray-300 hover:text-red-500" />
       </button>
@@ -105,9 +107,9 @@ export function StudentCard({
 
         {weak_topics.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-3">
-            {weak_topics.slice(0, 3).map((t) => (
-              <Badge key={t} variant="danger" className="text-xs">
-                {t}
+            {weak_topics.slice(0, 3).map((topic) => (
+              <Badge key={topic} variant="danger" className="text-xs">
+                {topic}
               </Badge>
             ))}
           </div>
@@ -118,7 +120,10 @@ export function StudentCard({
         )}
 
         <div className="flex justify-end mt-3">
-          <ArrowRight size={14} className="text-gray-300" />
+          <ArrowRight
+            size={14}
+            className="text-gray-300 rtl:rotate-180"
+          />
         </div>
       </Link>
     </Card>
