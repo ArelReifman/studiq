@@ -36,7 +36,7 @@ export function createApp(basePath = "") {
   app.route("/ai-feedback", aiFeedbackRoutes);
   app.route("/reports", reportRoutes);
 
-  app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));
+  app.get("/health", (c) => c.json({ status: "ok", version: "1.0.1", timestamp: new Date().toISOString() }));
   app.notFound((c) => c.json({ error: "Not found" }, 404));
   app.onError((err, c) => {
     console.error(err);
