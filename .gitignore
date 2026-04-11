@@ -38,3 +38,4 @@ pnpm-debug.log*
 
 # Claude launch config contains secrets
 .claude/launch.json
+.vercel
