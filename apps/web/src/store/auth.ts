@@ -16,16 +16,15 @@ interface AuthStore {
   clearAuth: () => void;
 }
 
-/** Sync auth state to cookie so Next.js middleware can read it server-side */
-function syncCookie(user: AuthUser | null, token: string | null) {
+/** Sync user info to cookie so Next.js middleware can read it server-side */
+function syncUserCookie(user: AuthUser | null) {
   if (typeof document === "undefined") return;
-  if (user && token) {
-    const value = encodeURIComponent(
-      JSON.stringify({ state: { user, token }, version: 0 })
-    );
-    document.cookie = `studiq-auth-storage=${value}; path=/; max-age=604800; SameSite=Lax`;
+  if (user) {
+    const value = encodeURIComponent(JSON.stringify(user));
+    document.cookie = `studiq-user=${value}; path=/; max-age=604800; SameSite=Lax`;
   } else {
-    document.cookie = "studiq-auth-storage=; path=/; max-age=0";
+    document.cookie = "studiq-user=; path=/; max-age=0";
+    document.cookie = "studiq-token=; path=/; max-age=0";
   }
 }
 
@@ -36,12 +35,12 @@ export const useAuthStore = create<AuthStore>()(
       token: null,
       setAuth: (user, token) => {
         api.setToken(token);
-        syncCookie(user, token);
+        syncUserCookie(user);
         set({ user, token });
       },
       clearAuth: () => {
         api.setToken(null);
-        syncCookie(null, null);
+        syncUserCookie(null);
         set({ user: null, token: null });
       },
     }),
@@ -49,7 +48,7 @@ export const useAuthStore = create<AuthStore>()(
       name: "studiq-auth-storage",
       onRehydrateStorage: () => (state) => {
         if (state?.token) api.setToken(state.token);
-        if (state?.user && state?.token) syncCookie(state.user, state.token);
+        if (state?.user) syncUserCookie(state.user);
       },
     }
   )

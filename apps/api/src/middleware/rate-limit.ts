@@ -32,6 +32,7 @@ export function rateLimit(maxRequests: number, windowMs: number) {
     } else {
       entry.count++;
       if (entry.count > maxRequests) {
+        console.warn(`[RATE-LIMIT] Blocked ${key} on ${c.req.method} ${c.req.path} (${entry.count}/${maxRequests})`);
         c.header("Retry-After", String(Math.ceil((entry.resetAt - now) / 1000)));
         return c.json({ error: "Too many requests" }, 429);
       }

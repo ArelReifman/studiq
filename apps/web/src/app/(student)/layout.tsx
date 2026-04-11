@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
+import { api } from "@/lib/api";
 import { useT } from "@/i18n";
 import { LanguageToggle } from "@/components/ui/language-toggle";
 import { cn } from "@/lib/utils";
@@ -25,6 +26,7 @@ export default function StudentLayout({
   ];
 
   function logout() {
+    api.post("/auth/logout", {}).catch(() => {});
     clearAuth();
     router.push("/login");
   }

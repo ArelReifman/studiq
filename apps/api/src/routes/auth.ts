@@ -3,6 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq, and, isNull } from "drizzle-orm";
 import { createClient } from "@supabase/supabase-js";
+import { setCookie, deleteCookie } from "hono/cookie";
 import { db } from "../db/client.js";
 import {
   profiles,
@@ -12,6 +13,35 @@ import {
   studentAiProfiles,
 } from "../db/schema.js";
 import { authMiddleware } from "../middleware/auth.js";
+import type { Context } from "hono";
+
+/** Set HttpOnly auth cookie + non-HttpOnly user-info cookie */
+function setAuthCookies(
+  c: Context,
+  accessToken: string,
+  user: { id: string; email: string; role: string; full_name: string }
+) {
+  const isProduction = process.env["NODE_ENV"] === "production";
+  const maxAge = 60 * 60 * 24 * 7; // 7 days
+
+  // HttpOnly cookie — token can't be accessed by JavaScript
+  setCookie(c, "studiq-token", accessToken, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: "Lax",
+    path: "/",
+    maxAge,
+  });
+
+  // Non-HttpOnly cookie — user info for Next.js middleware routing
+  setCookie(c, "studiq-user", JSON.stringify(user), {
+    httpOnly: false,
+    secure: isProduction,
+    sameSite: "Lax",
+    path: "/",
+    maxAge,
+  });
+}
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -71,6 +101,7 @@ export const authRoutes = new Hono()
       });
 
     if (authError || !authData.user) {
+      console.warn(`[AUTH] Failed registration for ${body.email} — ${authError?.message ?? "unknown"}`);
       return c.json({ error: authError?.message ?? "Registration failed" }, 400);
     }
 
@@ -163,18 +194,23 @@ export const authRoutes = new Hono()
     });
 
     if (error || !data.session) {
+      console.warn(`[AUTH] Failed login attempt for ${email} — ${error?.message ?? "no session"}`);
       return c.json({ error: "Invalid credentials" }, 401);
     }
 
+    const user = {
+      id: data.user.id,
+      email: data.user.email!,
+      role: data.user.user_metadata?.["role"] as string,
+      full_name: data.user.user_metadata?.["full_name"] as string,
+    };
+
+    // Set HttpOnly cookie with access token
+    setAuthCookies(c, data.session.access_token, user);
+
     return c.json({
       access_token: data.session.access_token,
-      refresh_token: data.session.refresh_token,
-      user: {
-        id: data.user.id,
-        email: data.user.email,
-        role: data.user.user_metadata?.["role"],
-        full_name: data.user.user_metadata?.["full_name"],
-      },
+      user,
     });
   })
 
@@ -187,4 +223,11 @@ export const authRoutes = new Hono()
       .limit(1);
 
     return c.json({ userId, role: c.get("userRole"), profile });
+  })
+
+  .post("/logout", (c) => {
+    const isProduction = process.env["NODE_ENV"] === "production";
+    deleteCookie(c, "studiq-token", { path: "/", secure: isProduction, sameSite: "Lax" });
+    deleteCookie(c, "studiq-user", { path: "/", secure: isProduction, sameSite: "Lax" });
+    return c.json({ message: "Logged out" });
   });

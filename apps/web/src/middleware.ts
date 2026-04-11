@@ -4,15 +4,13 @@ import type { NextRequest } from "next/server";
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Read auth from localStorage is not possible in middleware —
-  // we use a cookie set by the client after login
-  const authCookie = request.cookies.get("studiq-auth-storage");
+  // Read user info from the non-HttpOnly cookie
+  const userCookie = request.cookies.get("studiq-user");
   let user: { role?: string } | null = null;
 
-  if (authCookie?.value) {
+  if (userCookie?.value) {
     try {
-      const parsed = JSON.parse(decodeURIComponent(authCookie.value));
-      user = parsed?.state?.user ?? null;
+      user = JSON.parse(decodeURIComponent(userCookie.value));
     } catch {
       // ignore parse errors
     }
