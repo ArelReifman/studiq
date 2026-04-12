@@ -214,6 +214,32 @@ export const authRoutes = new Hono()
     });
   })
 
+  .post(
+    "/forgot-password",
+    zValidator("json", z.object({ email: z.string().email() })),
+    async (c) => {
+      const { email } = c.req.valid("json");
+      const supabase = getAdminClient();
+
+      const redirectTo =
+        (process.env["NEXT_PUBLIC_APP_URL"] || "http://localhost:3002") +
+        "/auth/callback";
+
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo,
+      });
+
+      if (error) {
+        console.warn(
+          `[AUTH] Password reset request failed for ${email} — ${error.message}`
+        );
+      }
+
+      // Always return success to prevent email enumeration
+      return c.json({ message: "If the email exists, a reset link has been sent." });
+    }
+  )
+
   .get("/me", authMiddleware, async (c) => {
     const userId = c.get("userId");
     const [profile] = await db

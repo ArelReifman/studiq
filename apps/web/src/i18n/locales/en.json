@@ -209,6 +209,17 @@
   "day.friday": "Friday",
   "day.saturday": "Saturday",
 
+  "login.forgotPassword": "Forgot your password?",
+
+  "forgot.title": "Reset Password",
+  "forgot.subtitle": "Enter your email and we'll send you a link to reset your password.",
+  "forgot.emailPlaceholder": "Enter your email",
+  "forgot.sendLink": "Send Reset Link",
+  "forgot.sending": "Sending...",
+  "forgot.sent": "A password reset link has been sent to your email.",
+  "forgot.checkSpam": "Don't see it? Check your spam folder.",
+  "forgot.backToLogin": "Back to login",
+
   "upload.attachFile": "Attach file (PDF / image)",
   "upload.uploading": "Uploading...",
   "upload.remove": "Remove file",

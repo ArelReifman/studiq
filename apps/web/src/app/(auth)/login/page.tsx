@@ -172,6 +172,11 @@ export default function LoginPage() {
       </form>
 
       <div className="mt-6 space-y-2 text-center">
+        <p className="text-sm">
+          <Link href="/forgot-password" className="text-brand-600 hover:underline">
+            {t("login.forgotPassword")}
+          </Link>
+        </p>
         {mode === "teacher" && (
           <p className="text-sm text-gray-500">
             {t("login.newTeacher")}{" "}

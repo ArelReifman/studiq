@@ -24,7 +24,8 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/login") ||
     pathname.startsWith("/register") ||
     pathname.startsWith("/auth/callback") ||
-    pathname.startsWith("/auth/set-password");
+    pathname.startsWith("/auth/set-password") ||
+    pathname.startsWith("/forgot-password");
 
   // Redirect unauthenticated users to login
   if (!isAuthenticated && !isPublicRoute) {

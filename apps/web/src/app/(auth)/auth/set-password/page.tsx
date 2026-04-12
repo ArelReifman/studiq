@@ -41,10 +41,14 @@ export default function SetPasswordPage() {
         return;
       }
 
+      // After password reset, redirect to the appropriate dashboard
       if (user?.role === "student") {
-        router.replace("/student/onboarding");
-      } else {
+        router.replace("/student/dashboard");
+      } else if (user?.role === "teacher") {
         router.replace("/teacher/dashboard");
+      } else {
+        // Recovery flow without user context — send to login
+        router.replace("/login");
       }
     } catch (e: any) {
       setError(e.message ?? t("error.passwordUpdate"));

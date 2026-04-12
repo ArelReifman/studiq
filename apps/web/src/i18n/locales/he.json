@@ -209,6 +209,17 @@
   "day.friday": "שישי",
   "day.saturday": "שבת",
 
+  "login.forgotPassword": "שכחת סיסמה?",
+
+  "forgot.title": "איפוס סיסמה",
+  "forgot.subtitle": "הזן/י את האימייל שלך ונשלח לך קישור לאיפוס הסיסמה.",
+  "forgot.emailPlaceholder": "הזן/י את האימייל שלך",
+  "forgot.sendLink": "שליחת קישור איפוס",
+  "forgot.sending": "שולח...",
+  "forgot.sent": "קישור לאיפוס סיסמה נשלח לאימייל שלך.",
+  "forgot.checkSpam": "לא מוצא/ת? בדוק/י בתיקיית הספאם.",
+  "forgot.backToLogin": "חזרה להתחברות",
+
   "upload.attachFile": "צירוף קובץ (PDF / תמונה)",
   "upload.uploading": "מעלה...",
   "upload.remove": "הסרת קובץ",
