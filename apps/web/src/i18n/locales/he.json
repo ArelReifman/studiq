@@ -207,5 +207,11 @@
   "day.wednesday": "רביעי",
   "day.thursday": "חמישי",
   "day.friday": "שישי",
-  "day.saturday": "שבת"
+  "day.saturday": "שבת",
+
+  "upload.attachFile": "צירוף קובץ (PDF / תמונה)",
+  "upload.uploading": "מעלה...",
+  "upload.remove": "הסרת קובץ",
+  "upload.fileTooLarge": "הקובץ גדול מדי (עד 10 MB)",
+  "upload.invalidType": "רק קבצי PDF, JPEG, PNG, WebP מותרים"
 }

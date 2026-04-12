@@ -23,7 +23,7 @@ class ApiClient {
 
     let res: Response;
     try {
-      res = await fetch(`${API_URL}${path}`, { ...options, headers });
+      res = await fetch(`${API_URL}${path}`, { ...options, headers, credentials: "include" });
     } catch {
       throw new Error(
         `Cannot reach the API (${API_URL}). Start the backend (e.g. pnpm dev from the repo root) and set DATABASE_URL so the API can start.`
@@ -58,6 +58,33 @@ class ApiClient {
 
   delete<T>(path: string) {
     return this.request<T>(path, { method: "DELETE" });
+  }
+
+  async upload<T>(path: string, file: File): Promise<T> {
+    const headers: Record<string, string> = {
+      "X-Requested-With": "XMLHttpRequest",
+    };
+
+    if (this.token) {
+      headers["Authorization"] = `Bearer ${this.token}`;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await fetch(`${API_URL}${path}`, {
+      method: "POST",
+      headers,
+      body: formData,
+      credentials: "include",
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Unknown error" }));
+      throw new Error((err as any).error ?? `HTTP ${res.status}`);
+    }
+
+    return res.json() as Promise<T>;
   }
 }
 

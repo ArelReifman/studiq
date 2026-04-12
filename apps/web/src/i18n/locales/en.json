@@ -207,5 +207,11 @@
   "day.wednesday": "Wednesday",
   "day.thursday": "Thursday",
   "day.friday": "Friday",
-  "day.saturday": "Saturday"
+  "day.saturday": "Saturday",
+
+  "upload.attachFile": "Attach file (PDF / image)",
+  "upload.uploading": "Uploading...",
+  "upload.remove": "Remove file",
+  "upload.fileTooLarge": "File too large (max 10 MB)",
+  "upload.invalidType": "Only PDF, JPEG, PNG, WebP files allowed"
 }

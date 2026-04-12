@@ -14,6 +14,7 @@ import { aiFeedbackRoutes } from "./routes/ai-feedback.js";
 import { reportRoutes } from "./routes/reports.js";
 import { availabilityRoutes } from "./routes/availability.js";
 import { bookingRoutes } from "./routes/bookings.js";
+import { uploadRoutes } from "./routes/upload.js";
 import { rateLimit } from "./middleware/rate-limit.js";
 
 export function createApp(basePath = "") {
@@ -58,6 +59,7 @@ export function createApp(basePath = "") {
   app.route("/reports", reportRoutes);
   app.route("/availability", availabilityRoutes);
   app.route("/bookings", bookingRoutes);
+  app.route("/upload", uploadRoutes);
 
   app.get("/health", (c) => c.json({ status: "ok", version: "1.0.1", timestamp: new Date().toISOString() }));
   app.notFound((c) => c.json({ error: "Not found" }, 404));

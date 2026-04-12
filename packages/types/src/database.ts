@@ -68,6 +68,8 @@ export interface HomeworkItem {
   description: string | null;
   order_index: number;
   status: TaskStatus;
+  file_url: string | null;
+  file_name: string | null;
   marked_at: string | null;
   created_at: string;
 }

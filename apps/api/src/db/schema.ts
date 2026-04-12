@@ -209,6 +209,8 @@ export const homeworkItems = pgTable(
     description: text("description"),
     order_index: integer("order_index").notNull().default(0),
     status: taskStatusEnum("status").notNull().default("pending"),
+    file_url: text("file_url"),
+    file_name: text("file_name"),
     marked_at: timestamp("marked_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()
