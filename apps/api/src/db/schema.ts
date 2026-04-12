@@ -62,6 +62,21 @@ export const vectorTypeEnum = pgEnum("vector_type", [
   "teacher_feedback",
   "topic_interest",
 ]);
+export const bookingStatusEnum = pgEnum("booking_status", [
+  "pending",
+  "approved",
+  "rejected",
+  "cancelled",
+]);
+export const dayOfWeekEnum = pgEnum("day_of_week", [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+]);
 
 // ─── Profiles (extends Supabase auth.users) ───────────────────────────────────
 
@@ -365,6 +380,61 @@ export const studentReports = pgTable(
   ]
 );
 
+// ─── Teacher Availability Slots ──────────────────────────────────────────────
+
+export const teacherAvailability = pgTable(
+  "teacher_availability",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    teacher_id: uuid("teacher_id")
+      .notNull()
+      .references(() => teachers.id, { onDelete: "cascade" }),
+    day_of_week: dayOfWeekEnum("day_of_week").notNull(),
+    start_time: text("start_time").notNull(), // "09:00" (HH:mm)
+    end_time: text("end_time").notNull(), // "10:00" (HH:mm)
+    is_active: boolean("is_active").notNull().default(true),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("idx_teacher_availability_teacher_id").on(t.teacher_id)]
+);
+
+// ─── Lesson Bookings ─────────────────────────────────────────────────────────
+
+export const lessonBookings = pgTable(
+  "lesson_bookings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    student_id: uuid("student_id")
+      .notNull()
+      .references(() => students.id, { onDelete: "cascade" }),
+    teacher_id: uuid("teacher_id")
+      .notNull()
+      .references(() => teachers.id),
+    availability_id: uuid("availability_id")
+      .references(() => teacherAvailability.id),
+    date: date("date").notNull(), // "2026-04-15"
+    start_time: text("start_time").notNull(), // "09:00"
+    end_time: text("end_time").notNull(), // "10:00"
+    status: bookingStatusEnum("status").notNull().default("pending"),
+    student_note: text("student_note"),
+    teacher_note: text("teacher_note"),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("idx_lesson_bookings_student_id").on(t.student_id),
+    index("idx_lesson_bookings_teacher_id").on(t.teacher_id),
+    index("idx_lesson_bookings_status").on(t.status),
+    index("idx_lesson_bookings_date").on(t.date),
+  ]
+);
+
 // ─── Relations ────────────────────────────────────────────────────────────────
 
 export const profilesRelations = relations(profiles, ({ one }) => ({
@@ -376,6 +446,8 @@ export const teachersRelations = relations(teachers, ({ one, many }) => ({
   profile: one(profiles, { fields: [teachers.id], references: [profiles.id] }),
   students: many(students),
   lessons: many(lessonSessions),
+  availability: many(teacherAvailability),
+  bookings: many(lessonBookings),
 }));
 
 export const studentsRelations = relations(students, ({ one, many }) => ({
@@ -395,6 +467,7 @@ export const studentsRelations = relations(students, ({ one, many }) => ({
   }),
   ai_vectors: many(aiContextVectors),
   reports: many(studentReports),
+  bookings: many(lessonBookings),
 }));
 
 export const lessonSessionsRelations = relations(
@@ -410,5 +483,33 @@ export const lessonSessionsRelations = relations(
     }),
     homework_items: many(homeworkItems),
     todo_items: many(todoItems),
+  })
+);
+
+export const teacherAvailabilityRelations = relations(
+  teacherAvailability,
+  ({ one }) => ({
+    teacher: one(teachers, {
+      fields: [teacherAvailability.teacher_id],
+      references: [teachers.id],
+    }),
+  })
+);
+
+export const lessonBookingsRelations = relations(
+  lessonBookings,
+  ({ one }) => ({
+    student: one(students, {
+      fields: [lessonBookings.student_id],
+      references: [students.id],
+    }),
+    teacher: one(teachers, {
+      fields: [lessonBookings.teacher_id],
+      references: [teachers.id],
+    }),
+    availability: one(teacherAvailability, {
+      fields: [lessonBookings.availability_id],
+      references: [teacherAvailability.id],
+    }),
   })
 );
