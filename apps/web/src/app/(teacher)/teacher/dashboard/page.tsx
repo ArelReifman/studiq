@@ -27,7 +27,6 @@ export default function TeacherDashboard() {
   const [showInvite, setShowInvite] = useState(false);
   const [inviteForm, setInviteForm] = useState({
     full_name: "",
-    grade_level: "",
   });
   const [inviteResult, setInviteResult] = useState<{
     invite_url: string;
@@ -132,7 +131,7 @@ export default function TeacherDashboard() {
                   onClick={() => {
                     setShowInvite(false);
                     setInviteResult(null);
-                    setInviteForm({ full_name: "", grade_level: "" });
+                    setInviteForm({ full_name: "" });
                   }}
                 >
                   {t("common.done")}
@@ -151,22 +150,6 @@ export default function TeacherDashboard() {
                       setInviteForm((p) => ({
                         ...p,
                         full_name: e.target.value,
-                      }))
-                    }
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {t("teacher.gradeLevel")} {t("common.optional")}
-                  </label>
-                  <input
-                    type="text"
-                    value={inviteForm.grade_level}
-                    onChange={(e) =>
-                      setInviteForm((p) => ({
-                        ...p,
-                        grade_level: e.target.value,
                       }))
                     }
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"

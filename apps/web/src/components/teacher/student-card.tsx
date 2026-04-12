@@ -89,9 +89,6 @@ export function StudentCard({
             </div>
             <div>
               <p className="font-medium text-sm">{full_name}</p>
-              {grade_level && (
-                <p className="text-xs text-gray-400">{grade_level}</p>
-              )}
             </div>
           </div>
           {rate !== null && (

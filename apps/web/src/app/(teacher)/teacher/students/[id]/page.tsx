@@ -79,9 +79,6 @@ export default function StudentDetailPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">{student?.full_name}</h1>
-          {student?.grade_level && (
-            <p className="text-gray-500 text-sm">{student.grade_level}</p>
-          )}
         </div>
         <Button
           onClick={() => generateLesson.mutate()}
