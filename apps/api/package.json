@@ -12,8 +12,10 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:studio": "drizzle-kit studio",
+    "db:check": "tsx src/db/check.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

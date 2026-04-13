@@ -23,12 +23,17 @@ export function createApp(basePath = "") {
   // --- Security headers ---
   app.use("*", secureHeaders());
 
-  // --- CORS — explicit origin, no wildcard fallback ---
-  const allowedOrigin = process.env["NEXT_PUBLIC_APP_URL"] || "http://localhost:3000";
+  // --- CORS — allow app origin + localhost dev variants ---
+  const allowedOrigins = [
+    process.env["NEXT_PUBLIC_APP_URL"],
+    "http://localhost:3000",
+    "http://localhost:3002",
+  ].filter(Boolean) as string[];
+
   app.use(
     "*",
     cors({
-      origin: allowedOrigin,
+      origin: (origin) => allowedOrigins.includes(origin) ? origin : allowedOrigins[0],
       allowHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
       allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
       credentials: true,
@@ -37,9 +42,12 @@ export function createApp(basePath = "") {
   app.use("*", prettyJSON());
 
   // --- CSRF protection — require X-Requested-With on state-changing methods ---
+  // Skip for same-origin Vercel serverless (no Origin header = server-to-server)
   app.use("*", async (c, next) => {
     if (["POST", "PATCH", "DELETE", "PUT"].includes(c.req.method)) {
-      if (c.req.header("x-requested-with") !== "XMLHttpRequest") {
+      const origin = c.req.header("origin");
+      const isSameOrigin = !origin; // Vercel API route calls have no Origin
+      if (!isSameOrigin && c.req.header("x-requested-with") !== "XMLHttpRequest") {
         return c.json({ error: "Forbidden" }, 403);
       }
     }
