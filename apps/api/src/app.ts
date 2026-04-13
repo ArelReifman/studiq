@@ -72,8 +72,8 @@ export function createApp(basePath = "") {
   app.get("/health", (c) => c.json({ status: "ok", version: "1.0.1", timestamp: new Date().toISOString() }));
   app.notFound((c) => c.json({ error: "Not found" }, 404));
   app.onError((err, c) => {
-    console.error(err);
-    return c.json({ error: "Internal server error" }, 500);
+    console.error(`[ERROR] ${c.req.method} ${c.req.path}:`, err.message, err.stack);
+    return c.json({ error: "Internal server error", message: err.message }, 500);
   });
 
   return app;
