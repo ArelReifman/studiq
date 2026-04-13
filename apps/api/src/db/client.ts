@@ -11,10 +11,12 @@ function getDb() {
       throw new Error("DATABASE_URL environment variable is required");
     }
 
+    const isPooler = connectionString.includes("pooler.supabase.com");
     const queryClient = postgres(connectionString, {
       max: 10,
       idle_timeout: 20,
       connect_timeout: 10,
+      prepare: !isPooler, // Disable prepared statements for Supabase pooler (transaction mode)
     });
 
     _db = drizzle(queryClient, { schema });
