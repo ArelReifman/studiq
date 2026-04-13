@@ -1,0 +1,130 @@
+"use client";
+
+import { useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
+import { useAuthStore } from "@/store/auth";
+import type { RealtimeChannel } from "@supabase/supabase-js";
+
+/**
+ * Subscribe to Supabase Realtime changes on key tables.
+ * When any INSERT / UPDATE / DELETE happens, we invalidate the matching
+ * React-Query cache so the UI refreshes automatically — no manual refetch.
+ */
+export function useRealtimeSync() {
+  const qc = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const channelRef = useRef<RealtimeChannel | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+
+    // One channel with multiple table listeners
+    const channel = supabase
+      .channel("realtime-sync")
+      // ─── Lessons ──────────────────────────────────────────────
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "lesson_sessions" },
+        () => {
+          qc.invalidateQueries({ queryKey: ["lessons"] });
+        }
+      )
+      // ─── Homework ─────────────────────────────────────────────
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "homework_items" },
+        (payload) => {
+          qc.invalidateQueries({ queryKey: ["homework"] });
+          qc.invalidateQueries({ queryKey: ["lessons"] });
+        }
+      )
+      // ─── Todos ────────────────────────────────────────────────
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "todo_items" },
+        () => {
+          qc.invalidateQueries({ queryKey: ["todos"] });
+          qc.invalidateQueries({ queryKey: ["lessons"] });
+        }
+      )
+      // ─── Students ─────────────────────────────────────────────
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "students" },
+        () => {
+          qc.invalidateQueries({ queryKey: ["students"] });
+        }
+      )
+      // ─── Profiles ─────────────────────────────────────────────
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "profiles" },
+        () => {
+          qc.invalidateQueries({ queryKey: ["students"] });
+        }
+      )
+      // ─── Student AI Profiles ──────────────────────────────────
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "student_ai_profiles" },
+        () => {
+          qc.invalidateQueries({ queryKey: ["students"] });
+        }
+      )
+      // ─── Difficulty Reports ───────────────────────────────────
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "difficulty_reports" },
+        () => {
+          qc.invalidateQueries({ queryKey: ["difficulties"] });
+        }
+      )
+      // ─── Teacher Availability ─────────────────────────────────
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "teacher_availability" },
+        () => {
+          qc.invalidateQueries({ queryKey: ["availability"] });
+        }
+      )
+      // ─── Lesson Bookings ──────────────────────────────────────
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "lesson_bookings" },
+        () => {
+          qc.invalidateQueries({ queryKey: ["bookings"] });
+        }
+      )
+      // ─── Teacher AI Feedback ──────────────────────────────────
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "teacher_ai_feedback" },
+        () => {
+          qc.invalidateQueries({ queryKey: ["ai-feedback"] });
+        }
+      )
+      // ─── Student Reports ──────────────────────────────────────
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "student_reports" },
+        () => {
+          qc.invalidateQueries({ queryKey: ["reports"] });
+        }
+      )
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          console.log("✅ Realtime sync active");
+        } else if (status === "CHANNEL_ERROR") {
+          console.warn("⚠️ Realtime channel error — will auto-reconnect");
+        }
+      });
+
+    channelRef.current = channel;
+
+    return () => {
+      channel.unsubscribe();
+      channelRef.current = null;
+    };
+  }, [user?.id, qc]);
+}

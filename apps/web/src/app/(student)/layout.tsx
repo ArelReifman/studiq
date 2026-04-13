@@ -8,6 +8,7 @@ import { useT } from "@/i18n";
 import { LanguageToggle } from "@/components/ui/language-toggle";
 import { cn } from "@/lib/utils";
 import { BookOpen, CheckSquare, BarChart2, CalendarDays, LogOut } from "lucide-react";
+import { useRealtimeSync } from "@/hooks/use-realtime-sync";
 
 export default function StudentLayout({
   children,
@@ -18,6 +19,7 @@ export default function StudentLayout({
   const router = useRouter();
   const { user, clearAuth } = useAuthStore();
   const t = useT();
+  useRealtimeSync();
 
   const nav = [
     { href: "/student/dashboard", label: t("student.myLesson"), icon: BookOpen },
