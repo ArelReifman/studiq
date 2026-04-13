@@ -185,6 +185,8 @@ export const lessonSessions = pgTable(
       .defaultNow(),
     completed_at: timestamp("completed_at", { withTimezone: true }),
     ai_generation_context: jsonb("ai_generation_context"),
+    material_url: text("material_url"),
+    material_name: text("material_name"),
   },
   (t) => [
     index("idx_lesson_sessions_student_id").on(t.student_id),

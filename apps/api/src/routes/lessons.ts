@@ -84,6 +84,106 @@ export const lessonRoutes = new Hono()
     return c.json({ ...lesson, homework_items: hw, todo_items: todos });
   })
 
+  // POST /lessons/create — teacher manually creates a lesson with homework + todo items
+  .post(
+    "/create",
+    requireRole("teacher"),
+    zValidator(
+      "json",
+      z.object({
+        student_id: z.string().uuid(),
+        title: z.string().min(1).max(200),
+        description: z.string().max(2000).optional(),
+        homework: z
+          .array(
+            z.object({
+              title: z.string().min(1).max(200),
+              description: z.string().max(1000).optional(),
+            })
+          )
+          .default([]),
+        todos: z
+          .array(z.object({ title: z.string().min(1).max(200) }))
+          .default([]),
+      })
+    ),
+    async (c) => {
+      const teacherId = c.get("userId");
+      const { student_id, title, description, homework, todos } =
+        c.req.valid("json");
+
+      // Verify student belongs to teacher
+      const [student] = await db
+        .select({ id: students.id })
+        .from(students)
+        .where(
+          and(eq(students.id, student_id), eq(students.teacher_id, teacherId))
+        )
+        .limit(1);
+
+      if (!student) return c.json({ error: "Student not found" }, 404);
+
+      // Create lesson
+      const [lesson] = await db
+        .insert(lessonSessions)
+        .values({
+          student_id,
+          teacher_id: teacherId,
+          title,
+          description: description ?? null,
+          ai_generated: false,
+          status: "active",
+        })
+        .returning();
+
+      if (!lesson) return c.json({ error: "Failed to create lesson" }, 500);
+
+      // Insert homework items
+      if (homework.length > 0) {
+        await db.insert(homeworkItems).values(
+          homework.map((hw, i) => ({
+            lesson_id: lesson.id,
+            student_id,
+            title: hw.title,
+            description: hw.description ?? null,
+            order_index: i,
+          }))
+        );
+      }
+
+      // Insert todo items
+      if (todos.length > 0) {
+        await db.insert(todoItems).values(
+          todos.map((td, i) => ({
+            lesson_id: lesson.id,
+            student_id,
+            title: td.title,
+            order_index: i,
+          }))
+        );
+      }
+
+      // Fetch full lesson with items
+      const [hw, tds] = await Promise.all([
+        db
+          .select()
+          .from(homeworkItems)
+          .where(eq(homeworkItems.lesson_id, lesson.id))
+          .orderBy(homeworkItems.order_index),
+        db
+          .select()
+          .from(todoItems)
+          .where(eq(todoItems.lesson_id, lesson.id))
+          .orderBy(todoItems.order_index),
+      ]);
+
+      return c.json(
+        { ...lesson, homework_items: hw, todo_items: tds },
+        201
+      );
+    }
+  )
+
   // POST /lessons/generate — teacher triggers AI generation for a student
   .post(
     "/generate",

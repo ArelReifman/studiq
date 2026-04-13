@@ -10,8 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate, formatPercent } from "@/lib/utils";
 import type { LessonSession, DifficultyReport, StudentAiProfile } from "@studiq/types";
-import { ArrowLeft, Sparkles, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Sparkles, AlertTriangle, PlusCircle } from "lucide-react";
 import { useT } from "@/i18n";
+import { CreateLessonModal } from "@/components/teacher/create-lesson-modal";
 
 interface StudentDetail {
   id: string;
@@ -24,6 +25,7 @@ export default function StudentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const t = useT();
   const qc = useQueryClient();
+  const [showCreateLesson, setShowCreateLesson] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackType, setFeedbackType] = useState<
     "lesson_quality" | "difficulty_level" | "topic_relevance" | "general"
@@ -80,13 +82,22 @@ export default function StudentDetailPage() {
         <div>
           <h1 className="text-2xl font-bold">{student?.full_name}</h1>
         </div>
-        <Button
-          onClick={() => generateLesson.mutate()}
-          disabled={generateLesson.isPending}
-        >
-          <Sparkles size={15} />
-          {generateLesson.isPending ? t("studentDetail.generating") : t("studentDetail.generateLesson")}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="ghost"
+            onClick={() => setShowCreateLesson(true)}
+          >
+            <PlusCircle size={15} />
+            {t("createLesson.title")}
+          </Button>
+          <Button
+            onClick={() => generateLesson.mutate()}
+            disabled={generateLesson.isPending}
+          >
+            <Sparkles size={15} />
+            {generateLesson.isPending ? t("studentDetail.generating") : t("studentDetail.generateLesson")}
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -249,6 +260,13 @@ export default function StudentDetailPage() {
           </div>
         </div>
       </div>
+
+      {showCreateLesson && (
+        <CreateLessonModal
+          studentId={id}
+          onClose={() => setShowCreateLesson(false)}
+        />
+      )}
     </div>
   );
 }

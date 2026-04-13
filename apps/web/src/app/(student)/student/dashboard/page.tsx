@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { TaskItem } from "@/components/student/task-item";
 import { formatDate } from "@/lib/utils";
 import type { LessonSession, HomeworkItem, TodoItem } from "@studiq/types";
-import { BookOpen, ArrowRight } from "lucide-react";
+import { BookOpen, ArrowRight, FileText } from "lucide-react";
 
 export default function StudentDashboard() {
   const user = useAuthStore((s) => s.user);
@@ -93,6 +93,21 @@ export default function StudentDashboard() {
               {formatDate(activeLesson.generated_at)}
             </span>
           </div>
+
+          {/* Material PDF link */}
+          {activeLesson.material_url && (
+            <div className="mt-3 flex items-center gap-2 bg-brand-50 rounded-lg px-3 py-2 w-fit">
+              <FileText size={14} className="text-brand-500 flex-shrink-0" />
+              <a
+                href={activeLesson.material_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-brand-600 hover:underline truncate max-w-[300px]"
+              >
+                {activeLesson.material_name || t("createLesson.material")}
+              </a>
+            </div>
+          )}
 
           <div className="mt-4">
             <div className="flex justify-between text-xs text-gray-500 mb-1">
