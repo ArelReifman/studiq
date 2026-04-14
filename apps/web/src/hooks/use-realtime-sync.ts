@@ -14,10 +14,15 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 export function useRealtimeSync() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const token = useAuthStore((s) => s.token);
   const channelRef = useRef<RealtimeChannel | null>(null);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !token) return;
+
+    // Pass the user's Supabase JWT to Realtime so it subscribes as
+    // the authenticated user — RLS policies require auth.uid().
+    supabase.realtime.setAuth(token);
 
     // One channel with multiple table listeners
     const channel = supabase
@@ -126,5 +131,5 @@ export function useRealtimeSync() {
       channel.unsubscribe();
       channelRef.current = null;
     };
-  }, [user?.id, qc]);
+  }, [user?.id, token, qc]);
 }
