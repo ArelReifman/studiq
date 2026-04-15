@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate, formatPercent } from "@/lib/utils";
 import type { LessonSession, DifficultyReport, StudentAiProfile } from "@studiq/types";
-import { ArrowLeft, Sparkles, AlertTriangle, PlusCircle } from "lucide-react";
+import { ArrowLeft, Sparkles, AlertTriangle, PlusCircle, Trash2, MessageSquare } from "lucide-react";
 import { useT } from "@/i18n";
 import { CreateLessonModal } from "@/components/teacher/create-lesson-modal";
 
@@ -54,6 +54,23 @@ export default function StudentDetailPage() {
   const generateLesson = useMutation({
     mutationFn: () => api.post("/lessons/generate", { student_id: id }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["lessons"] }),
+  });
+
+  const deleteLesson = useMutation({
+    mutationFn: (lessonId: string) => api.delete(`/lessons/${lessonId}`),
+    onMutate: async (lessonId) => {
+      const queryKey = ["lessons", { student_id: id }];
+      await qc.cancelQueries({ queryKey });
+      const prev = qc.getQueryData<LessonSession[]>(queryKey);
+      qc.setQueryData<LessonSession[]>(queryKey, (old = []) =>
+        old.filter((l) => l.id !== lessonId)
+      );
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      qc.setQueryData(["lessons", { student_id: id }], ctx?.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["lessons"] }),
   });
 
   const submitFeedback = useMutation({
@@ -234,23 +251,46 @@ export default function StudentDetailPage() {
             <div className="space-y-2">
               {lessons.map((l) => (
                 <Card key={l.id} className="p-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium">{l.title}</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{l.title}</p>
                       <p className="text-xs text-gray-400">{formatDate(l.generated_at)}</p>
                     </div>
-                    <Badge
-                      variant={
-                        l.status === "completed"
-                          ? "success"
-                          : l.status === "active"
-                          ? "default"
-                          : "neutral"
-                      }
-                    >
-                      {t(`status.${l.status}`)}
-                    </Badge>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <Badge
+                        variant={
+                          l.status === "completed"
+                            ? "success"
+                            : l.status === "active"
+                            ? "default"
+                            : "neutral"
+                        }
+                      >
+                        {t(`status.${l.status}`)}
+                      </Badge>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm(t("studentDetail.confirmDeleteLesson"))) {
+                            deleteLesson.mutate(l.id);
+                          }
+                        }}
+                        disabled={deleteLesson.isPending}
+                        className="text-gray-300 hover:text-red-500 disabled:opacity-40 transition-colors p-1"
+                        aria-label={t("studentDetail.deleteLesson")}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
+                  {l.student_reflection && (
+                    <div className="mt-2 pt-2 border-t border-gray-50 flex items-start gap-2">
+                      <MessageSquare size={12} className="text-brand-400 flex-shrink-0 mt-0.5" />
+                      <p className="text-xs text-gray-600 whitespace-pre-wrap break-words">
+                        {l.student_reflection}
+                      </p>
+                    </div>
+                  )}
                 </Card>
               ))}
               {lessons.length === 0 && (

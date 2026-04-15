@@ -45,8 +45,9 @@ export function TaskItem({ item, type, lessonId }: TaskItemProps) {
 
   const uploadMutation = useMutation({
     mutationFn: (file: File) =>
-      api.upload<{ file_url: string; file_name: string }>(
-        `/upload/homework/${item.id}`,
+      api.uploadDirect<{ file_url: string; file_name: string }>(
+        `/upload/homework/${item.id}/sign`,
+        `/upload/homework/${item.id}/confirm`,
         file
       ),
     onSuccess: () => {

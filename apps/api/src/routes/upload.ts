@@ -1,17 +1,36 @@
 import { Hono } from "hono";
+import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
 import { eq, and } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { homeworkItems, lessonSessions, students } from "../db/schema.js";
+import { homeworkItems, lessonSessions } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { createAdminSupabase } from "../lib/supabase.js";
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB (client-side limit; Supabase bucket is the actual gate)
 const ALLOWED_TYPES = [
   "application/pdf",
   "image/jpeg",
   "image/png",
   "image/webp",
 ];
+
+const signSchema = z.object({
+  file_name: z.string().min(1).max(255),
+  content_type: z.string().min(1),
+  size: z.number().int().positive().max(MAX_FILE_SIZE),
+});
+
+const confirmSchema = z.object({
+  file_name: z.string().min(1).max(255),
+  path: z.string().min(1).max(500),
+});
+
+function sanitizeExt(fileName: string): string {
+  const raw = fileName.split(".").pop()?.toLowerCase() ?? "bin";
+  // Only allow alphanumeric extension
+  return /^[a-z0-9]{1,8}$/.test(raw) ? raw : "bin";
+}
 
 export const uploadRoutes = new Hono()
   .use(authMiddleware)
@@ -216,6 +235,193 @@ export const uploadRoutes = new Hono()
         .where(eq(lessonSessions.id, lessonId));
 
       return c.json({ message: "File removed" });
+    }
+  )
+
+  // ── Teacher: sign an upload URL for lesson material (bypasses Vercel body limit) ──
+  .post(
+    "/lesson/:id/sign",
+    requireRole("teacher"),
+    zValidator("json", signSchema),
+    async (c) => {
+      const teacherId = c.get("userId");
+      const lessonId = c.req.param("id")!;
+      const { content_type } = c.req.valid("json");
+
+      if (!ALLOWED_TYPES.includes(content_type)) {
+        return c.json({ error: "Invalid file type. Allowed: PDF, JPEG, PNG, WebP" }, 400);
+      }
+
+      const [lesson] = await db
+        .select({ id: lessonSessions.id })
+        .from(lessonSessions)
+        .where(
+          and(
+            eq(lessonSessions.id, lessonId),
+            eq(lessonSessions.teacher_id, teacherId)
+          )
+        )
+        .limit(1);
+
+      if (!lesson) return c.json({ error: "Lesson not found" }, 404);
+
+      const supabase = createAdminSupabase();
+      const ext = sanitizeExt(c.req.valid("json").file_name);
+      const storagePath = `lessons/${teacherId}/${lessonId}.${ext}`;
+
+      const { data, error } = await supabase.storage
+        .from("uploads")
+        .createSignedUploadUrl(storagePath, { upsert: true });
+
+      if (error || !data) {
+        console.error("[upload] signed URL error:", error);
+        return c.json({ error: "Failed to create upload URL" }, 500);
+      }
+
+      return c.json({ signedUrl: data.signedUrl, token: data.token, path: data.path });
+    }
+  )
+
+  // ── Teacher: confirm lesson material upload ──
+  .post(
+    "/lesson/:id/confirm",
+    requireRole("teacher"),
+    zValidator("json", confirmSchema),
+    async (c) => {
+      const teacherId = c.get("userId");
+      const lessonId = c.req.param("id")!;
+      const { file_name, path } = c.req.valid("json");
+
+      const [lesson] = await db
+        .select({ id: lessonSessions.id })
+        .from(lessonSessions)
+        .where(
+          and(
+            eq(lessonSessions.id, lessonId),
+            eq(lessonSessions.teacher_id, teacherId)
+          )
+        )
+        .limit(1);
+
+      if (!lesson) return c.json({ error: "Lesson not found" }, 404);
+
+      // Defend against path tampering: must belong to this teacher+lesson
+      const expectedPrefix = `lessons/${teacherId}/${lessonId}.`;
+      if (!path.startsWith(expectedPrefix)) {
+        return c.json({ error: "Invalid storage path" }, 400);
+      }
+
+      const supabase = createAdminSupabase();
+      const { data: urlData } = supabase.storage.from("uploads").getPublicUrl(path);
+
+      const [updated] = await db
+        .update(lessonSessions)
+        .set({
+          material_url: urlData.publicUrl,
+          material_name: file_name,
+        })
+        .where(eq(lessonSessions.id, lessonId))
+        .returning();
+
+      if (!updated) return c.json({ error: "Failed to update lesson" }, 500);
+
+      return c.json({
+        material_url: updated.material_url,
+        material_name: updated.material_name,
+      });
+    }
+  )
+
+  // ── Student: sign an upload URL for homework attachment ──
+  .post(
+    "/homework/:id/sign",
+    requireRole("student"),
+    zValidator("json", signSchema),
+    async (c) => {
+      const studentId = c.get("userId");
+      const itemId = c.req.param("id")!;
+      const { content_type } = c.req.valid("json");
+
+      if (!ALLOWED_TYPES.includes(content_type)) {
+        return c.json({ error: "Invalid file type. Allowed: PDF, JPEG, PNG, WebP" }, 400);
+      }
+
+      const [item] = await db
+        .select({ id: homeworkItems.id })
+        .from(homeworkItems)
+        .where(
+          and(
+            eq(homeworkItems.id, itemId),
+            eq(homeworkItems.student_id, studentId)
+          )
+        )
+        .limit(1);
+
+      if (!item) return c.json({ error: "Homework item not found" }, 404);
+
+      const supabase = createAdminSupabase();
+      const ext = sanitizeExt(c.req.valid("json").file_name);
+      const storagePath = `homework/${studentId}/${itemId}.${ext}`;
+
+      const { data, error } = await supabase.storage
+        .from("uploads")
+        .createSignedUploadUrl(storagePath, { upsert: true });
+
+      if (error || !data) {
+        console.error("[upload] signed URL error:", error);
+        return c.json({ error: "Failed to create upload URL" }, 500);
+      }
+
+      return c.json({ signedUrl: data.signedUrl, token: data.token, path: data.path });
+    }
+  )
+
+  // ── Student: confirm homework upload ──
+  .post(
+    "/homework/:id/confirm",
+    requireRole("student"),
+    zValidator("json", confirmSchema),
+    async (c) => {
+      const studentId = c.get("userId");
+      const itemId = c.req.param("id")!;
+      const { file_name, path } = c.req.valid("json");
+
+      const [item] = await db
+        .select({ id: homeworkItems.id })
+        .from(homeworkItems)
+        .where(
+          and(
+            eq(homeworkItems.id, itemId),
+            eq(homeworkItems.student_id, studentId)
+          )
+        )
+        .limit(1);
+
+      if (!item) return c.json({ error: "Homework item not found" }, 404);
+
+      const expectedPrefix = `homework/${studentId}/${itemId}.`;
+      if (!path.startsWith(expectedPrefix)) {
+        return c.json({ error: "Invalid storage path" }, 400);
+      }
+
+      const supabase = createAdminSupabase();
+      const { data: urlData } = supabase.storage.from("uploads").getPublicUrl(path);
+
+      const [updated] = await db
+        .update(homeworkItems)
+        .set({
+          file_url: urlData.publicUrl,
+          file_name,
+        })
+        .where(eq(homeworkItems.id, itemId))
+        .returning();
+
+      if (!updated) return c.json({ error: "Failed to update homework item" }, 500);
+
+      return c.json({
+        file_url: updated.file_url,
+        file_name: updated.file_name,
+      });
     }
   )
 

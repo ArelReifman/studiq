@@ -94,6 +94,13 @@
   "student.firstLessonSub": "המורה הדיגיטלי שלך מכין שיעור מותאם אישית. רענן/י בעוד רגע.",
   "student.markDone": "סיימתי",
   "student.markStuck": "נתקעתי",
+  "student.lessonMaterial": "חומר לימוד",
+  "student.reflection": "איך הלך לי?",
+  "student.reflectionHint": "המשוב שלך יוצג למורה — תוכל/י לספר מה היה קל, מה היה קשה ואיפה הרגשת שצריך/ה עוד עזרה.",
+  "student.reflectionPlaceholder": "לדוגמה: 'השאלות על קבוצה חזקה היו ברורות, אבל נתקעתי בחוק דה מורגן. אשמח להסבר נוסף בשיעור הבא.'",
+  "student.saveReflection": "שמירה",
+  "student.saving": "שומר...",
+  "student.reflectionSaved": "נשמר",
 
   "onboarding.welcome": "ברוכים הבאים ל-Studiq!",
   "onboarding.subtitle": "בחר/י את הנושאים שברצונך ללמוד. המורה הדיגיטלי ישתמש בהם ליצירת שיעור מותאם אישית.",
@@ -135,6 +142,8 @@
   "studentDetail.recentDifficulties": "קשיים אחרונים ({count} לא נבדקו)",
   "studentDetail.new": "חדש",
   "studentDetail.noLessons": "אין שיעורים עדיין.",
+  "studentDetail.deleteLesson": "מחק שיעור",
+  "studentDetail.confirmDeleteLesson": "למחוק את השיעור לצמיתות? לא ניתן לשחזר.",
 
   "feedback.title": "היסטוריית משוב AI",
   "feedback.subtitle": "משוב שנתת למורה הדיגיטלי. משוב שהושלב משפיע על השיעור הבא.",

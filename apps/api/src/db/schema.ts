@@ -187,6 +187,7 @@ export const lessonSessions = pgTable(
     ai_generation_context: jsonb("ai_generation_context"),
     material_url: text("material_url"),
     material_name: text("material_name"),
+    student_reflection: text("student_reflection"),
   },
   (t) => [
     index("idx_lesson_sessions_student_id").on(t.student_id),

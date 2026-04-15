@@ -56,6 +56,7 @@ export interface LessonSession {
   ai_generation_context: Record<string, unknown> | null;
   material_url: string | null;
   material_name: string | null;
+  student_reflection: string | null;
 }
 
 // ─── Homework & Todos ─────────────────────────────────────────────────────────

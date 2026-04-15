@@ -94,6 +94,13 @@
   "student.firstLessonSub": "Your AI tutor is generating a personalized lesson. Refresh in a moment.",
   "student.markDone": "Done",
   "student.markStuck": "Stuck",
+  "student.lessonMaterial": "Lesson material",
+  "student.reflection": "How did it go?",
+  "student.reflectionHint": "Your reflection is shared with your teacher — tell them what was easy, what was hard, and where you need more help.",
+  "student.reflectionPlaceholder": "E.g. 'The questions on set intersection were clear, but I got stuck on De Morgan's law. I'd love an explanation in the next lesson.'",
+  "student.saveReflection": "Save",
+  "student.saving": "Saving...",
+  "student.reflectionSaved": "Saved",
 
   "onboarding.welcome": "Welcome to Studiq!",
   "onboarding.subtitle": "Choose the topics you want to study. Your AI tutor will use these to create your first personalized lesson.",
@@ -135,6 +142,8 @@
   "studentDetail.recentDifficulties": "Recent Difficulties ({count} unreviewed)",
   "studentDetail.new": "New",
   "studentDetail.noLessons": "No lessons yet.",
+  "studentDetail.deleteLesson": "Delete lesson",
+  "studentDetail.confirmDeleteLesson": "Delete this lesson permanently? This cannot be undone.",
 
   "feedback.title": "AI Feedback History",
   "feedback.subtitle": "Feedback you have given to the AI tutor. Incorporated feedback shapes the next generated lesson.",

@@ -39,9 +39,23 @@ export function CreateLessonModal({ studentId, onClose }: CreateLessonModalProps
         todos: validTodos,
       });
 
-      // Upload material PDF if provided
+      // Upload material PDF if provided — direct to Supabase, bypassing Vercel's body limit.
+      // If upload fails we roll the lesson back so retries don't create duplicates.
       if (file && lesson.id) {
-        await api.upload(`/upload/lesson/${lesson.id}`, file);
+        try {
+          await api.uploadDirect(
+            `/upload/lesson/${lesson.id}/sign`,
+            `/upload/lesson/${lesson.id}/confirm`,
+            file
+          );
+        } catch (uploadErr) {
+          try {
+            await api.delete(`/lessons/${lesson.id}`);
+          } catch {
+            // swallow rollback error; surface the original upload error below
+          }
+          throw uploadErr;
+        }
       }
 
       return lesson;

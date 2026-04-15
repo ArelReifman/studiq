@@ -11,6 +11,7 @@ import {
 } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { generateLesson } from "../services/ai/generate-lesson.js";
+import { createAdminSupabase } from "../lib/supabase.js";
 
 export const lessonRoutes = new Hono()
   .use(authMiddleware)
@@ -206,6 +207,83 @@ export const lessonRoutes = new Hono()
 
       const lesson = await generateLesson(student_id, teacherId);
       return c.json(lesson, 201);
+    }
+  )
+
+  // DELETE /lessons/:id — teacher deletes a lesson (cascades to homework/todos)
+  .delete("/:id", requireRole("teacher"), async (c) => {
+    const teacherId = c.get("userId");
+    const lessonId = c.req.param("id")!;
+
+    // Verify ownership and read material path before delete
+    const [lesson] = await db
+      .select({
+        id: lessonSessions.id,
+        material_name: lessonSessions.material_name,
+      })
+      .from(lessonSessions)
+      .where(
+        and(
+          eq(lessonSessions.id, lessonId),
+          eq(lessonSessions.teacher_id, teacherId)
+        )
+      )
+      .limit(1);
+
+    if (!lesson) return c.json({ error: "Lesson not found" }, 404);
+
+    // Remove storage object if any (best-effort, doesn't block deletion)
+    if (lesson.material_name) {
+      try {
+        const supabase = createAdminSupabase();
+        const ext = (lesson.material_name.split(".").pop() || "bin").toLowerCase();
+        await supabase.storage
+          .from("uploads")
+          .remove([`lessons/${teacherId}/${lessonId}.${ext}`]);
+      } catch (err) {
+        console.warn("[lessons] failed to remove storage object:", err);
+      }
+    }
+
+    // DB cascade will clean up homework_items and todo_items via FK ON DELETE CASCADE
+    await db
+      .delete(lessonSessions)
+      .where(eq(lessonSessions.id, lessonId));
+
+    return c.json({ message: "Lesson deleted" });
+  })
+
+  // PATCH /lessons/:id/reflection — student writes how the lesson went for them
+  .patch(
+    "/:id/reflection",
+    requireRole("student"),
+    zValidator(
+      "json",
+      z.object({ reflection: z.string().max(2000) })
+    ),
+    async (c) => {
+      const studentId = c.get("userId");
+      const lessonId = c.req.param("id")!;
+      const { reflection } = c.req.valid("json");
+
+      const trimmed = reflection.trim();
+
+      const [updated] = await db
+        .update(lessonSessions)
+        .set({ student_reflection: trimmed === "" ? null : trimmed })
+        .where(
+          and(
+            eq(lessonSessions.id, lessonId),
+            eq(lessonSessions.student_id, studentId)
+          )
+        )
+        .returning({
+          id: lessonSessions.id,
+          student_reflection: lessonSessions.student_reflection,
+        });
+
+      if (!updated) return c.json({ error: "Lesson not found" }, 404);
+      return c.json(updated);
     }
   )
 
