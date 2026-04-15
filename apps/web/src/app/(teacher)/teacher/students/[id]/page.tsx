@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate, formatPercent } from "@/lib/utils";
 import type { LessonSession, DifficultyReport, StudentAiProfile } from "@studiq/types";
-import { ArrowLeft, Sparkles, AlertTriangle, PlusCircle, Trash2, MessageSquare } from "lucide-react";
+import { ArrowLeft, AlertTriangle, PlusCircle, Trash2, MessageSquare } from "lucide-react";
 import { useT } from "@/i18n";
 import { CreateLessonModal } from "@/components/teacher/create-lesson-modal";
 
@@ -49,11 +49,6 @@ export default function StudentDetailPage() {
   const { data: difficulties = [] } = useQuery<(DifficultyReport & { student_name: string })[]>({
     queryKey: ["difficulties", { student_id: id }],
     queryFn: () => api.get(`/difficulties?student_id=${id}`),
-  });
-
-  const generateLesson = useMutation({
-    mutationFn: () => api.post("/lessons/generate", { student_id: id }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["lessons"] }),
   });
 
   const deleteLesson = useMutation({
@@ -100,19 +95,9 @@ export default function StudentDetailPage() {
           <h1 className="text-2xl font-bold">{student?.full_name}</h1>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="ghost"
-            onClick={() => setShowCreateLesson(true)}
-          >
+          <Button onClick={() => setShowCreateLesson(true)}>
             <PlusCircle size={15} />
             {t("createLesson.title")}
-          </Button>
-          <Button
-            onClick={() => generateLesson.mutate()}
-            disabled={generateLesson.isPending}
-          >
-            <Sparkles size={15} />
-            {generateLesson.isPending ? t("studentDetail.generating") : t("studentDetail.generateLesson")}
           </Button>
         </div>
       </div>
