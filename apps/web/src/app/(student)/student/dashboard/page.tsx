@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { TaskItem } from "@/components/student/task-item";
 import { formatDate } from "@/lib/utils";
 import type { LessonSession, HomeworkItem, TodoItem } from "@studiq/types";
-import { BookOpen, ArrowRight, FileText } from "lucide-react";
+import { BookOpen, ArrowRight, FileText, ExternalLink } from "lucide-react";
 
 export default function StudentDashboard() {
   const user = useAuthStore((s) => s.user);
@@ -78,7 +78,7 @@ export default function StudentDashboard() {
       {activeLesson && (
         <Card className="mb-6">
           <div className="flex items-start justify-between mb-3">
-            <div>
+            <div className="flex-1 min-w-0">
               <Badge variant="default" className="mb-2">
                 {t("student.activeLesson")}
               </Badge>
@@ -89,9 +89,18 @@ export default function StudentDashboard() {
                 </p>
               )}
             </div>
-            <span className="text-xs text-gray-400">
-              {formatDate(activeLesson.generated_at)}
-            </span>
+            <div className="flex flex-col items-end gap-2 flex-shrink-0 ms-3">
+              <span className="text-xs text-gray-400">
+                {formatDate(activeLesson.generated_at)}
+              </span>
+              <Link
+                href={`/student/lessons/${activeLesson.id}`}
+                className="inline-flex items-center gap-1 text-xs text-brand-600 hover:underline"
+              >
+                {t("student.openLesson")}
+                <ExternalLink size={11} />
+              </Link>
+            </div>
           </div>
 
           {/* Material PDF link */}

@@ -94,6 +94,7 @@
   "student.firstLessonSub": "Your AI tutor is generating a personalized lesson. Refresh in a moment.",
   "student.markDone": "Done",
   "student.markStuck": "Stuck",
+  "student.openLesson": "Open lesson",
   "student.lessonMaterial": "Lesson material",
   "student.reflection": "How did it go?",
   "student.reflectionHint": "Your reflection is shared with your teacher — tell them what was easy, what was hard, and where you need more help.",
