@@ -106,12 +106,23 @@ export const lessonRoutes = new Hono()
         todos: z
           .array(z.object({ title: z.string().min(1).max(200) }))
           .default([]),
+        course_id: z.string().uuid().nullable().optional(),
+        topic_id: z.string().uuid().nullable().optional(),
+        lesson_level: z.enum(["base", "medium", "exam"]).nullable().optional(),
       })
     ),
     async (c) => {
       const teacherId = c.get("userId");
-      const { student_id, title, description, homework, todos } =
-        c.req.valid("json");
+      const {
+        student_id,
+        title,
+        description,
+        homework,
+        todos,
+        course_id,
+        topic_id,
+        lesson_level,
+      } = c.req.valid("json");
 
       // Verify student belongs to teacher
       const [student] = await db
@@ -134,6 +145,9 @@ export const lessonRoutes = new Hono()
           description: description ?? null,
           ai_generated: false,
           status: "active",
+          course_id: course_id ?? null,
+          topic_id: topic_id ?? null,
+          lesson_level: lesson_level ?? null,
         })
         .returning();
 

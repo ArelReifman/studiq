@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { useT } from "@/i18n";
 import { LanguageToggle } from "@/components/ui/language-toggle";
 import { cn } from "@/lib/utils";
-import { Users, LayoutDashboard, MessageSquare, CalendarClock, LogOut } from "lucide-react";
+import { Users, LayoutDashboard, MessageSquare, CalendarClock, LogOut, BookOpen } from "lucide-react";
 import { useRealtimeSync } from "@/hooks/use-realtime-sync";
 
 export default function TeacherLayout({
@@ -24,6 +24,7 @@ export default function TeacherLayout({
   const nav = [
     { href: "/teacher/dashboard", label: t("teacher.dashboard"), icon: LayoutDashboard },
     { href: "/teacher/students", label: t("teacher.students"), icon: Users },
+    { href: "/teacher/courses", label: t("teacher.courses"), icon: BookOpen },
     { href: "/teacher/schedule", label: t("teacher.schedule"), icon: CalendarClock },
     { href: "/teacher/feedback", label: t("teacher.aiFeedback"), icon: MessageSquare },
   ];

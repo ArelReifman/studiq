@@ -39,9 +39,36 @@ export interface StudentTopic {
   created_at: string;
 }
 
+// ─── Courses ─────────────────────────────────────────────────────────────────
+
+export interface Course {
+  id: string;
+  teacher_id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CourseTopic {
+  id: string;
+  course_id: string;
+  name: string;
+  description: string | null;
+  is_shared: boolean;
+  prerequisite_topic_ids: string[];
+  order_index: number;
+  created_at: string;
+}
+
+export interface CourseWithTopics extends Course {
+  topics: CourseTopic[];
+}
+
 // ─── Lessons ─────────────────────────────────────────────────────────────────
 
 export type LessonStatus = "active" | "completed" | "archived";
+export type LessonLevel = "base" | "medium" | "exam";
 
 export interface LessonSession {
   id: string;
@@ -57,6 +84,9 @@ export interface LessonSession {
   material_url: string | null;
   material_name: string | null;
   student_reflection: string | null;
+  course_id: string | null;
+  topic_id: string | null;
+  lesson_level: LessonLevel | null;
 }
 
 // ─── Homework & Todos ─────────────────────────────────────────────────────────

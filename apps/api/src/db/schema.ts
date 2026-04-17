@@ -77,6 +77,11 @@ export const dayOfWeekEnum = pgEnum("day_of_week", [
   "friday",
   "saturday",
 ]);
+export const lessonLevelEnum = pgEnum("lesson_level", [
+  "base", // foundational exercises — build understanding
+  "medium", // applied exercises — deepen concept
+  "exam", // exam-style exercises — full picture
+]);
 
 // ─── Profiles (extends Supabase auth.users) ───────────────────────────────────
 
@@ -164,6 +169,53 @@ export const studentTopics = pgTable(
   (t) => [index("idx_student_topics_student_id").on(t.student_id)]
 );
 
+// ─── Courses (teacher-defined syllabi, reused across students) ───────────────
+
+export const courses = pgTable(
+  "courses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    teacher_id: uuid("teacher_id")
+      .notNull()
+      .references(() => teachers.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("idx_courses_teacher_id").on(t.teacher_id)]
+);
+
+// ─── Course Topics (the learning map) ─────────────────────────────────────────
+
+export const courseTopics = pgTable(
+  "course_topics",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    course_id: uuid("course_id")
+      .notNull()
+      .references(() => courses.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    // `true` → foundational topic that other topics depend on
+    is_shared: boolean("is_shared").notNull().default(false),
+    // topic UUIDs that must be mastered before this one
+    prerequisite_topic_ids: uuid("prerequisite_topic_ids")
+      .array()
+      .notNull()
+      .default([]),
+    order_index: integer("order_index").notNull().default(0),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("idx_course_topics_course_id").on(t.course_id)]
+);
+
 // ─── Lesson Sessions ──────────────────────────────────────────────────────────
 
 export const lessonSessions = pgTable(
@@ -188,11 +240,21 @@ export const lessonSessions = pgTable(
     material_url: text("material_url"),
     material_name: text("material_name"),
     student_reflection: text("student_reflection"),
+    // Optional links — lessons without these still work exactly as before.
+    course_id: uuid("course_id").references(() => courses.id, {
+      onDelete: "set null",
+    }),
+    topic_id: uuid("topic_id").references(() => courseTopics.id, {
+      onDelete: "set null",
+    }),
+    lesson_level: lessonLevelEnum("lesson_level"),
   },
   (t) => [
     index("idx_lesson_sessions_student_id").on(t.student_id),
     index("idx_lesson_sessions_teacher_id").on(t.teacher_id),
     index("idx_lesson_sessions_status").on(t.status),
+    index("idx_lesson_sessions_course_id").on(t.course_id),
+    index("idx_lesson_sessions_topic_id").on(t.topic_id),
   ]
 );
 
@@ -486,10 +548,35 @@ export const lessonSessionsRelations = relations(
       fields: [lessonSessions.teacher_id],
       references: [teachers.id],
     }),
+    course: one(courses, {
+      fields: [lessonSessions.course_id],
+      references: [courses.id],
+    }),
+    topic: one(courseTopics, {
+      fields: [lessonSessions.topic_id],
+      references: [courseTopics.id],
+    }),
     homework_items: many(homeworkItems),
     todo_items: many(todoItems),
   })
 );
+
+export const coursesRelations = relations(courses, ({ one, many }) => ({
+  teacher: one(teachers, {
+    fields: [courses.teacher_id],
+    references: [teachers.id],
+  }),
+  topics: many(courseTopics),
+  lessons: many(lessonSessions),
+}));
+
+export const courseTopicsRelations = relations(courseTopics, ({ one, many }) => ({
+  course: one(courses, {
+    fields: [courseTopics.course_id],
+    references: [courses.id],
+  }),
+  lessons: many(lessonSessions),
+}));
 
 export const teacherAvailabilityRelations = relations(
   teacherAvailability,

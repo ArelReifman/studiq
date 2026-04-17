@@ -1,0 +1,202 @@
+import { Hono } from "hono";
+import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
+import { eq, and, asc } from "drizzle-orm";
+import { db } from "../db/client.js";
+import { courses, courseTopics } from "../db/schema.js";
+import { authMiddleware, requireRole } from "../middleware/auth.js";
+
+const courseSchema = z.object({
+  name: z.string().min(1).max(120),
+  description: z.string().max(2000).optional(),
+});
+
+const topicSchema = z.object({
+  name: z.string().min(1).max(120),
+  description: z.string().max(2000).optional(),
+  is_shared: z.boolean().default(false),
+  prerequisite_topic_ids: z.array(z.string().uuid()).default([]),
+  order_index: z.number().int().min(0).default(0),
+});
+
+const topicUpdateSchema = topicSchema.partial();
+
+export const coursesRoutes = new Hono()
+  .use(authMiddleware)
+  .use(requireRole("teacher"))
+
+  // ─── List courses for the teacher ──────────────────────────────────────────
+  .get("/", async (c) => {
+    const teacherId = c.get("userId")!;
+    const rows = await db
+      .select()
+      .from(courses)
+      .where(eq(courses.teacher_id, teacherId))
+      .orderBy(asc(courses.created_at));
+    return c.json(rows);
+  })
+
+  // ─── Create a course ──────────────────────────────────────────────────────
+  .post("/", zValidator("json", courseSchema), async (c) => {
+    const teacherId = c.get("userId")!;
+    const body = c.req.valid("json");
+    const [row] = await db
+      .insert(courses)
+      .values({
+        teacher_id: teacherId,
+        name: body.name.trim(),
+        description: body.description?.trim() || null,
+      })
+      .returning();
+    return c.json(row, 201);
+  })
+
+  // ─── Get one course + its topics ──────────────────────────────────────────
+  .get("/:id", async (c) => {
+    const teacherId = c.get("userId")!;
+    const courseId = c.req.param("id")!;
+    const [course] = await db
+      .select()
+      .from(courses)
+      .where(and(eq(courses.id, courseId), eq(courses.teacher_id, teacherId)))
+      .limit(1);
+    if (!course) return c.json({ error: "Course not found" }, 404);
+
+    const topics = await db
+      .select()
+      .from(courseTopics)
+      .where(eq(courseTopics.course_id, courseId))
+      .orderBy(asc(courseTopics.order_index), asc(courseTopics.created_at));
+
+    return c.json({ ...course, topics });
+  })
+
+  // ─── Update a course ──────────────────────────────────────────────────────
+  .patch("/:id", zValidator("json", courseSchema.partial()), async (c) => {
+    const teacherId = c.get("userId")!;
+    const courseId = c.req.param("id")!;
+    const body = c.req.valid("json");
+    const [updated] = await db
+      .update(courses)
+      .set({
+        ...(body.name !== undefined ? { name: body.name.trim() } : {}),
+        ...(body.description !== undefined
+          ? { description: body.description?.trim() || null }
+          : {}),
+        updated_at: new Date(),
+      })
+      .where(and(eq(courses.id, courseId), eq(courses.teacher_id, teacherId)))
+      .returning();
+    if (!updated) return c.json({ error: "Course not found" }, 404);
+    return c.json(updated);
+  })
+
+  // ─── Delete a course ──────────────────────────────────────────────────────
+  .delete("/:id", async (c) => {
+    const teacherId = c.get("userId")!;
+    const courseId = c.req.param("id")!;
+    const [deleted] = await db
+      .delete(courses)
+      .where(and(eq(courses.id, courseId), eq(courses.teacher_id, teacherId)))
+      .returning();
+    if (!deleted) return c.json({ error: "Course not found" }, 404);
+    return c.json({ message: "Course deleted" });
+  })
+
+  // ─── Topics ────────────────────────────────────────────────────────────────
+  .post(
+    "/:id/topics",
+    zValidator("json", topicSchema),
+    async (c) => {
+      const teacherId = c.get("userId")!;
+      const courseId = c.req.param("id")!;
+      // Verify ownership
+      const [course] = await db
+        .select({ id: courses.id })
+        .from(courses)
+        .where(and(eq(courses.id, courseId), eq(courses.teacher_id, teacherId)))
+        .limit(1);
+      if (!course) return c.json({ error: "Course not found" }, 404);
+
+      const body = c.req.valid("json");
+      const [topic] = await db
+        .insert(courseTopics)
+        .values({
+          course_id: courseId,
+          name: body.name.trim(),
+          description: body.description?.trim() || null,
+          is_shared: body.is_shared,
+          prerequisite_topic_ids: body.prerequisite_topic_ids,
+          order_index: body.order_index,
+        })
+        .returning();
+      return c.json(topic, 201);
+    }
+  )
+
+  .patch(
+    "/:courseId/topics/:topicId",
+    zValidator("json", topicUpdateSchema),
+    async (c) => {
+      const teacherId = c.get("userId")!;
+      const courseId = c.req.param("courseId")!;
+      const topicId = c.req.param("topicId")!;
+      // Verify ownership
+      const [course] = await db
+        .select({ id: courses.id })
+        .from(courses)
+        .where(and(eq(courses.id, courseId), eq(courses.teacher_id, teacherId)))
+        .limit(1);
+      if (!course) return c.json({ error: "Course not found" }, 404);
+
+      const body = c.req.valid("json");
+      const [updated] = await db
+        .update(courseTopics)
+        .set({
+          ...(body.name !== undefined ? { name: body.name.trim() } : {}),
+          ...(body.description !== undefined
+            ? { description: body.description?.trim() || null }
+            : {}),
+          ...(body.is_shared !== undefined ? { is_shared: body.is_shared } : {}),
+          ...(body.prerequisite_topic_ids !== undefined
+            ? { prerequisite_topic_ids: body.prerequisite_topic_ids }
+            : {}),
+          ...(body.order_index !== undefined
+            ? { order_index: body.order_index }
+            : {}),
+        })
+        .where(
+          and(
+            eq(courseTopics.id, topicId),
+            eq(courseTopics.course_id, courseId)
+          )
+        )
+        .returning();
+      if (!updated) return c.json({ error: "Topic not found" }, 404);
+      return c.json(updated);
+    }
+  )
+
+  .delete("/:courseId/topics/:topicId", async (c) => {
+    const teacherId = c.get("userId")!;
+    const courseId = c.req.param("courseId")!;
+    const topicId = c.req.param("topicId")!;
+    const [course] = await db
+      .select({ id: courses.id })
+      .from(courses)
+      .where(and(eq(courses.id, courseId), eq(courses.teacher_id, teacherId)))
+      .limit(1);
+    if (!course) return c.json({ error: "Course not found" }, 404);
+
+    const [deleted] = await db
+      .delete(courseTopics)
+      .where(
+        and(
+          eq(courseTopics.id, topicId),
+          eq(courseTopics.course_id, courseId)
+        )
+      )
+      .returning();
+    if (!deleted) return c.json({ error: "Topic not found" }, 404);
+    return c.json({ message: "Topic deleted" });
+  });

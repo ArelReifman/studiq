@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useRef, useEffect } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X, Plus, Trash2, Upload, FileText, Paperclip } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/i18n";
+import type { Course, CourseWithTopics, LessonLevel } from "@studiq/types";
 
 interface CreateLessonModalProps {
   studentId: string;
@@ -24,6 +25,25 @@ export function CreateLessonModal({ studentId, onClose }: CreateLessonModalProps
   ]);
   const [todos, setTodos] = useState<{ title: string }[]>([{ title: "" }]);
   const [file, setFile] = useState<File | null>(null);
+  const [courseId, setCourseId] = useState<string>("");
+  const [topicId, setTopicId] = useState<string>("");
+  const [lessonLevel, setLessonLevel] = useState<LessonLevel | "">("");
+
+  const { data: courses = [] } = useQuery<Course[]>({
+    queryKey: ["courses"],
+    queryFn: () => api.get("/courses"),
+  });
+
+  const { data: courseDetail } = useQuery<CourseWithTopics>({
+    queryKey: ["courses", courseId],
+    queryFn: () => api.get(`/courses/${courseId}`),
+    enabled: !!courseId,
+  });
+
+  // Reset topic when course changes
+  useEffect(() => {
+    setTopicId("");
+  }, [courseId]);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -37,6 +57,9 @@ export function CreateLessonModal({ studentId, onClose }: CreateLessonModalProps
         description: description.trim() || undefined,
         homework: validHw,
         todos: validTodos,
+        course_id: courseId || null,
+        topic_id: topicId || null,
+        lesson_level: lessonLevel || null,
       });
 
       // Upload material PDF if provided — direct to Supabase, bypassing Vercel's body limit.
@@ -129,6 +152,63 @@ export function CreateLessonModal({ studentId, onClose }: CreateLessonModalProps
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
           </div>
+
+          {/* Course + topic + level (optional) */}
+          {courses.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {t("createLesson.course")} {t("common.optional")}
+                </label>
+                <select
+                  value={courseId}
+                  onChange={(e) => setCourseId(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                >
+                  <option value="">—</option>
+                  {courses.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {t("createLesson.topic")}
+                </label>
+                <select
+                  value={topicId}
+                  onChange={(e) => setTopicId(e.target.value)}
+                  disabled={!courseId || !courseDetail}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-gray-50 disabled:text-gray-400"
+                >
+                  <option value="">—</option>
+                  {courseDetail?.topics.map((tp) => (
+                    <option key={tp.id} value={tp.id}>
+                      {tp.name}
+                      {tp.is_shared ? " ★" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {t("createLesson.level")}
+                </label>
+                <select
+                  value={lessonLevel}
+                  onChange={(e) => setLessonLevel(e.target.value as LessonLevel | "")}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                >
+                  <option value="">—</option>
+                  <option value="base">{t("createLesson.levelBase")}</option>
+                  <option value="medium">{t("createLesson.levelMedium")}</option>
+                  <option value="exam">{t("createLesson.levelExam")}</option>
+                </select>
+              </div>
+            </div>
+          )}
 
           {/* Material upload */}
           <div>
