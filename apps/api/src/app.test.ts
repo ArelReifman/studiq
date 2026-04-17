@@ -10,8 +10,11 @@ vi.mock("@supabase/supabase-js", () => ({
   createClient: () => ({
     auth: {
       admin: { createUser: vi.fn(), deleteUser: vi.fn() },
-      signInWithPassword: vi.fn(),
-      getUser: vi.fn(),
+      signInWithPassword: vi.fn().mockResolvedValue({
+        data: null,
+        error: { message: "Invalid credentials" },
+      }),
+      getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
     },
   }),
 }));
@@ -47,7 +50,11 @@ describe("App security", () => {
     it("blocks POST without X-Requested-With header", async () => {
       const res = await app.request("/auth/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // Origin triggers the CSRF check (no Origin = treated as same-origin server call)
+          "Origin": "https://evil.example.com",
+        },
         body: JSON.stringify({ email: "a@b.com", password: "12345678" }),
       });
       expect(res.status).toBe(403);
