@@ -145,6 +145,7 @@
   "studentDetail.noLessons": "No lessons yet.",
   "studentDetail.deleteLesson": "Delete lesson",
   "studentDetail.confirmDeleteLesson": "Delete this lesson permanently? This cannot be undone.",
+  "studentDetail.deleteFailed": "Deletion failed. Try logging out and back in.",
 
   "feedback.title": "AI Feedback History",
   "feedback.subtitle": "Feedback you have given to the AI tutor. Incorporated feedback shapes the next generated lesson.",

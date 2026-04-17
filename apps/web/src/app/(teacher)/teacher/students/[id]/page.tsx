@@ -62,8 +62,9 @@ export default function StudentDetailPage() {
       );
       return { prev };
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (err, _vars, ctx) => {
       qc.setQueryData(["lessons", { student_id: id }], ctx?.prev);
+      alert(err instanceof Error ? err.message : t("studentDetail.deleteFailed"));
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ["lessons"] }),
   });

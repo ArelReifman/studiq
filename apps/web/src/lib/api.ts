@@ -55,6 +55,13 @@ class ApiClient {
     }
 
     if (!res.ok) {
+      // If token expired, force re-login so the user doesn't get silent failures
+      if (res.status === 401 && typeof window !== "undefined") {
+        const { useAuthStore } = await import("@/store/auth");
+        useAuthStore.getState().clearAuth();
+        window.location.href = "/login";
+        throw new Error("Session expired — redirecting to login");
+      }
       throw new Error(await parseErrorResponse(res));
     }
 

@@ -145,6 +145,7 @@
   "studentDetail.noLessons": "אין שיעורים עדיין.",
   "studentDetail.deleteLesson": "מחק שיעור",
   "studentDetail.confirmDeleteLesson": "למחוק את השיעור לצמיתות? לא ניתן לשחזר.",
+  "studentDetail.deleteFailed": "המחיקה נכשלה. נסה להתנתק ולהתחבר מחדש.",
 
   "feedback.title": "היסטוריית משוב AI",
   "feedback.subtitle": "משוב שנתת למורה הדיגיטלי. משוב שהושלב משפיע על השיעור הבא.",
