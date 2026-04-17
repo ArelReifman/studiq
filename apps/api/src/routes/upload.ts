@@ -275,7 +275,10 @@ export const uploadRoutes = new Hono()
 
       if (error || !data) {
         console.error("[upload] signed URL error:", error);
-        return c.json({ error: "Failed to create upload URL" }, 500);
+        const msg = error?.message?.includes("not exist")
+          ? "Storage bucket 'uploads' is missing. Run migration 006_storage_bucket.sql."
+          : `Failed to create upload URL: ${error?.message ?? "unknown"}`;
+        return c.json({ error: msg }, 500);
       }
 
       return c.json({ signedUrl: data.signedUrl, token: data.token, path: data.path });
@@ -369,7 +372,10 @@ export const uploadRoutes = new Hono()
 
       if (error || !data) {
         console.error("[upload] signed URL error:", error);
-        return c.json({ error: "Failed to create upload URL" }, 500);
+        const msg = error?.message?.includes("not exist")
+          ? "Storage bucket 'uploads' is missing. Run migration 006_storage_bucket.sql."
+          : `Failed to create upload URL: ${error?.message ?? "unknown"}`;
+        return c.json({ error: msg }, 500);
       }
 
       return c.json({ signedUrl: data.signedUrl, token: data.token, path: data.path });

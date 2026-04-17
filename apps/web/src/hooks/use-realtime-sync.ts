@@ -119,15 +119,22 @@ export function useRealtimeSync() {
       )
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
-          console.log("✅ Realtime sync active");
-        } else if (status === "CHANNEL_ERROR") {
-          console.warn("⚠️ Realtime channel error — will auto-reconnect");
+          // On (re)connect, refetch everything so UI is guaranteed fresh even
+          // if we missed events while disconnected.
+          qc.invalidateQueries();
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn(`Realtime ${status.toLowerCase()} — will auto-reconnect`);
         }
       });
 
     channelRef.current = channel;
 
+    // Also refetch when the tab comes back online, even without Realtime events.
+    const handleOnline = () => qc.invalidateQueries();
+    window.addEventListener("online", handleOnline);
+
     return () => {
+      window.removeEventListener("online", handleOnline);
       channel.unsubscribe();
       channelRef.current = null;
     };

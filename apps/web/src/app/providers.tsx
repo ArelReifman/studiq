@@ -36,9 +36,18 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 5_000,
+            // Data stays fresh for 30s. Realtime subscriptions invalidate
+            // on actual changes, so a longer staleTime doesn't mean stale
+            // UI — it just avoids redundant fetches on every re-render.
+            staleTime: 30_000,
+            gcTime: 5 * 60_000, // keep unused data 5 min
             retry: 1,
+            // Refetch on tab focus + network recovery (safety net beyond Realtime)
             refetchOnWindowFocus: true,
+            refetchOnReconnect: true,
+          },
+          mutations: {
+            retry: 0,
           },
         },
       })
