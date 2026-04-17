@@ -274,6 +274,11 @@
   "courses.sharedHint": "משותף = נושא שמלמדים כל תלמיד בקורס. ייחודי = מותאם לתלמיד מסוים.",
   "courses.toggleSharedHint": "החלף בין משותף / ייחודי",
   "courses.deleteTopicConfirm": "למחוק את הנושא \"{name}\"?",
+  "courses.topicDescPlaceholder": "הערה / תת-נושאים (אופציונלי)",
+  "courses.moveUp": "הזז למעלה",
+  "courses.moveDown": "הזז למטה",
+  "common.save": "שמירה",
+  "common.edit": "עריכה",
 
   "createLesson.course": "קורס",
   "createLesson.topic": "נושא",

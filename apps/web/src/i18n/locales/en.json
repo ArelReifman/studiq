@@ -274,6 +274,11 @@
   "courses.sharedHint": "Shared = taught to every student in this course. Unique = tailored to a specific student.",
   "courses.toggleSharedHint": "Toggle shared / unique",
   "courses.deleteTopicConfirm": "Delete topic \"{name}\"?",
+  "courses.topicDescPlaceholder": "Optional note / sub-topics",
+  "courses.moveUp": "Move up",
+  "courses.moveDown": "Move down",
+  "common.save": "Save",
+  "common.edit": "Edit",
 
   "createLesson.course": "Course",
   "createLesson.topic": "Topic",
