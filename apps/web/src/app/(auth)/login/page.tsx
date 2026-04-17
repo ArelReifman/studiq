@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/store/auth";
 import { useT } from "@/i18n";
 import { LanguageToggle } from "@/components/ui/language-toggle";
@@ -34,6 +35,7 @@ export default function LoginPage() {
     try {
       const data = await api.post<{
         access_token: string;
+        refresh_token: string;
         user: {
           id: string;
           email: string;
@@ -52,6 +54,12 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
+
+      // Activate Supabase session so the client auto-refreshes the JWT
+      await supabase.auth.setSession({
+        access_token: data.access_token,
+        refresh_token: data.refresh_token,
+      });
 
       setAuth(data.user, data.access_token);
 

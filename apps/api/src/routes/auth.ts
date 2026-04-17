@@ -210,6 +210,7 @@ export const authRoutes = new Hono()
 
     return c.json({
       access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
       user,
     });
   })
