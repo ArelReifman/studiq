@@ -300,6 +300,7 @@ export const todoItems = pgTable(
       .notNull()
       .references(() => students.id),
     title: text("title").notNull(),
+    description: text("description"),
     order_index: integer("order_index").notNull().default(0),
     status: taskStatusEnum("status").notNull().default("pending"),
     marked_at: timestamp("marked_at", { withTimezone: true }),

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { X, Plus, Trash2, Upload, FileText, Paperclip } from "lucide-react";
+import { X, Plus, Trash2, Upload, FileText } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/i18n";
@@ -13,17 +13,22 @@ interface CreateLessonModalProps {
   onClose: () => void;
 }
 
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export function CreateLessonModal({ studentId, onClose }: CreateLessonModalProps) {
   const t = useT();
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [homework, setHomework] = useState<{ title: string; description: string }[]>([
+  // If the teacher hasn't typed a custom title, we keep auto-filling from the topic.
+  const [titleAutoFilled, setTitleAutoFilled] = useState(true);
+  const [tasks, setTasks] = useState<{ title: string; description: string }[]>([
     { title: "", description: "" },
   ]);
-  const [todos, setTodos] = useState<{ title: string }[]>([{ title: "" }]);
   const [file, setFile] = useState<File | null>(null);
   const [courseId, setCourseId] = useState<string>("");
   const [topicId, setTopicId] = useState<string>("");
@@ -45,25 +50,34 @@ export function CreateLessonModal({ studentId, onClose }: CreateLessonModalProps
     setTopicId("");
   }, [courseId]);
 
+  // Auto-fill the title from the selected topic (only if the teacher hasn't typed one manually)
+  useEffect(() => {
+    if (!titleAutoFilled) return;
+    const topic = courseDetail?.topics.find((tp) => tp.id === topicId);
+    if (topic) {
+      setTitle(`${topic.name} — ${todayStr()}`);
+    } else {
+      setTitle("");
+    }
+  }, [topicId, courseDetail, titleAutoFilled]);
+
   const createMutation = useMutation({
     mutationFn: async () => {
-      // Filter out empty items
-      const validHw = homework.filter((h) => h.title.trim());
-      const validTodos = todos.filter((td) => td.title.trim());
+      const validTasks = tasks.filter((td) => td.title.trim());
 
       const lesson = await api.post<{ id: string }>("/lessons/create", {
         student_id: studentId,
         title: title.trim(),
-        description: description.trim() || undefined,
-        homework: validHw,
-        todos: validTodos,
+        todos: validTasks.map((td) => ({
+          title: td.title.trim(),
+          description: td.description.trim() || undefined,
+        })),
         course_id: courseId || null,
         topic_id: topicId || null,
         lesson_level: lessonLevel || null,
       });
 
       // Upload material PDF if provided — direct to Supabase, bypassing Vercel's body limit.
-      // If upload fails we roll the lesson back so retries don't create duplicates.
       if (file && lesson.id) {
         try {
           await api.uploadDirect(
@@ -89,20 +103,12 @@ export function CreateLessonModal({ studentId, onClose }: CreateLessonModalProps
     },
   });
 
-  const addHomework = () => setHomework([...homework, { title: "", description: "" }]);
-  const removeHomework = (i: number) => setHomework(homework.filter((_, idx) => idx !== i));
-  const updateHomework = (i: number, field: "title" | "description", value: string) => {
-    const copy = [...homework];
+  const addTask = () => setTasks([...tasks, { title: "", description: "" }]);
+  const removeTask = (i: number) => setTasks(tasks.filter((_, idx) => idx !== i));
+  const updateTask = (i: number, field: "title" | "description", value: string) => {
+    const copy = [...tasks];
     copy[i] = { ...copy[i], [field]: value };
-    setHomework(copy);
-  };
-
-  const addTodo = () => setTodos([...todos, { title: "" }]);
-  const removeTodo = (i: number) => setTodos(todos.filter((_, idx) => idx !== i));
-  const updateTodo = (i: number, value: string) => {
-    const copy = [...todos];
-    copy[i] = { title: value };
-    setTodos(copy);
+    setTasks(copy);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -125,34 +131,6 @@ export function CreateLessonModal({ studentId, onClose }: CreateLessonModalProps
         </div>
 
         <div className="px-6 py-5 space-y-5">
-          {/* Lesson title */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              {t("createLesson.lessonTitle")} *
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder={t("createLesson.titlePlaceholder")}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
-          </div>
-
-          {/* Description */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              {t("createLesson.description")} {t("common.optional")}
-            </label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder={t("createLesson.descPlaceholder")}
-              rows={2}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
-          </div>
-
           {/* Course + topic + level (optional) */}
           {courses.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -210,6 +188,28 @@ export function CreateLessonModal({ studentId, onClose }: CreateLessonModalProps
             </div>
           )}
 
+          {/* Lesson title */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t("createLesson.lessonTitle")} *
+            </label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                setTitleAutoFilled(false);
+              }}
+              placeholder={t("createLesson.titlePlaceholder")}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+            {titleAutoFilled && topicId && (
+              <p className="text-xs text-gray-400 mt-1">
+                {t("createLesson.titleAutoHint")}
+              </p>
+            )}
+          </div>
+
           {/* Material upload */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -247,80 +247,43 @@ export function CreateLessonModal({ studentId, onClose }: CreateLessonModalProps
             )}
           </div>
 
-          {/* Homework items */}
+          {/* Tasks (single unified list) */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium text-gray-700">
-                {t("student.homework")}
+                {t("createLesson.tasks")}
               </label>
               <button
                 type="button"
-                onClick={addHomework}
+                onClick={addTask}
                 className="flex items-center gap-1 text-xs text-brand-600 hover:text-brand-700"
               >
                 <Plus size={14} /> {t("createLesson.addItem")}
               </button>
             </div>
             <div className="space-y-2">
-              {homework.map((hw, i) => (
+              {tasks.map((td, i) => (
                 <div key={i} className="flex gap-2">
                   <div className="flex-1 space-y-1">
                     <input
                       type="text"
-                      value={hw.title}
-                      onChange={(e) => updateHomework(i, "title", e.target.value)}
-                      placeholder={t("createLesson.hwTitlePlaceholder", { n: i + 1 })}
+                      value={td.title}
+                      onChange={(e) => updateTask(i, "title", e.target.value)}
+                      placeholder={t("createLesson.taskTitlePlaceholder", { n: i + 1 })}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                     />
                     <input
                       type="text"
-                      value={hw.description}
-                      onChange={(e) => updateHomework(i, "description", e.target.value)}
-                      placeholder={t("createLesson.hwDescPlaceholder")}
+                      value={td.description}
+                      onChange={(e) => updateTask(i, "description", e.target.value)}
+                      placeholder={t("createLesson.taskDescPlaceholder")}
                       className="w-full border border-gray-100 rounded-lg px-3 py-1.5 text-xs text-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500"
                     />
                   </div>
-                  {homework.length > 1 && (
+                  {tasks.length > 1 && (
                     <button
-                      onClick={() => removeHomework(i)}
+                      onClick={() => removeTask(i)}
                       className="text-gray-300 hover:text-red-400 mt-2"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Todo items */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium text-gray-700">
-                {t("student.practiceTasks")}
-              </label>
-              <button
-                type="button"
-                onClick={addTodo}
-                className="flex items-center gap-1 text-xs text-brand-600 hover:text-brand-700"
-              >
-                <Plus size={14} /> {t("createLesson.addItem")}
-              </button>
-            </div>
-            <div className="space-y-2">
-              {todos.map((td, i) => (
-                <div key={i} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={td.title}
-                    onChange={(e) => updateTodo(i, e.target.value)}
-                    placeholder={t("createLesson.todoPlaceholder", { n: i + 1 })}
-                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  />
-                  {todos.length > 1 && (
-                    <button
-                      onClick={() => removeTodo(i)}
-                      className="text-gray-300 hover:text-red-400"
                     >
                       <Trash2 size={14} />
                     </button>

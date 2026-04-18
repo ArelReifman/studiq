@@ -280,6 +280,11 @@
   "common.save": "שמירה",
   "common.edit": "עריכה",
 
+  "createLesson.tasks": "משימות תרגול",
+  "createLesson.taskTitlePlaceholder": "משימה {n}",
+  "createLesson.taskDescPlaceholder": "תיאור (אופציונלי)",
+  "createLesson.titleAutoHint": "מולא אוטומטית מהנושא. אפשר לערוך ידנית.",
+  "student.tasks": "משימות",
   "createLesson.course": "קורס",
   "createLesson.topic": "נושא",
   "createLesson.level": "רמה",

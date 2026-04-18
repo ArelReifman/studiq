@@ -112,6 +112,7 @@ export interface TodoItem {
   lesson_id: string;
   student_id: string;
   title: string;
+  description: string | null;
   order_index: number;
   status: TaskStatus;
   marked_at: string | null;

@@ -104,7 +104,12 @@ export const lessonRoutes = new Hono()
           )
           .default([]),
         todos: z
-          .array(z.object({ title: z.string().min(1).max(200) }))
+          .array(
+            z.object({
+              title: z.string().min(1).max(200),
+              description: z.string().max(1000).optional(),
+            })
+          )
           .default([]),
         course_id: z.string().uuid().nullable().optional(),
         topic_id: z.string().uuid().nullable().optional(),
@@ -173,6 +178,7 @@ export const lessonRoutes = new Hono()
             lesson_id: lesson.id,
             student_id,
             title: td.title,
+            description: td.description ?? null,
             order_index: i,
           }))
         );

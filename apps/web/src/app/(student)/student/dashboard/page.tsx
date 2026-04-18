@@ -133,15 +133,17 @@ export default function StudentDashboard() {
         </Card>
       )}
 
-      {homework.length > 0 && (
+      {(homework.length > 0 || todos.length > 0) && (
         <div className="mb-6">
           <h3 className="text-base font-semibold mb-3">
-            {t("student.homework")}
+            {t("student.tasks")}
             <span className="text-sm font-normal text-gray-400 ms-2">
-              {completedHw}/{totalHw} {t("student.done")}
+              {completedHw + completedTodos}/{totalHw + totalTodos}{" "}
+              {t("student.done")}
             </span>
           </h3>
           <div className="space-y-2">
+            {/* Legacy homework items (older lessons) */}
             {homework.map((item) => (
               <TaskItem
                 key={item.id}
@@ -150,19 +152,6 @@ export default function StudentDashboard() {
                 lessonId={activeLesson!.id}
               />
             ))}
-          </div>
-        </div>
-      )}
-
-      {todos.length > 0 && (
-        <div className="mb-6">
-          <h3 className="text-base font-semibold mb-3">
-            {t("student.practiceTasks")}
-            <span className="text-sm font-normal text-gray-400 ms-2">
-              {completedTodos}/{totalTodos} {t("student.done")}
-            </span>
-          </h3>
-          <div className="space-y-2">
             {todos.map((item) => (
               <TaskItem
                 key={item.id}

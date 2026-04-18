@@ -100,21 +100,14 @@ export default function LessonDetailPage() {
         </Card>
       )}
 
-      {lesson.homework_items.length > 0 && (
+      {(lesson.homework_items.length > 0 || lesson.todo_items.length > 0) && (
         <div className="mb-6">
-          <h2 className="text-base font-semibold mb-3">{t("student.homework")}</h2>
+          <h2 className="text-base font-semibold mb-3">{t("student.tasks")}</h2>
           <div className="space-y-2">
+            {/* Legacy homework items (older lessons) */}
             {lesson.homework_items.map((item) => (
               <TaskItem key={item.id} item={item} type="homework" lessonId={id} />
             ))}
-          </div>
-        </div>
-      )}
-
-      {lesson.todo_items.length > 0 && (
-        <div className="mb-6">
-          <h2 className="text-base font-semibold mb-3">{t("student.practiceTasks")}</h2>
-          <div className="space-y-2">
             {lesson.todo_items.map((item) => (
               <TaskItem key={item.id} item={item} type="todo" lessonId={id} />
             ))}

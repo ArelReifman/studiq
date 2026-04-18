@@ -85,7 +85,7 @@ export const todoRoutes = new Hono()
         difficultyReport = report;
 
         if (report) {
-          tagDifficulty(report.id, updated.title, "")
+          tagDifficulty(report.id, updated.title, updated.description ?? "")
             .then(async (tags) => {
               await db
                 .update(difficultyReports)

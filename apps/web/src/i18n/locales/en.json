@@ -280,6 +280,11 @@
   "common.save": "Save",
   "common.edit": "Edit",
 
+  "createLesson.tasks": "Practice tasks",
+  "createLesson.taskTitlePlaceholder": "Task {n}",
+  "createLesson.taskDescPlaceholder": "Description (optional)",
+  "createLesson.titleAutoHint": "Auto-filled from the topic. Edit to override.",
+  "student.tasks": "Tasks",
   "createLesson.course": "Course",
   "createLesson.topic": "Topic",
   "createLesson.level": "Level",
