@@ -58,11 +58,20 @@ export interface CourseTopic {
   is_shared: boolean;
   prerequisite_topic_ids: string[];
   order_index: number;
+  parent_topic_id: string | null;
   created_at: string;
+}
+
+export interface CourseTopicWithChildren extends CourseTopic {
+  children: CourseTopic[];
 }
 
 export interface CourseWithTopics extends Course {
   topics: CourseTopic[];
+}
+
+export interface CourseWithTree extends Course {
+  topics: CourseTopicWithChildren[];
 }
 
 // ─── Lessons ─────────────────────────────────────────────────────────────────

@@ -17,9 +17,23 @@ const topicSchema = z.object({
   is_shared: z.boolean().default(false),
   prerequisite_topic_ids: z.array(z.string().uuid()).default([]),
   order_index: z.number().int().min(0).default(0),
+  parent_topic_id: z.string().uuid().nullable().optional(),
 });
 
 const topicUpdateSchema = topicSchema.partial();
+
+/** Build a 2-level tree from a flat list of topics */
+function buildTree(flat: typeof courseTopics.$inferSelect[]) {
+  const parents = flat
+    .filter((t) => t.parent_topic_id === null)
+    .sort((a, b) => a.order_index - b.order_index);
+  return parents.map((p) => ({
+    ...p,
+    children: flat
+      .filter((t) => t.parent_topic_id === p.id)
+      .sort((a, b) => a.order_index - b.order_index),
+  }));
+}
 
 export const coursesRoutes = new Hono()
   .use(authMiddleware)
@@ -51,7 +65,7 @@ export const coursesRoutes = new Hono()
     return c.json(row, 201);
   })
 
-  // ─── Get one course + its topics ──────────────────────────────────────────
+  // ─── Get one course + flat topics ────────────────────────────────────────
   .get("/:id", async (c) => {
     const teacherId = c.get("userId")!;
     const courseId = c.req.param("id")!;
@@ -69,6 +83,26 @@ export const coursesRoutes = new Hono()
       .orderBy(asc(courseTopics.order_index), asc(courseTopics.created_at));
 
     return c.json({ ...course, topics });
+  })
+
+  // ─── Get one course as a 2-level tree ─────────────────────────────────────
+  .get("/:id/tree", async (c) => {
+    const teacherId = c.get("userId")!;
+    const courseId = c.req.param("id")!;
+    const [course] = await db
+      .select()
+      .from(courses)
+      .where(and(eq(courses.id, courseId), eq(courses.teacher_id, teacherId)))
+      .limit(1);
+    if (!course) return c.json({ error: "Course not found" }, 404);
+
+    const allTopics = await db
+      .select()
+      .from(courseTopics)
+      .where(eq(courseTopics.course_id, courseId))
+      .orderBy(asc(courseTopics.order_index), asc(courseTopics.created_at));
+
+    return c.json({ ...course, topics: buildTree(allTopics) });
   })
 
   // ─── Update a course ──────────────────────────────────────────────────────
@@ -128,6 +162,7 @@ export const coursesRoutes = new Hono()
           is_shared: body.is_shared,
           prerequisite_topic_ids: body.prerequisite_topic_ids,
           order_index: body.order_index,
+          parent_topic_id: body.parent_topic_id ?? null,
         })
         .returning();
       return c.json(topic, 201);

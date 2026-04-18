@@ -209,11 +209,15 @@ export const courseTopics = pgTable(
       .notNull()
       .default([]),
     order_index: integer("order_index").notNull().default(0),
+    parent_topic_id: uuid("parent_topic_id"),  // NULL = top-level; FK wired via migration
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
-  (t) => [index("idx_course_topics_course_id").on(t.course_id)]
+  (t) => [
+    index("idx_course_topics_course_id").on(t.course_id),
+    index("idx_course_topics_parent_id").on(t.parent_topic_id),
+  ]
 );
 
 // ─── Lesson Sessions ──────────────────────────────────────────────────────────

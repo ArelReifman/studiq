@@ -268,6 +268,8 @@
   "courses.topics": "Topics",
   "courses.topicsCount": "{count} topics",
   "courses.topicPlaceholder": "Add a topic and press Enter",
+  "courses.addParentPlaceholder": "Add a main topic (e.g. Limits) and press Enter",
+  "courses.addChildPlaceholder": "Add sub-topic and press Enter…",
   "courses.shared": "Shared",
   "courses.unique": "Unique",
   "courses.noTopics": "No topics yet. Add the syllabus topics above.",
