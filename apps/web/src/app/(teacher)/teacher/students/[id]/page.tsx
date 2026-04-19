@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate, formatPercent } from "@/lib/utils";
 import type { LessonSession, DifficultyReport, StudentAiProfile } from "@studiq/types";
-import { ArrowLeft, AlertTriangle, PlusCircle, Trash2, MessageSquare } from "lucide-react";
+import { ArrowLeft, AlertTriangle, PlusCircle, Trash2, MessageSquare, Map } from "lucide-react";
 import { useT } from "@/i18n";
 import { CreateLessonModal } from "@/components/teacher/create-lesson-modal";
 
@@ -96,6 +96,13 @@ export default function StudentDetailPage() {
           <h1 className="text-2xl font-bold">{student?.full_name}</h1>
         </div>
         <div className="flex gap-2">
+          <Link
+            href={`/teacher/students/${id}/map`}
+            className="inline-flex items-center gap-1.5 border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-lg px-3 py-2 text-sm font-medium"
+          >
+            <Map size={15} />
+            מפת למידה
+          </Link>
           <Button onClick={() => setShowCreateLesson(true)}>
             <PlusCircle size={15} />
             {t("createLesson.title")}

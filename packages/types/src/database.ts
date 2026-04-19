@@ -217,3 +217,44 @@ export interface LessonWithItems extends LessonSession {
   homework_items: HomeworkItem[];
   todo_items: TodoItem[];
 }
+
+// ─── Learning Map ─────────────────────────────────────────────────────────────
+
+export type TopicStatus = "mastered" | "in_progress" | "struggling" | "not_started";
+
+export interface TopicStats {
+  lessons_total: number;
+  lessons_completed: number;
+  tasks_total: number;
+  tasks_completed: number;
+  tasks_failed: number;
+  pct: number; // 0..100
+  status: TopicStatus;
+}
+
+export interface LearningMapTopic {
+  id: string;
+  name: string;
+  description: string | null;
+  order_index: number;
+  parent_topic_id: string | null;
+  is_shared: boolean;
+  prerequisite_topic_ids: string[];
+  locked: boolean; // prerequisites not yet mastered
+  stats: TopicStats;
+  children: LearningMapTopic[];
+}
+
+export interface LearningMap {
+  course_id: string;
+  course_name: string;
+  student_id: string;
+  topics: LearningMapTopic[]; // top-level (parent_topic_id = null)
+  overall: {
+    total_topics: number;
+    mastered: number;
+    in_progress: number;
+    struggling: number;
+    overall_pct: number;
+  };
+}
