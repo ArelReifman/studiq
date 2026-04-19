@@ -36,7 +36,7 @@ export function LearningMapView({
   const [activeId, setActiveId] = useState<string | null>(initialId);
   const active = topics.find((t) => t.id === activeId) ?? null;
 
-  // AI recommendation: lowest pct non-locked topic with failures, else first struggling
+  // AI recommendation: struggling → in_progress (lowest pct) → first not_started → first
   const recommendation = useMemo(() => {
     const struggling = topics.find(
       (t) => t.stats.status === "struggling" && !t.locked
@@ -45,8 +45,25 @@ export function LearningMapView({
     const inProgress = topics
       .filter((t) => t.stats.status === "in_progress" && !t.locked)
       .sort((a, b) => a.stats.pct - b.stats.pct)[0];
-    return inProgress ?? null;
+    if (inProgress) return inProgress;
+    const notStarted = topics.find(
+      (t) => t.stats.status === "not_started" && !t.locked
+    );
+    return notStarted ?? topics.find((t) => !t.locked) ?? null;
   }, [topics]);
+
+  const recReasonLabel = (s: string) => {
+    switch (s) {
+      case "struggling":
+        return "זוהו קשיים";
+      case "in_progress":
+        return "בתהליך";
+      case "not_started":
+        return "טרם התחלתם";
+      default:
+        return "המשך כאן";
+    }
+  };
 
   const counts = map.overall;
 
@@ -54,7 +71,6 @@ export function LearningMapView({
     <div
       dir="rtl"
       className="flex flex-col bg-[#09090B] text-white/90 font-[Heebo,sans-serif] rounded-xl border border-white/[0.07] overflow-hidden"
-      style={{ minHeight: 620 }}
     >
       {/* TOPBAR */}
       <div className="flex items-center h-[50px] px-5 border-b border-white/[0.07] bg-[rgba(9,9,11,.96)] backdrop-blur flex-shrink-0">
@@ -78,7 +94,7 @@ export function LearningMapView({
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden min-h-[520px]">
+      <div className="flex flex-1 overflow-hidden">
         {/* SIDE PANEL */}
         <aside className="w-[220px] flex-shrink-0 border-s border-white/[0.07] flex flex-col p-4 gap-3 overflow-y-auto">
           {role === "teacher" && recommendation && (
@@ -89,12 +105,13 @@ export function LearningMapView({
               <div className="text-[8px] font-bold tracking-[0.08em] uppercase text-white/[0.22]">
                 המלצת AI
               </div>
-              <div className="text-[12px] font-bold leading-tight">
-                חיזוק ב{recommendation.name}
+              <div className="text-[12px] font-bold leading-tight line-clamp-2">
+                {recommendation.name}
               </div>
               <div className="text-[9px] text-white/[0.5]">
-                {recommendation.stats.tasks_failed} כישלונות ·{" "}
-                {recommendation.stats.pct}% התקדמות
+                {recReasonLabel(recommendation.stats.status)}
+                {recommendation.stats.tasks_failed > 0 &&
+                  ` · ${recommendation.stats.tasks_failed} קשיים`}
               </div>
               <button
                 onClick={() => onCreateLesson?.(recommendation.id)}
@@ -221,8 +238,61 @@ export function LearningMapView({
           )}
 
           {active && active.children.length === 0 && (
-            <div className="flex-1 mx-[18px] mb-4 border border-white/[0.12] rounded-[10px] bg-[#111113] p-6 text-[12px] text-white/[0.5] text-center">
-              אין עדיין תת-נושאים ל{active.name}
+            <div className="mx-[18px] mb-4 border border-white/[0.12] rounded-[10px] bg-[#111113] overflow-hidden">
+              <div className="flex items-center gap-[10px] px-[14px] py-[10px] border-b border-white/[0.07]">
+                <span className="text-[12px] font-bold flex-1">
+                  {active.name}
+                </span>
+                <span
+                  className={`text-[9px] font-semibold ${statusTextColor(
+                    active.stats.status
+                  )}`}
+                >
+                  {statusLabel(active.stats.status, role)}
+                </span>
+                {role === "teacher" && !active.locked && (
+                  <button
+                    onClick={() => onCreateLesson?.(active.id)}
+                    className="text-[9px] font-semibold px-[10px] py-1 rounded-[5px] border border-[rgba(96,165,250,0.2)] bg-[rgba(96,165,250,0.06)] text-[#60A5FA] hover:border-[rgba(96,165,250,0.4)] transition-colors"
+                  >
+                    צור שיעור
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-4 gap-px bg-white/[0.07]">
+                <TopicStat
+                  label="התקדמות"
+                  value={`${active.stats.pct}%`}
+                  tone={active.stats.status}
+                />
+                <TopicStat
+                  label="שיעורים"
+                  value={active.stats.lessons_total}
+                />
+                <TopicStat
+                  label="הושלמו"
+                  value={`${active.stats.tasks_completed}/${active.stats.tasks_total}`}
+                />
+                <TopicStat
+                  label="קשיים"
+                  value={active.stats.tasks_failed}
+                  tone={
+                    active.stats.tasks_failed > 0 ? "struggling" : "not_started"
+                  }
+                />
+              </div>
+              {active.description && (
+                <div className="px-[14px] py-3 text-[11px] text-white/[0.5] leading-relaxed border-t border-white/[0.07]">
+                  {active.description}
+                </div>
+              )}
+              {active.stats.lessons_total === 0 && (
+                <div className="px-[14px] py-4 text-[11px] text-white/[0.35] text-center">
+                  {role === "teacher"
+                    ? "עוד לא נוצרו שיעורים בנושא הזה"
+                    : "עוד לא התחלת את הנושא"}
+                </div>
+              )}
             </div>
           )}
         </main>
@@ -232,6 +302,30 @@ export function LearningMapView({
 }
 
 // ─── Sub-components ────────────────────────────────────────────────────────
+
+function TopicStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string | number;
+  tone?: TopicStatus;
+}) {
+  const color = tone ? statusTextColor(tone) : "text-white/90";
+  return (
+    <div className="bg-[#111113] px-3 py-[10px] flex flex-col gap-[3px]">
+      <span className="text-[8px] font-bold tracking-[0.08em] uppercase text-white/[0.22]">
+        {label}
+      </span>
+      <span
+        className={`text-[15px] font-extrabold tabular-nums tracking-[-0.4px] ${color}`}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
 
 function Stat({
   label,
