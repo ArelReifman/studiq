@@ -5,6 +5,7 @@ export function buildLessonGenerationPrompt(params: {
   profile: StudentAiProfile;
   recentDifficulties: DifficultyReport[];
   teacherFeedback: TeacherAiFeedback[];
+  teacherStyleSummary: string | null;
   similarLessons: Array<{ content: string }>;
 }): string {
   const {
@@ -12,6 +13,7 @@ export function buildLessonGenerationPrompt(params: {
     profile,
     recentDifficulties,
     teacherFeedback,
+    teacherStyleSummary,
     similarLessons,
   } = params;
 
@@ -50,6 +52,9 @@ export function buildLessonGenerationPrompt(params: {
 
 ## AI Summary (accumulated knowledge about this student)
 ${profile.ai_summary ?? "No summary yet — this may be a new student."}
+
+## Teacher's Teaching Style (learned from past feedback)
+${teacherStyleSummary ?? "No teaching style profile yet — use general best practices."}
 
 ## Teacher's Guidance for This Student
 ${profile.teacher_feedback_summary ?? "No teacher feedback yet."}
@@ -192,5 +197,57 @@ Respond ONLY with valid JSON:
     "suggested_difficulty": "easier" | "same" | "harder",
     "notes": "string"
   }
+}`;
+}
+
+export function buildTeacherStyleUpdatePrompt(params: {
+  currentSummary: string | null;
+  feedbacks: Array<{
+    feedback_type: string;
+    content: string;
+    sentiment: string | null;
+    created_at: string;
+  }>;
+  totalFeedbackCount: number;
+}): string {
+  const { currentSummary, feedbacks, totalFeedbackCount } = params;
+
+  const feedbackList = feedbacks
+    .map(
+      (f) =>
+        `[${f.feedback_type}${f.sentiment ? ` / ${f.sentiment}` : ""}] "${f.content}"`
+    )
+    .join("\n");
+
+  return `You are analyzing feedback from a private tutor to learn their teaching style and preferences.
+Your job is to write an updated "teaching style profile" that captures HOW this teacher likes to work.
+
+## Current Teaching Style Profile
+${currentSummary ?? "No profile yet — create one from scratch based on the feedback below."}
+
+## Latest Feedback Submissions (${feedbacks.length} new, ${totalFeedbackCount} total)
+${feedbackList}
+
+## What to Extract
+Look for patterns like:
+- Lesson structure preferences (theory first vs examples first)
+- Difficulty calibration ("always start easy", "push hard on exam prep")
+- Topic sequencing preferences
+- Homework style (short sharp tasks vs longer problems)
+- Communication style cues (formal, encouraging, direct)
+- Recurring corrections they make on AI output
+- Any specific pedagogical method they consistently prefer
+
+## Instructions
+- Write 3–6 sentences in Hebrew
+- Be specific and concrete — "מעדיף להתחיל עם דוגמה ואחר כך הסבר תיאורטי"
+- Focus on actionable patterns future lesson generation can use
+- Do NOT mention specific student names
+- Update based on new feedback but preserve validated patterns from before
+
+Respond ONLY with valid JSON:
+{
+  "teaching_style_summary": "string (Hebrew)",
+  "key_patterns": ["string", "string"]
 }`;
 }

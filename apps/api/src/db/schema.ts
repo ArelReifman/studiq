@@ -107,6 +107,9 @@ export const teachers = pgTable("teachers", {
     .references(() => profiles.id, { onDelete: "cascade" }),
   bio: text("bio"),
   subjects: text("subjects").array().notNull().default([]),
+  // AI-accumulated teaching style — updated by Claude after every few feedbacks
+  teaching_style_summary: text("teaching_style_summary"),
+  teaching_feedback_count: integer("teaching_feedback_count").notNull().default(0),
 });
 
 // ─── Students ─────────────────────────────────────────────────────────────────

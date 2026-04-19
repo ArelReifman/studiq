@@ -10,6 +10,7 @@ import {
   lessonSessions,
   homeworkItems,
   todoItems,
+  teachers,
 } from "../../db/schema.js";
 import { callClaude } from "./claude.js";
 import { buildLessonGenerationPrompt } from "./prompts.js";
@@ -34,7 +35,7 @@ const GeneratedLessonSchema = z.object({
 
 export async function generateLesson(studentId: string, teacherId: string) {
   // 1. Fetch all context in parallel
-  const [studentRow, aiProfile, recentDifficulties, pendingFeedback] =
+  const [studentRow, aiProfile, recentDifficulties, pendingFeedback, teacherRow] =
     await Promise.all([
       db
         .select({ full_name: profiles.full_name })
@@ -68,6 +69,13 @@ export async function generateLesson(studentId: string, teacherId: string) {
           )
         )
         .orderBy(desc(teacherAiFeedback.created_at)),
+
+      db
+        .select({ teaching_style_summary: teachers.teaching_style_summary })
+        .from(teachers)
+        .where(eq(teachers.id, teacherId))
+        .limit(1)
+        .then((rows) => rows[0]),
     ]);
 
   if (!studentRow || !aiProfile) {
@@ -80,6 +88,7 @@ export async function generateLesson(studentId: string, teacherId: string) {
     profile: aiProfile as any,
     recentDifficulties: recentDifficulties as any,
     teacherFeedback: pendingFeedback as any,
+    teacherStyleSummary: teacherRow?.teaching_style_summary ?? null,
     similarLessons: [], // Phase 2: add vector retrieval here
   });
 
