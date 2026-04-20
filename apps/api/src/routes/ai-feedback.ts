@@ -3,7 +3,13 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { teacherAiFeedback, students, teachers } from "../db/schema.js";
+import {
+  teacherAiFeedback,
+  students,
+  teachers,
+  difficultyReports,
+  lessonSessions,
+} from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { callClaude } from "../services/ai/claude.js";
 import { buildTeacherStyleUpdatePrompt } from "../services/ai/prompts.js";
@@ -105,26 +111,76 @@ async function updateTeacherStyleIfDue(teacherId: string): Promise<void> {
   // Only run Claude every N submissions
   if (newCount % STYLE_UPDATE_INTERVAL !== 0) return;
 
-  // Fetch last 15 feedbacks from this teacher
-  const recentFeedbacks = await db
-    .select({
-      feedback_type: teacherAiFeedback.feedback_type,
-      content: teacherAiFeedback.content,
-      sentiment: teacherAiFeedback.sentiment,
-      created_at: teacherAiFeedback.created_at,
-    })
-    .from(teacherAiFeedback)
-    .where(eq(teacherAiFeedback.teacher_id, teacherId))
-    .orderBy(desc(teacherAiFeedback.created_at))
-    .limit(15);
+  // Collect all writing sources in parallel
+  const [recentFeedbacks, difficultyNotes, manualLessons] = await Promise.all([
+    // Explicit feedback submissions
+    db
+      .select({
+        feedback_type: teacherAiFeedback.feedback_type,
+        content: teacherAiFeedback.content,
+        sentiment: teacherAiFeedback.sentiment,
+        created_at: teacherAiFeedback.created_at,
+      })
+      .from(teacherAiFeedback)
+      .where(eq(teacherAiFeedback.teacher_id, teacherId))
+      .orderBy(desc(teacherAiFeedback.created_at))
+      .limit(15),
 
-  if (recentFeedbacks.length === 0) return;
+    // Notes added to difficulty reports
+    db
+      .select({
+        teacher_note: difficultyReports.teacher_note,
+        topic_tags: difficultyReports.topic_tags,
+        created_at: difficultyReports.created_at,
+      })
+      .from(difficultyReports)
+      .where(
+        and(
+          eq(difficultyReports.teacher_id, teacherId),
+          // Only notes that have actual text
+          // Using raw sql would be cleaner but this works:
+          eq(difficultyReports.reviewed, true)
+        )
+      )
+      .orderBy(desc(difficultyReports.created_at))
+      .limit(10),
+
+    // Manually created lessons (title + description = teacher's own voice)
+    db
+      .select({
+        title: lessonSessions.title,
+        description: lessonSessions.description,
+        created_at: lessonSessions.generated_at,
+      })
+      .from(lessonSessions)
+      .where(
+        and(
+          eq(lessonSessions.teacher_id, teacherId),
+          eq(lessonSessions.ai_generated, false)
+        )
+      )
+      .orderBy(desc(lessonSessions.generated_at))
+      .limit(10),
+  ]);
+
+  if (recentFeedbacks.length === 0 && difficultyNotes.length === 0) return;
 
   const prompt = buildTeacherStyleUpdatePrompt({
     currentSummary: teacher.teaching_style_summary,
     feedbacks: recentFeedbacks.map((f) => ({
       ...f,
       created_at: f.created_at.toISOString(),
+    })),
+    difficultyNotes: difficultyNotes
+      .filter((d) => d.teacher_note)
+      .map((d) => ({
+        note: d.teacher_note!,
+        topics: d.topic_tags,
+        created_at: d.created_at.toISOString(),
+      })),
+    manualLessons: manualLessons.map((l) => ({
+      title: l.title,
+      description: l.description ?? "",
     })),
     totalFeedbackCount: newCount,
   });

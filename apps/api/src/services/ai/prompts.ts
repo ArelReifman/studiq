@@ -208,42 +208,82 @@ export function buildTeacherStyleUpdatePrompt(params: {
     sentiment: string | null;
     created_at: string;
   }>;
+  difficultyNotes: Array<{
+    note: string;
+    topics: string[];
+    created_at: string;
+  }>;
+  manualLessons: Array<{
+    title: string;
+    description: string;
+  }>;
   totalFeedbackCount: number;
 }): string {
-  const { currentSummary, feedbacks, totalFeedbackCount } = params;
+  const {
+    currentSummary,
+    feedbacks,
+    difficultyNotes,
+    manualLessons,
+    totalFeedbackCount,
+  } = params;
 
-  const feedbackList = feedbacks
-    .map(
-      (f) =>
-        `[${f.feedback_type}${f.sentiment ? ` / ${f.sentiment}` : ""}] "${f.content}"`
-    )
-    .join("\n");
+  const feedbackSection =
+    feedbacks.length > 0
+      ? feedbacks
+          .map(
+            (f) =>
+              `[${f.feedback_type}${f.sentiment ? ` / ${f.sentiment}` : ""}] "${f.content}"`
+          )
+          .join("\n")
+      : "אין";
 
-  return `You are analyzing feedback from a private tutor to learn their teaching style and preferences.
-Your job is to write an updated "teaching style profile" that captures HOW this teacher likes to work.
+  const notesSection =
+    difficultyNotes.length > 0
+      ? difficultyNotes
+          .map(
+            (d) =>
+              `נושאים: ${d.topics.join(", ")} — הערה: "${d.note}"`
+          )
+          .join("\n")
+      : "אין";
 
-## Current Teaching Style Profile
-${currentSummary ?? "No profile yet — create one from scratch based on the feedback below."}
+  const lessonsSection =
+    manualLessons.length > 0
+      ? manualLessons
+          .map((l) => `• "${l.title}"${l.description ? `: ${l.description}` : ""}`)
+          .join("\n")
+      : "אין";
 
-## Latest Feedback Submissions (${feedbacks.length} new, ${totalFeedbackCount} total)
-${feedbackList}
+  return `אתה מנתח את כתיבתו של מורה פרטי כדי ללמוד את סגנון ההוראה שלו.
+המטרה: לבנות פרופיל שיאפשר ל-AI לייצר שיעורים שנשמעים כאילו המורה הזה עצמו כתב אותם.
 
-## What to Extract
-Look for patterns like:
-- Lesson structure preferences (theory first vs examples first)
-- Difficulty calibration ("always start easy", "push hard on exam prep")
-- Topic sequencing preferences
-- Homework style (short sharp tasks vs longer problems)
-- Communication style cues (formal, encouraging, direct)
-- Recurring corrections they make on AI output
-- Any specific pedagogical method they consistently prefer
+## הפרופיל הנוכחי
+${currentSummary ?? "אין פרופיל עדיין — בנה חדש על סמך הנתונים למטה."}
 
-## Instructions
-- Write 3–6 sentences in Hebrew
-- Be specific and concrete — "מעדיף להתחיל עם דוגמה ואחר כך הסבר תיאורטי"
-- Focus on actionable patterns future lesson generation can use
-- Do NOT mention specific student names
-- Update based on new feedback but preserve validated patterns from before
+## משובים מפורשים שהמורה כתב (${feedbacks.length} חדשים, ${totalFeedbackCount} סה״כ)
+${feedbackSection}
+
+## הערות שהמורה הוסיף לדיווחי קושי
+${notesSection}
+
+## שיעורים שהמורה יצר ידנית (סגנון כותרות + תיאורים)
+${lessonsSection}
+
+## מה לחלץ מהנתונים האלה
+חפש דפוסים כמו:
+- האם מתחיל בתיאוריה או דוגמה?
+- האם מעדיף תרגילים קצרים וממוקדים או שאלות ארוכות?
+- איך מגדיר רמת קושי — האם מאתגר מההתחלה?
+- מה סגנון הכתיבה — פורמלי, מעודד, ישיר, עם הומור?
+- האם יש מינוח ספציפי שחוזר?
+- מה הוא תמיד מתקן בשיעורי AI?
+- איך הוא מסביר למה תלמיד נכשל?
+
+## הנחיות
+- כתוב 4–7 משפטים בעברית
+- היה ספציפי: "מעדיף להתחיל עם דוגמה מספרית ורק אחר כך ההגדרה הפורמלית"
+- אל תאזכר שמות תלמידים
+- שמור על דפוסים מאומתים מהפרופיל הקודם, עדכן רק על בסיס עדויות חדשות
 
 Respond ONLY with valid JSON:
 {
