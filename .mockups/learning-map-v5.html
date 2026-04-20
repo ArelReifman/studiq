@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>מפת למידה — Studiq v5</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Heebo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ─── RESET ──────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:      #060608;
+  --s1:      #0A0C10;
+  --s2:      #0F1118;
+  --s3:      #141720;
+  --b1:      rgba(255,255,255,.055);
+  --b2:      rgba(255,255,255,.09);
+  --b3:      rgba(255,255,255,.14);
+  --t1:      rgba(255,255,255,.90);
+  --t2:      rgba(255,255,255,.45);
+  --t3:      rgba(255,255,255,.18);
+
+  --g:       #34D399;   /* emerald - mastered   */
+  --g-dim:   rgba(52,211,153,.12);
+  --r:       #F87171;   /* red    - struggling   */
+  --r-dim:   rgba(248,113,113,.12);
+  --a:       #FCD34D;   /* amber  - in progress  */
+  --a-dim:   rgba(252,211,77,.10);
+  --x:       rgba(255,255,255,.08); /* not started */
+
+  --col-bar: 88px;
+  --col-pct: 44px;
+  --col-vel: 56px;
+  --col-ext: 72px;
+  --row-h:   36px;
+  --row-hp:  44px;
+}
+
+html,body{height:100%;overflow:hidden}
+body{
+  font-family:'Heebo','Inter',sans-serif;
+  background:var(--bg);
+  color:var(--t1);
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ─── ROOT SPLIT ─────────────────────────────────────── */
+.root{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  height:100vh;
+  gap:0;
+}
+
+/* ─── PANE ───────────────────────────────────────────── */
+.pane{
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  border-left:1px solid var(--b1);
+}
+.pane:last-child{border-left:none}
+
+/* ─── TOPBAR ─────────────────────────────────────────── */
+.topbar{
+  height:52px;
+  display:flex;
+  align-items:center;
+  padding:0 20px;
+  gap:0;
+  border-bottom:1px solid var(--b1);
+  flex-shrink:0;
+  background:rgba(6,6,8,.92);
+  backdrop-filter:blur(12px);
+  position:sticky;top:0;z-index:10;
+}
+.tb-title{
+  font-size:13px;font-weight:700;
+  letter-spacing:-.2px;color:var(--t1);
+}
+.tb-course{
+  font-size:12px;font-weight:400;
+  color:var(--t3);
+  margin-right:8px;
+  padding-right:8px;
+  border-right:1px solid var(--b1);
+}
+.tb-stats{
+  display:flex;gap:0;
+  margin-right:auto;
+}
+.tb-stat{
+  display:flex;flex-direction:column;
+  align-items:flex-end;
+  padding:0 14px;
+  border-left:1px solid var(--b1);
+}
+.tb-stat:first-child{border-left:none}
+.tb-stat-val{
+  font-size:15px;font-weight:700;
+  letter-spacing:-.5px;line-height:1;
+  font-variant-numeric:tabular-nums;
+  color:var(--t1);
+}
+.tb-stat-lbl{
+  font-size:9px;font-weight:500;
+  letter-spacing:.06em;text-transform:uppercase;
+  color:var(--t3);
+  margin-top:1px;
+}
+.tb-stat-val.red{color:var(--r)}
+.tb-stat-val.green{color:var(--g)}
+
+/* ─── COL HEADER ROW ─────────────────────────────────── */
+.col-hdr{
+  display:flex;
+  align-items:center;
+  height:28px;
+  padding:0 16px;
+  border-bottom:1px solid var(--b1);
+  flex-shrink:0;
+  background:var(--s1);
+}
+.col-hdr-name{
+  flex:1;
+  font-size:9px;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;
+  color:var(--t3);
+}
+.col-hdr-cell{
+  font-size:9px;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;
+  color:var(--t3);
+  text-align:center;
+}
+.col-hdr-cell.bar{width:var(--col-bar)}
+.col-hdr-cell.pct{width:var(--col-pct);text-align:left}
+.col-hdr-cell.vel{width:var(--col-vel)}
+.col-hdr-cell.ext{width:var(--col-ext)}
+
+/* ─── SCROLL WRAPPER ─────────────────────────────────── */
+.scroll{
+  flex:1;
+  overflow-y:auto;
+  overflow-x:hidden;
+}
+.scroll::-webkit-scrollbar{width:2px}
+.scroll::-webkit-scrollbar-track{background:transparent}
+.scroll::-webkit-scrollbar-thumb{background:var(--s3);border-radius:1px}
+
+/* ─── TOPIC GROUP ────────────────────────────────────── */
+.group{
+  border-bottom:1px solid var(--b1);
+}
+
+/* ─── PARENT ROW ─────────────────────────────────────── */
+.parent-row{
+  display:flex;
+  align-items:center;
+  height:var(--row-hp);
+  padding:0 16px;
+  gap:0;
+  background:var(--s1);
+  cursor:pointer;
+  user-select:none;
+  transition:background .1s;
+  position:relative;
+}
+.parent-row:hover{background:var(--s2)}
+.parent-row.open .chev{transform:rotate(180deg)}
+
+/* status stripe — 2px right edge */
+.stripe{
+  position:absolute;
+  right:0;top:6px;bottom:6px;
+  width:2px;
+  border-radius:1px;
+}
+.s-green .stripe{background:var(--g)}
+.s-amber .stripe{background:var(--a)}
+.s-red   .stripe{background:var(--r)}
+
+/* dot */
+.dot{
+  width:6px;height:6px;border-radius:50%;
+  flex-shrink:0;
+  margin-left:10px;
+}
+.s-green .dot{background:var(--g)}
+.s-amber .dot{background:var(--a)}
+.s-red   .dot{background:var(--r)}
+.s-none  .dot{background:var(--b2)}
+
+/* name area */
+.pname{
+  flex:1;min-width:0;
+  padding-right:10px;
+}
+.pname-main{
+  font-size:13px;font-weight:600;
+  color:var(--t1);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.pname-sub{
+  font-size:10px;color:var(--t3);margin-top:1px;
+}
+
+/* data cells */
+.cell-bar{
+  width:var(--col-bar);
+  display:flex;align-items:center;
+  padding:0 8px;
+}
+.bar-track{
+  width:100%;height:2px;
+  background:var(--b2);
+  border-radius:1px;
+  overflow:hidden;
+  position:relative;
+}
+.bar-fill{
+  position:absolute;right:0;top:0;bottom:0;
+  border-radius:1px;
+  transition:width .4s cubic-bezier(.4,0,.2,1);
+}
+.s-green .bar-fill{background:var(--g)}
+.s-amber .bar-fill{background:var(--a)}
+.s-red   .bar-fill{background:var(--r)}
+.s-none  .bar-fill{background:var(--b3)}
+
+.cell-pct{
+  width:var(--col-pct);
+  font-size:14px;font-weight:700;
+  font-variant-numeric:tabular-nums;
+  letter-spacing:-.5px;
+  color:var(--t1);
+}
+.s-none .cell-pct{color:var(--t3)}
+
+.cell-vel{
+  width:var(--col-vel);
+  font-size:10px;font-weight:600;
+  font-variant-numeric:tabular-nums;
+  display:flex;align-items:center;justify-content:center;
+  gap:2px;
+}
+.vel-up{color:var(--g)}
+.vel-dn{color:var(--r)}
+.vel-flat{color:var(--t3)}
+
+.cell-ext{
+  width:var(--col-ext);
+  display:flex;align-items:center;justify-content:flex-start;
+  gap:4px;
+}
+
+/* chev */
+.chev{
+  color:var(--t3);flex-shrink:0;margin-right:2px;
+  transition:transform .2s;font-size:10px;
+  line-height:1;width:12px;text-align:center;
+}
+
+/* ─── CHILD ROWS ─────────────────────────────────────── */
+.children{
+  display:none;
+}
+.open + .children{display:block}
+
+.child-row{
+  display:flex;
+  align-items:center;
+  height:var(--row-h);
+  padding:0 16px 0 28px;
+  gap:0;
+  border-top:1px solid var(--b1);
+  transition:background .1s;
+  position:relative;
+}
+.child-row:hover{background:rgba(255,255,255,.015)}
+.child-row .pname-main{
+  font-size:12px;font-weight:400;
+  color:var(--t2);
+}
+.child-row.s-green .pname-main{color:var(--t1)}
+.child-row.s-red   .pname-main{color:var(--r)}
+.child-row .cell-pct{font-size:12px;font-weight:600}
+.child-row .dot{width:5px;height:5px}
+
+/* ─── TEACHER: STUDENT PRESENCE DOTS ────────────────── */
+/* Who is working on this topic right now */
+.presence{
+  display:flex;align-items:center;gap:-2px;
+  position:relative;
+}
+.pres-dot{
+  width:16px;height:16px;border-radius:50%;
+  border:1.5px solid var(--s1);
+  font-size:8px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;
+  margin-left:-4px;
+  flex-shrink:0;
+}
+.pres-dot:first-child{margin-left:0}
+
+/* ─── TEACHER: DIFFICULTY BADGE ──────────────────────── */
+.diff-badge{
+  font-size:10px;font-weight:700;
+  font-variant-numeric:tabular-nums;
+  color:var(--r);
+  min-width:18px;text-align:center;
+}
+.diff-badge.zero{color:var(--t3);font-weight:400}
+
+/* ─── STUDENT: ACTIVITY HEATMAP ──────────────────────── */
+.heatmap-wrapper{
+  padding:16px 20px 14px;
+  border-bottom:1px solid var(--b1);
+  background:var(--s1);
+  flex-shrink:0;
+}
+.heatmap-label{
+  font-size:9px;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;
+  color:var(--t3);
+  margin-bottom:8px;
+}
+.heatmap-grid{
+  display:flex;gap:3px;
+  align-items:flex-end;
+}
+.hm-col{
+  display:flex;flex-direction:column;gap:3px;
+  align-items:center;
+}
+.hm-day-lbl{
+  font-size:8px;color:var(--t3);
+  margin-bottom:2px;
+  width:12px;text-align:center;
+}
+.hm-cell{
+  width:12px;height:12px;border-radius:2px;
+  background:var(--b2);
+}
+.hm-cell.l1{background:rgba(52,211,153,.20)}
+.hm-cell.l2{background:rgba(52,211,153,.40)}
+.hm-cell.l3{background:rgba(52,211,153,.65)}
+.hm-cell.l4{background:rgba(52,211,153,.88)}
+.hm-streak{
+  margin-top:8px;
+  font-size:11px;color:var(--t2);
+  display:flex;align-items:center;gap:6px;
+}
+.hm-streak strong{color:var(--g);font-weight:700}
+.hm-streak-bar{
+  flex:1;height:2px;background:var(--b2);border-radius:1px;
+  position:relative;
+  overflow:hidden;
+}
+.hm-streak-fill{
+  position:absolute;right:0;top:0;bottom:0;
+  background:var(--g);border-radius:1px;
+}
+
+/* ─── STUDENT: NEXT STEP ─────────────────────────────── */
+.next-step{
+  font-size:10px;color:var(--t3);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  max-width:var(--col-ext);
+}
+.next-step.active{color:var(--a)}
+.next-step.done{color:var(--g)}
+.next-step.stuck{color:var(--r)}
+
+/* ─── ACTION BUTTON (teacher hover) ─────────────────── */
+.act-btn{
+  display:none;
+  font-size:10px;font-weight:600;
+  padding:3px 8px;
+  border-radius:4px;
+  border:1px solid var(--b2);
+  background:var(--s2);
+  color:var(--t2);
+  cursor:pointer;
+  white-space:nowrap;
+  transition:border-color .1s,color .1s;
+}
+.act-btn:hover{border-color:var(--b3);color:var(--t1)}
+.parent-row:hover .act-btn,
+.child-row:hover .act-btn{display:flex;align-items:center;gap:4px}
+
+/* hide presence dots when action btn shown */
+.parent-row:hover .presence,
+.child-row:hover .presence{display:none}
+
+/* ─── SECTION LABEL ──────────────────────────────────── */
+.section-lbl{
+  height:26px;
+  display:flex;align-items:center;
+  padding:0 16px;
+  font-size:9px;font-weight:600;
+  letter-spacing:.1em;text-transform:uppercase;
+  color:var(--t3);
+  background:var(--s1);
+  border-bottom:1px solid var(--b1);
+  flex-shrink:0;
+}
+
+/* ─── STUDENT LOCKED TOPIC ───────────────────────────── */
+.lock-icon{
+  font-size:10px;color:var(--t3);
+  margin-left:6px;
+  opacity:.5;
+}
+
+/* ─── DIVIDER BETWEEN VIEWS ──────────────────────────── */
+.divider-label{
+  position:absolute;
+  top:50%;
+  left:50%;
+  transform:translate(-50%,-50%);
+  z-index:100;
+  font-size:10px;font-weight:600;
+  letter-spacing:.1em;text-transform:uppercase;
+  color:var(--t3);
+  background:var(--bg);
+  padding:6px 10px;
+  border:1px solid var(--b1);
+  border-radius:4px;
+  pointer-events:none;
+}
+
+/* ─── SCROLLBAR CUSTOM ───────────────────────────────── */
+* { scrollbar-width: thin; scrollbar-color: var(--s3) transparent; }
+
+</style>
+</head>
+<body>
+
+<div class="root">
+
+  <!-- ═══════════════════════════════════════════════════
+       PANE 1 — TEACHER VIEW
+  ═══════════════════════════════════════════════════ -->
+  <div class="pane">
+
+    <div class="topbar">
+      <span class="tb-course">מורה</span>
+      <span class="tb-title">מפת למידה</span>
+      <div class="tb-stats" style="margin-right:0;margin-left:auto">
+        <div class="tb-stat">
+          <span class="tb-stat-val">14</span>
+          <span class="tb-stat-lbl">נושאים</span>
+        </div>
+        <div class="tb-stat">
+          <span class="tb-stat-val green">64%</span>
+          <span class="tb-stat-lbl">ממוצע</span>
+        </div>
+        <div class="tb-stat">
+          <span class="tb-stat-val red">5</span>
+          <span class="tb-stat-lbl">קשיים</span>
+        </div>
+        <div class="tb-stat">
+          <span class="tb-stat-val">4</span>
+          <span class="tb-stat-lbl">תלמידים</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- column headers -->
+    <div class="col-hdr">
+      <span class="col-hdr-name">נושא</span>
+      <span class="col-hdr-cell bar">התקדמות</span>
+      <span class="col-hdr-cell pct">%</span>
+      <span class="col-hdr-cell vel">שינוי</span>
+      <span class="col-hdr-cell ext">נוכחות / קשיים</span>
+    </div>
+
+    <div class="scroll">
+
+      <!-- ── SECTION: מספרים ─────────────────────────── -->
+      <div class="section-lbl">מספרים</div>
+
+      <!-- PARENT: חיבור וחיסור -->
+      <div class="group">
+        <div class="parent-row s-green open" onclick="tog(this)">
+          <div class="stripe"></div>
+          <div class="dot"></div>
+          <div class="pname">
+            <div class="pname-main">חיבור וחיסור</div>
+            <div class="pname-sub">4 נושאי משנה</div>
+          </div>
+          <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:82%"></div></div></div>
+          <div class="cell-pct">82%</div>
+          <div class="cell-vel"><span class="vel-up">▲</span><span class="vel-up">+11%</span></div>
+          <div class="cell-ext">
+            <div class="presence">
+              <div class="pres-dot" style="background:#8B5CF6" title="יוסי">י</div>
+              <div class="pres-dot" style="background:#EC4899" title="מיכל">מ</div>
+            </div>
+            <button class="act-btn">+ שיעור</button>
+          </div>
+          <span class="chev">▾</span>
+        </div>
+        <div class="children">
+          <div class="child-row s-green">
+            <div class="dot"></div>
+            <div class="pname"><div class="pname-main">חיבור של מספרים עד 100</div></div>
+            <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:97%"></div></div></div>
+            <div class="cell-pct">97%</div>
+            <div class="cell-vel"><span class="vel-up">▲</span><span class="vel-up">+3%</span></div>
+            <div class="cell-ext"><button class="act-btn">+ שיעור</button></div>
+          </div>
+          <div class="child-row s-green">
+            <div class="dot"></div>
+            <div class="pname"><div class="pname-main">חיסור עם השאלה</div></div>
+            <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:88%"></div></div></div>
+            <div class="cell-pct">88%</div>
+            <div class="cell-vel"><span class="vel-up">▲</span><span class="vel-up">+6%</span></div>
+            <div class="cell-ext"><button class="act-btn">+ שיעור</button></div>
+          </div>
+          <div class="child-row s-amber">
+            <div class="dot"></div>
+            <div class="pname"><div class="pname-main">חיבור עם שלוש ספרות</div></div>
+            <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:61%"></div></div></div>
+            <div class="cell-pct">61%</div>
+            <div class="cell-vel"><span class="vel-flat">—</span><span class="vel-flat">0%</span></div>
+            <div class="cell-ext"><span class="diff-badge">2</span><button class="act-btn">+ שיעור</button></div>
+          </div>
+          <div class="child-row s-red">
+            <div class="dot"></div>
+            <div class="pname"><div class="pname-main">בעיות מילוליות</div></div>
+            <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:43%"></div></div></div>
+            <div class="cell-pct">43%</div>
+            <div class="cell-vel"><span class="vel-dn">▼</span><span class="vel-dn">−8%</span></div>
+            <div class="cell-ext"><span class="diff-badge">3</span><button class="act-btn">תיקון</button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PARENT: כפל וחילוק -->
+      <div class="group">
+        <div class="parent-row s-amber" onclick="tog(this)">
+          <div class="stripe"></div>
+          <div class="dot"></div>
+          <div class="pname">
+            <div class="pname-main">כפל וחילוק</div>
+            <div class="pname-sub">3 נושאי משנה</div>
+          </div>
+          <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:54%"></div></div></div>
+          <div class="cell-pct">54%</div>
+          <div class="cell-vel"><span class="vel-up">▲</span><span class="vel-up">+4%</span></div>
+          <div class="cell-ext">
+            <div class="presence">
+              <div class="pres-dot" style="background:#F59E0B" title="דן">ד</div>
+              <div class="pres-dot" style="background:#10B981" title="רון">ר</div>
+              <div class="pres-dot" style="background:#8B5CF6" title="יוסי">י</div>
+            </div>
+            <button class="act-btn">+ שיעור</button>
+          </div>
+          <span class="chev">▾</span>
+        </div>
+        <div class="children">
+          <div class="child-row s-green">
+            <div class="dot"></div>
+            <div class="pname"><div class="pname-main">לוח הכפל עד 5</div></div>
+            <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:91%"></div></div></div>
+            <div class="cell-pct">91%</div>
+            <div class="cell-vel"><span class="vel-up">▲</span><span class="vel-up">+2%</span></div>
+            <div class="cell-ext"><button class="act-btn">+ שיעור</button></div>
+          </div>
+          <div class="child-row s-amber">
+            <div class="dot"></div>
+            <div class="pname"><div class="pname-main">לוח הכפל עד 10</div></div>
+            <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:58%"></div></div></div>
+            <div class="cell-pct">58%</div>
+            <div class="cell-vel"><span class="vel-flat">—</span><span class="vel-flat">+1%</span></div>
+            <div class="cell-ext"><span class="diff-badge">1</span><button class="act-btn">+ שיעור</button></div>
+          </div>
+          <div class="child-row s-red">
+            <div class="dot"></div>
+            <div class="pname"><div class="pname-main">חילוק עם שארית</div></div>
+            <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:31%"></div></div></div>
+            <div class="cell-pct">31%</div>
+            <div class="cell-vel"><span class="vel-dn">▼</span><span class="vel-dn">−5%</span></div>
+            <div class="cell-ext"><span class="diff-badge">2</span><button class="act-btn">תיקון</button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SECTION: גאומטריה ───────────────────────── -->
+      <div class="section-lbl">גאומטריה</div>
+
+      <!-- PARENT: צורות ומידות -->
+      <div class="group">
+        <div class="parent-row s-green" onclick="tog(this)">
+          <div class="stripe"></div>
+          <div class="dot"></div>
+          <div class="pname">
+            <div class="pname-main">צורות ומידות</div>
+            <div class="pname-sub">4 נושאי משנה</div>
+          </div>
+          <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:76%"></div></div></div>
+          <div class="cell-pct">76%</div>
+          <div class="cell-vel"><span class="vel-up">▲</span><span class="vel-up">+9%</span></div>
+          <div class="cell-ext">
+            <div class="presence">
+              <div class="pres-dot" style="background:#EC4899" title="מיכל">מ</div>
+              <div class="pres-dot" style="background:#10B981" title="רון">ר</div>
+            </div>
+            <button class="act-btn">+ שיעור</button>
+          </div>
+          <span class="chev">▾</span>
+        </div>
+        <div class="children">
+          <div class="child-row s-green">
+            <div class="dot"></div>
+            <div class="pname"><div class="pname-main">מלבן ומשולש</div></div>
+            <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:95%"></div></div></div>
+            <div class="cell-pct">95%</div>
+            <div class="cell-vel"><span class="vel-up">▲</span><span class="vel-up">+1%</span></div>
+            <div class="cell-ext"><button class="act-btn">+ שיעור</button></div>
+          </div>
+          <div class="child-row s-green">
+            <div class="dot"></div>
+            <div class="pname"><div class="pname-main">היקף ושטח</div></div>
+            <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:79%"></div></div></div>
+            <div class="cell-pct">79%</div>
+            <div class="cell-vel"><span class="vel-up">▲</span><span class="vel-up">+12%</span></div>
+            <div class="cell-ext"><button class="act-btn">+ שיעור</button></div>
+          </div>
+          <div class="child-row s-amber">
+            <div class="dot"></div>
+            <div class="pname"><div class="pname-main">עיגול ורדיוס</div></div>
+            <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:52%"></div></div></div>
+            <div class="cell-pct">52%</div>
+            <div class="cell-vel"><span class="vel-up">▲</span><span class="vel-up">+7%</span></div>
+            <div class="cell-ext"><span class="diff-badge zero">0</span><button class="act-btn">+ שיעור</button></div>
+          </div>
+          <div class="child-row s-none">
+            <div class="dot"></div>
+            <div class="pname"><div class="pname-main">נפח ושטח פנים</div></div>
+            <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:0%"></div></div></div>
+            <div class="cell-pct" style="color:var(--t3)">—</div>
+            <div class="cell-vel"><span class="vel-flat">—</span></div>
+            <div class="cell-ext"><button class="act-btn">+ שיעור</button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PARENT: שברים -->
+      <div class="group">
+        <div class="parent-row s-amber" onclick="tog(this)">
+          <div class="stripe"></div>
+          <div class="dot"></div>
+          <div class="pname">
+            <div class="pname-main">שברים</div>
+            <div class="pname-sub">3 נושאי משנה</div>
+          </div>
+          <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:47%"></div></div></div>
+          <div class="cell-pct">47%</div>
+          <div class="cell-vel"><span class="vel-dn">▼</span><span class="vel-dn">−3%</span></div>
+          <div class="cell-ext">
+            <div class="presence">
+              <div class="pres-dot" style="background:#F59E0B" title="דן">ד</div>
+            </div>
+            <button class="act-btn">+ שיעור</button>
+          </div>
+          <span class="chev">▾</span>
+        </div>
+        <div class="children" style="display:none"></div>
+      </div>
+
+    </div><!-- /scroll -->
+  </div><!-- /pane teacher -->
+
+
+  <!-- ═══════════════════════════════════════════════════
+       PANE 2 — STUDENT VIEW
+  ═══════════════════════════════════════════════════ -->
+  <div class="pane">
+
+    <div class="topbar">
+      <span class="tb-course">תלמיד</span>
+      <span class="tb-title">מסלול הלמידה שלי</span>
+      <div class="tb-stats" style="margin-right:0;margin-left:auto">
+        <div class="tb-stat">
+          <span class="tb-stat-val green">9</span>
+          <span class="tb-stat-lbl">ימי רצף</span>
+        </div>
+        <div class="tb-stat">
+          <span class="tb-stat-val">64%</span>
+          <span class="tb-stat-lbl">הושלם</span>
+        </div>
+        <div class="tb-stat">
+          <span class="tb-stat-val green">▲ 8%</span>
+          <span class="tb-stat-lbl">השבוע</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- HEATMAP: activity over last 3 weeks -->
+    <div class="heatmap-wrapper">
+      <div class="heatmap-label">פעילות — 3 שבועות אחרונים</div>
+      <div class="heatmap-grid" id="heatmap"></div>
+      <div class="hm-streak">
+        <strong>9 ימי רצף</strong>
+        <span>— המשך כך!</span>
+        <div class="hm-streak-bar"><div class="hm-streak-fill" style="width:64%"></div></div>
+        <span style="font-size:10px;color:var(--t3)">עד 14</span>
+      </div>
+    </div>
+
+    <!-- column headers -->
+    <div class="col-hdr">
+      <span class="col-hdr-name">נושא</span>
+      <span class="col-hdr-cell bar">התקדמות</span>
+      <span class="col-hdr-cell pct">%</span>
+      <span class="col-hdr-cell vel">שינוי</span>
+      <span class="col-hdr-cell ext">מה הלאה</span>
+    </div>
+
+    <div class="scroll">
+
+      <div class="section-lbl">מספרים</div>
+
+      <!-- PARENT: חיבור וחיסור -->
+      <div class="group">
+        <div class="parent-row s-green open" onclick="tog(this)">
+          <div class="stripe"></div>
+          <div class="dot"></div>
+          <div class="pname">
+            <div class="pname-main">חיבור וחיסור</div>
+            <div class="pname-sub">4 נושאי משנה</div>
+          </div>
+          <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:82%"></div></div></div>
+          <div class="cell-pct">82%</div>
+          <div class="cell-vel"><span class="vel-up">▲</span><span class="vel-up">+11%</span></div>
+          <div class="cell-ext"><span class="next-step done">כמעט שלמת!</span></div>
+          <span class="chev">▾</span>
+        </div>
+        <div class="children">
+          <div class="child-row s-green">
+            <div class="dot"></div>
+            <div class="pname"><div class="pname-main">חיבור של מספרים עד 100</div></div>
+            <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:97%"></div></div></div>
+            <div class="cell-pct">97%</div>
+            <div class="cell-vel"><span class="vel-up">▲</span><span class="vel-up">+3%</span></div>
+            <div class="cell-ext"><span class="next-step done">שלטת ✓</span></div>
+          </div>
+          <div class="child-row s-green">
+            <div class="dot"></div>
+            <div class="pname"><div class="pname-main">חיסור עם השאלה</div></div>
+            <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:88%"></div></div></div>
+            <div class="cell-pct">88%</div>
+            <div class="cell-vel"><span class="vel-up">▲</span><span class="vel-up">+6%</span></div>
+            <div class="cell-ext"><span class="next-step done">שלטת ✓</span></div>
+          </div>
+          <div class="child-row s-amber">
+            <div class="dot"></div>
+            <div class="pname"><div class="pname-main">חיבור עם שלוש ספרות</div></div>
+            <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:61%"></div></div></div>
+            <div class="cell-pct">61%</div>
+            <div class="cell-vel"><span class="vel-flat">—</span><span class="vel-flat">0%</span></div>
+            <div class="cell-ext"><span class="next-step active">חזור על שיעור</span></div>
+          </div>
+          <div class="child-row s-red">
+            <div class="dot"></div>
+            <div class="pname"><div class="pname-main">בעיות מילוליות</div></div>
+            <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:43%"></div></div></div>
+            <div class="cell-pct">43%</div>
+            <div class="cell-vel"><span class="vel-dn">▼</span><span class="vel-dn">−8%</span></div>
+            <div class="cell-ext"><span class="next-step stuck">צריך תרגול נוסף</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PARENT: כפל וחילוק -->
+      <div class="group">
+        <div class="parent-row s-amber" onclick="tog(this)">
+          <div class="stripe"></div>
+          <div class="dot"></div>
+          <div class="pname">
+            <div class="pname-main">כפל וחילוק</div>
+            <div class="pname-sub">3 נושאי משנה</div>
+          </div>
+          <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:54%"></div></div></div>
+          <div class="cell-pct">54%</div>
+          <div class="cell-vel"><span class="vel-up">▲</span><span class="vel-up">+4%</span></div>
+          <div class="cell-ext"><span class="next-step active">בתהליך</span></div>
+          <span class="chev">▾</span>
+        </div>
+        <div class="children">
+          <div class="child-row s-green">
+            <div class="dot"></div>
+            <div class="pname"><div class="pname-main">לוח הכפל עד 5</div></div>
+            <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:91%"></div></div></div>
+            <div class="cell-pct">91%</div>
+            <div class="cell-vel"><span class="vel-up">▲</span><span class="vel-up">+2%</span></div>
+            <div class="cell-ext"><span class="next-step done">שלטת ✓</span></div>
+          </div>
+          <div class="child-row s-amber">
+            <div class="dot"></div>
+            <div class="pname"><div class="pname-main">לוח הכפל עד 10</div></div>
+            <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:58%"></div></div></div>
+            <div class="cell-pct">58%</div>
+            <div class="cell-vel"><span class="vel-flat">—</span><span class="vel-flat">+1%</span></div>
+            <div class="cell-ext"><span class="next-step active">תרגל שוב</span></div>
+          </div>
+          <div class="child-row s-red">
+            <div class="dot"></div>
+            <div class="pname"><div class="pname-main">חילוק עם שארית</div></div>
+            <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:31%"></div></div></div>
+            <div class="cell-pct">31%</div>
+            <div class="cell-vel"><span class="vel-dn">▼</span><span class="vel-dn">−5%</span></div>
+            <div class="cell-ext"><span class="next-step stuck">פנה למורה</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-lbl">גאומטריה</div>
+
+      <!-- PARENT: צורות ומידות -->
+      <div class="group">
+        <div class="parent-row s-green" onclick="tog(this)">
+          <div class="stripe"></div>
+          <div class="dot"></div>
+          <div class="pname">
+            <div class="pname-main">צורות ומידות</div>
+            <div class="pname-sub">4 נושאי משנה</div>
+          </div>
+          <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:76%"></div></div></div>
+          <div class="cell-pct">76%</div>
+          <div class="cell-vel"><span class="vel-up">▲</span><span class="vel-up">+9%</span></div>
+          <div class="cell-ext"><span class="next-step done">כמעט שלמת!</span></div>
+          <span class="chev">▾</span>
+        </div>
+        <div class="children" style="display:none"></div>
+      </div>
+
+      <!-- PARENT: שברים — locked -->
+      <div class="group">
+        <div class="parent-row s-none" style="opacity:.55;cursor:default">
+          <div class="pname">
+            <div class="pname-main">שברים <span class="lock-icon">🔒</span></div>
+            <div class="pname-sub">נפתח לאחר גאומטריה</div>
+          </div>
+          <div class="cell-bar"><div class="bar-track"><div class="bar-fill" style="width:0%"></div></div></div>
+          <div class="cell-pct" style="color:var(--t3)">—</div>
+          <div class="cell-vel"></div>
+          <div class="cell-ext"></div>
+          <span class="chev" style="opacity:0">▾</span>
+        </div>
+      </div>
+
+    </div><!-- /scroll -->
+  </div><!-- /pane student -->
+
+</div><!-- /root -->
+
+<script>
+// Toggle open/close
+function tog(el){
+  const isOpen = el.classList.contains('open');
+  el.classList.toggle('open',!isOpen);
+  const chev = el.querySelector('.chev');
+  if(chev) chev.style.transform = isOpen ? '' : 'rotate(180deg)';
+}
+
+// init chev state for open rows
+document.querySelectorAll('.parent-row.open').forEach(el=>{
+  const chev = el.querySelector('.chev');
+  if(chev) chev.style.transform = 'rotate(180deg)';
+  const children = el.nextElementSibling;
+  if(children) children.style.display = 'block';
+});
+
+// ─── Build activity heatmap ────────────────────────────
+const days = ['א','ב','ג','ד','ה','ו','ש'];
+// 21 days, 3 per row column. l0=no activity, l1-l4=increasing
+const activity = [
+  // 3 weeks ago
+  [0,1,0,2,1,0,0],
+  // 2 weeks ago
+  [1,2,3,2,1,0,1],
+  // last week
+  [2,3,4,3,2,0,3],
+];
+const grid = document.getElementById('heatmap');
+// render as columns (days of week), rows are weeks
+for(let d=0;d<7;d++){
+  const col = document.createElement('div');
+  col.className='hm-col';
+  const lbl = document.createElement('div');
+  lbl.className='hm-day-lbl';
+  lbl.textContent=days[d];
+  col.appendChild(lbl);
+  for(let w=0;w<3;w++){
+    const cell = document.createElement('div');
+    const lvl = activity[w][d];
+    cell.className = 'hm-cell' + (lvl>0?' l'+lvl:'');
+    cell.title = lvl===0?'אין פעילות':`${lvl*2} משימות`;
+    col.appendChild(cell);
+  }
+  grid.appendChild(col);
+}
+</script>
+
+</body>
+</html>

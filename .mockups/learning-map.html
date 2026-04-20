@@ -2,339 +2,828 @@
 <html lang="he" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<title>מפת למידה</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<title>מפת למידה — אינפי 1</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Heebo', sans-serif; background: #0f1117; color: #e2e8f0; }
+:root {
+  --bg:        #060a14;
+  --surface:   #0b1120;
+  --surface2:  #0e1628;
+  --border:    rgba(255,255,255,0.06);
+  --border-hi: rgba(255,255,255,0.11);
+  --text:      #e2e8f0;
+  --text-sub:  #94a3b8;
+  --muted:     #4a5568;
+  --faint:     rgba(255,255,255,0.04);
 
-.node {
-  position: absolute;
-  border-radius: 9px;
-  border: 1px solid;
+  --green:     #10b981;
+  --green-hi:  #34d399;
+  --green-bg:  rgba(16,185,129,0.08);
+  --green-bd:  rgba(16,185,129,0.2);
+
+  --amber:     #f59e0b;
+  --amber-hi:  #fbbf24;
+  --amber-bg:  rgba(245,158,11,0.08);
+  --amber-bd:  rgba(245,158,11,0.2);
+
+  --red:       #ef4444;
+  --red-hi:    #f87171;
+  --red-bg:    rgba(239,68,68,0.08);
+  --red-bd:    rgba(239,68,68,0.2);
+
+  --indigo:    #6366f1;
+  --indigo-hi: #818cf8;
+  --indigo-bg: rgba(99,102,241,0.08);
+  --indigo-bd: rgba(99,102,241,0.25);
+
+  --slate-bg:  rgba(100,116,139,0.06);
+  --slate-bd:  rgba(100,116,139,0.15);
+}
+
+* { box-sizing: border-box; margin:0; padding:0; }
+
+body {
+  font-family: 'Heebo', -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── ambient background ── */
+body::before {
+  content:'';
+  position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:
+    radial-gradient(ellipse 60% 40% at 50% -10%, rgba(99,102,241,0.07) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 30% at 85% 80%, rgba(16,185,129,0.04) 0%, transparent 60%);
+}
+
+/* ── dot grid ── */
+body::after {
+  content:'';
+  position:fixed; inset:0; z-index:0; pointer-events:none;
+  background-image: radial-gradient(circle, rgba(255,255,255,0.08) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(ellipse 90% 90% at 50% 50%, black 20%, transparent 80%);
+  opacity: .45;
+}
+
+.wrap { position:relative; z-index:1; }
+
+/* ── topbar ── */
+.topbar {
+  background: rgba(6,10,20,0.85);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  position: sticky; top:0; z-index:50;
+  padding: 0 2rem;
+  height: 50px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+
+.topbar-breadcrumb {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px;
+}
+
+.back-btn {
+  display: flex; align-items: center; gap: 5px;
+  color: var(--muted); cursor: pointer;
+  padding: 4px 8px; border-radius: 6px;
+  border: none; background: transparent;
+  font-family: Heebo,sans-serif; font-size: 13px;
+  transition: color .15s, background .15s;
+}
+.back-btn:hover { color: var(--text-sub); background: var(--faint); }
+
+.sep { color: var(--muted); user-select: none; }
+
+.topbar-title { font-size: 13px; font-weight: 600; color: var(--text); }
+
+.course-select {
+  background: var(--surface2);
+  border: 1px solid var(--border-hi);
+  color: var(--text-sub);
+  font-family: Heebo, sans-serif;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: box-shadow .15s, border-color .15s;
-  z-index: 10;
+  outline: none;
+  transition: border-color .15s;
+}
+.course-select:hover { border-color: rgba(255,255,255,0.18); }
+.course-select:focus { border-color: var(--indigo-hi); }
+
+.legend {
+  display: flex; align-items: center; gap: 16px;
+  font-size: 11px; color: var(--muted);
+}
+.legend-dot {
+  width: 5px; height: 5px; border-radius: 50%; flex-shrink:0;
+  display: inline-block;
+}
+
+/* ── main container ── */
+.main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 36px 24px 80px;
+}
+
+/* ── course header ── */
+.course-header {
+  display: flex; align-items: center; gap: 28px;
+  margin-bottom: 40px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 24px 28px;
+  position: relative;
+  overflow: hidden;
+}
+
+.course-header::before {
+  content:'';
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(99,102,241,0.04) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+/* ── ring ── */
+.ring-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.ring-wrap svg { display:block; transform: rotate(-90deg); }
+.ring-label {
+  position: absolute; inset:0;
+  display: flex; align-items:center; justify-content:center;
+  flex-direction: column;
+  font-weight: 700; line-height: 1;
+}
+
+/* ── stats strip ── */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.stat-item {
+  background: var(--faint);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.stat-val { font-size: 20px; font-weight: 700; line-height: 1; }
+.stat-label { font-size: 11px; color: var(--text-sub); margin-top: 3px; }
+
+/* ── recommendation ── */
+.rec-card {
+  margin-right: auto;
+  background: var(--indigo-bg);
+  border: 1px solid var(--indigo-bd);
+  border-radius: 12px;
+  padding: 14px 18px;
+  display: flex; align-items: center; gap: 12px;
+  flex-shrink: 0;
+}
+
+.rec-icon {
+  width: 34px; height: 34px;
+  border-radius: 9px;
+  background: rgba(99,102,241,0.15);
+  border: 1px solid var(--indigo-bd);
+  display: flex; align-items:center; justify-content:center;
+  flex-shrink: 0;
+}
+
+.rec-btn {
+  background: var(--indigo);
+  color: white;
+  border: none; cursor: pointer;
+  font-family: Heebo,sans-serif; font-size: 12px; font-weight: 600;
+  padding: 7px 14px; border-radius: 8px;
+  margin-right: 8px;
+  transition: background .15s, transform .1s;
+  white-space: nowrap;
+}
+.rec-btn:hover { background: #5254e0; transform: translateY(-1px); }
+
+/* ── section label ── */
+.section-label {
+  font-size: 11px; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted);
+  margin-bottom: 14px;
+}
+
+/* ── topic grid ── */
+.topic-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 0;
+}
+
+/* ── parent topic card ── */
+.ptopic {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 16px 14px;
+  cursor: pointer;
+  transition: border-color .2s, box-shadow .2s, transform .15s, background .2s;
+  position: relative;
+  overflow: hidden;
   user-select: none;
 }
-.node:hover { box-shadow: 0 0 0 1px rgba(255,255,255,.08), 0 6px 24px rgba(0,0,0,.4); }
 
-/* Root node (course) */
-.node-root {
-  background: #13161f; border-color: #2d3561;
-  padding: 10px 16px;
-  box-shadow: 0 0 0 1px #1e2749;
+.ptopic::after {
+  content:'';
+  position: absolute; top:0; left:0; right:0; height:1.5px;
+  background: linear-gradient(90deg, transparent, var(--accent-c, transparent), transparent);
+  opacity: 0;
+  transition: opacity .25s;
 }
 
-/* Parent topic */
-.node-parent {
-  background: #13161f;
-  padding: 9px 13px;
-  width: 148px;
+.ptopic:hover {
+  background: var(--surface2);
+  border-color: var(--border-hi);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.4), 0 0 0 0 transparent;
 }
 
-/* Child topic */
-.node-child {
-  background: #0d1018;
-  padding: 8px 11px;
-  width: 132px;
+.ptopic.open {
+  background: var(--surface2);
+  border-color: var(--accent-b, var(--border-hi));
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.4), 0 0 0 1px var(--accent-b, transparent);
 }
 
-/* Status variants */
-.s-mastered  { border-color: #1e4535; }
-.s-mastered:hover  { border-color: #2d6a4f; }
-.s-progress  { border-color: #3a2e0a; }
-.s-progress:hover  { border-color: #92400e; }
-.s-failed    { border-color: #3a1414; }
-.s-failed:hover    { border-color: #991b1b; }
-.s-empty     { border-color: #1e2330; }
-.s-empty:hover     { border-color: #2d3a55; }
-.s-blocked   { border-color: #181f2e; background: #0b0e16; opacity: .4; pointer-events: none; }
-.s-next      { border-color: #2d3561; background: #12162a; box-shadow: 0 0 0 1px #3040a0; }
+.ptopic.open::after,
+.ptopic:hover::after { opacity: 1; }
 
-.dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.d-mastered { background: #10b981; }
-.d-progress { background: #f59e0b; }
-.d-failed   { background: #ef4444; }
-.d-empty    { background: #2d3748; border: 1px solid #4a5568; }
-.d-next     { background: #6366f1; }
+/* accents */
+.acc-green  { --accent-c: #10b981; --accent-b: rgba(16,185,129,0.3); }
+.acc-amber  { --accent-c: #f59e0b; --accent-b: rgba(245,158,11,0.25); }
+.acc-red    { --accent-c: #ef4444; --accent-b: rgba(239,68,68,0.3); }
+.acc-indigo { --accent-c: #6366f1; --accent-b: rgba(99,102,241,0.35); }
+.acc-slate  { --accent-c: #475569; --accent-b: rgba(71,85,105,0.2); }
 
-svg.canvas {
-  position: absolute; top: 0; left: 0;
-  width: 100%; height: 100%;
-  pointer-events: none; overflow: visible;
+/* ── status badge ── */
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10px; font-weight: 700; letter-spacing: .03em;
+  padding: 2px 8px; border-radius: 20px;
 }
 
-/* Progress bar */
-.pbar { height: 2px; border-radius: 2px; background: #1a1a2e; margin-top: 5px; overflow: hidden; }
-.pfill { height: 100%; border-radius: 2px; }
+.badge-green  { background: var(--green-bg); color: var(--green-hi); border: 1px solid var(--green-bd); }
+.badge-amber  { background: var(--amber-bg); color: var(--amber-hi); border: 1px solid var(--amber-bd); }
+.badge-red    { background: var(--red-bg);   color: var(--red-hi);   border: 1px solid var(--red-bd); }
+.badge-indigo { background: var(--indigo-bg); color: var(--indigo-hi); border: 1px solid var(--indigo-bd); }
+.badge-slate  { background: var(--slate-bg); color: #64748b; border: 1px solid var(--slate-bd); }
 
-/* Scrollable map area */
-#map-scroll { overflow: auto; }
+.badge-shared {
+  background: rgba(99,102,241,0.06);
+  color: #6366f1;
+  border: 1px solid rgba(99,102,241,0.18);
+  font-size: 9px; font-weight: 600; letter-spacing: .04em;
+  padding: 1.5px 6px; border-radius: 20px;
+}
+
+/* ── chevron ── */
+.chevron-icon {
+  transition: transform .3s cubic-bezier(.4,0,.2,1);
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.open .chevron-icon { transform: rotate(180deg); }
+
+/* ── sub panel ── */
+.sub-panel {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height .4s cubic-bezier(.4,0,.2,1), opacity .3s;
+  opacity: 0;
+}
+.sub-panel.open {
+  max-height: 700px;
+  opacity: 1;
+}
+
+/* connector */
+.connector {
+  width: 1px;
+  height: 0;
+  margin: 0 auto;
+  transition: height .3s cubic-bezier(.4,0,.2,1);
+}
+.connector.open { height: 16px; }
+
+/* ── sub-topic card ── */
+.stopic {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 11px 13px;
+  transition: border-color .15s, background .15s;
+}
+.stopic:hover { background: rgba(255,255,255,0.04); border-color: var(--border-hi); }
+
+/* ── progress bar ── */
+.hbar {
+  height: 3px; border-radius: 3px;
+  background: rgba(255,255,255,0.06);
+  overflow: hidden; margin-top: 7px;
+}
+.hfill {
+  height: 100%; border-radius: 3px;
+  transition: width .6s cubic-bezier(.4,0,.2,1);
+}
+
+/* ── sub panel layout ── */
+.sub-panels-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-top: 0;
+}
+
+/* ── "blocked" dim ── */
+.blocked { opacity: 0.35; pointer-events: none; }
+
+/* ── Pretext-like text ── */
+.dot-sm {
+  width: 5px; height: 5px; border-radius: 50%;
+  display: inline-block; flex-shrink: 0;
+}
 </style>
 </head>
 <body>
+<div class="wrap">
 
-<!-- Top bar -->
-<div style="background:#0a0d14; border-bottom:1px solid #161d2c;" class="px-8 py-3 flex items-center justify-between sticky top-0 z-50">
-  <div class="flex items-center gap-3">
-    <button class="text-xs text-gray-600 hover:text-gray-300 flex items-center gap-1.5 transition-colors">
+<!-- ── topbar ── -->
+<div class="topbar">
+  <div class="topbar-breadcrumb">
+    <button class="back-btn">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
-      חזרה לתלמיד
+      אריאל כהן
     </button>
-    <span class="text-gray-700 text-xs">|</span>
-    <span class="text-sm font-medium text-gray-300">אריאל כהן</span>
-    <span class="text-gray-700">·</span>
-    <span class="text-sm text-gray-500">אינפי 1 — מפת למידה</span>
+    <span class="sep">·</span>
+    <span class="topbar-title">מפת למידה</span>
   </div>
-  <div class="flex items-center gap-5 text-xs text-gray-600">
-    <span class="flex items-center gap-1.5"><span class="dot d-mastered"></span> שלטו</span>
-    <span class="flex items-center gap-1.5"><span class="dot d-progress"></span> בתהליך</span>
-    <span class="flex items-center gap-1.5"><span class="dot d-failed"></span> נכשל</span>
-    <span class="flex items-center gap-1.5"><span class="dot d-empty" style="border-color:#4a5568"></span> טרם</span>
-    <span class="flex items-center gap-1.5"><span class="dot d-next"></span> הבא</span>
-    <div style="width:1px;height:14px;background:#1e2330;"></div>
-    <span class="text-emerald-400 font-semibold">60% שליטה</span>
+
+  <select class="course-select">
+    <option>אינפי 1</option>
+    <option>אינפי 2</option>
+    <option>אלגברה לינארית</option>
+    <option>בדידה 1</option>
+  </select>
+
+  <div class="legend">
+    <span style="display:flex;align-items:center;gap:5px;">
+      <span class="legend-dot" style="background:#10b981;"></span>שלטו
+    </span>
+    <span style="display:flex;align-items:center;gap:5px;">
+      <span class="legend-dot" style="background:#f59e0b;"></span>בתהליך
+    </span>
+    <span style="display:flex;align-items:center;gap:5px;">
+      <span class="legend-dot" style="background:#ef4444;"></span>נכשל
+    </span>
+    <span style="display:flex;align-items:center;gap:5px;">
+      <span class="legend-dot" style="background:#334155;border:1px solid #475569;"></span>טרם
+    </span>
   </div>
 </div>
 
-<!-- Recommendation -->
-<div class="mx-8 mt-4 px-4 py-2.5 flex items-center gap-3"
-     style="background:#10121e; border:1px solid #1e2540; border-radius:8px;">
-  <span class="dot d-next flex-shrink-0"></span>
-  <span class="text-xs text-gray-500">הנושא המומלץ לשיעור הבא:</span>
-  <span class="text-sm font-semibold" style="color:#a5b4fc;">אינטגרל מסוים</span>
-  <span class="text-xs text-gray-700">— כל ה-prerequisites הושלמו</span>
-  <div class="flex-1"></div>
-  <button style="background:#1a1f3a;color:#818cf8;border:1px solid #2a3060;font-size:11px;"
-    class="px-3 py-1.5 rounded-lg hover:bg-indigo-950 transition-colors font-medium">
-    צור שיעור ←
-  </button>
-</div>
+<!-- ── main ── -->
+<div class="main">
 
-<!-- Map -->
-<div id="map-scroll" class="mx-8 mt-5 mb-8"
-     style="background:#0a0d14; border:1px solid #161d2c; border-radius:12px;">
-  <div id="canvas" class="relative" style="height:680px; width:900px; direction:ltr;">
-    <svg class="canvas" id="svg"></svg>
+  <!-- ── course header ── -->
+  <div class="course-header">
 
-    <!-- ══════ ROOT ══════ -->
-    <div class="node node-root s-next" id="r0" style="left:376px; top:20px;">
-      <div class="flex items-center gap-2">
-        <span class="dot d-next"></span>
-        <span class="text-sm font-semibold" style="color:#a5b4fc;">אינפי 1</span>
+    <!-- progress ring (big) -->
+    <div class="ring-wrap" style="width:88px;height:88px;">
+      <svg width="88" height="88" viewBox="0 0 88 88">
+        <defs>
+          <linearGradient id="ring-grad-main" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#10b981"/>
+            <stop offset="100%" stop-color="#34d399"/>
+          </linearGradient>
+          <!-- glow filter -->
+          <filter id="glow-main">
+            <feGaussianBlur stdDeviation="2.5" result="coloredBlur"/>
+            <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <circle cx="44" cy="44" r="36" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="5"/>
+        <circle cx="44" cy="44" r="36" fill="none"
+          stroke="url(#ring-grad-main)" stroke-width="5" stroke-linecap="round"
+          stroke-dasharray="226.2" stroke-dashoffset="108.6"
+          filter="url(#glow-main)"/>
+      </svg>
+      <div class="ring-label">
+        <span style="font-size:18px;color:#34d399;">52%</span>
+        <span style="font-size:9px;color:var(--muted);margin-top:2px;">הושלם</span>
       </div>
     </div>
 
-    <!-- ══════ LEVEL 1 — main topics ══════ -->
-
-    <!-- סדרות -->
-    <div class="node node-parent s-mastered" id="p0" style="left:50px; top:120px;">
-      <div class="flex items-center justify-between mb-1">
-        <span class="dot d-mastered"></span>
-        <span style="font-size:9px;color:#6b7280;">משותף</span>
+    <!-- course info -->
+    <div style="flex:1;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <h1 style="font-size:20px;font-weight:800;color:var(--text);">אינפי 1</h1>
+        <span style="font-size:11px;color:var(--text-sub);background:var(--faint);border:1px solid var(--border);padding:2px 8px;border-radius:20px;">חדו"א א׳</span>
       </div>
-      <div class="text-sm font-semibold text-gray-200">סדרות</div>
-      <div class="text-xs text-gray-600 mt-0.5">2 / 2 נושאי משנה</div>
-    </div>
+      <p style="font-size:13px;color:var(--text-sub);margin-bottom:14px;">4 נושאים ראשיים · 12 תת-נושאים</p>
 
-    <!-- גבולות -->
-    <div class="node node-parent s-mastered" id="p1" style="left:236px; top:120px;">
-      <div class="flex items-center justify-between mb-1">
-        <span class="dot d-mastered"></span>
-        <span style="font-size:9px;color:#6b7280;">משותף</span>
+      <div class="stat-grid">
+        <div class="stat-item">
+          <div class="stat-val" style="color:var(--text);">6</div>
+          <div class="stat-label">שיעורים</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-val" style="color:var(--green-hi);">5</div>
+          <div class="stat-label">נושאים שולטים</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-val" style="color:var(--red-hi);">3</div>
+          <div class="stat-label">דוחות קושי</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-val" style="color:var(--amber-hi);">3</div>
+          <div class="stat-label">בתהליך</div>
+        </div>
       </div>
-      <div class="text-sm font-semibold text-gray-200">גבולות</div>
-      <div class="text-xs text-gray-600 mt-0.5">3 / 3 נושאי משנה</div>
     </div>
 
-    <!-- נגזרות -->
-    <div class="node node-parent s-failed" id="p2" style="left:478px; top:120px;">
-      <div class="flex items-center justify-between mb-1">
-        <span class="dot d-failed"></span>
-        <span style="font-size:9px;color:#6b7280;">משותף</span>
+    <!-- recommendation -->
+    <div class="rec-card">
+      <div class="rec-icon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--indigo-hi)" stroke-width="2.2">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
       </div>
-      <div class="text-sm font-semibold text-gray-200">נגזרות</div>
-      <div class="text-xs" style="color:#ef4444; margin-top:2px;">2 דוחות קושי</div>
-    </div>
-
-    <!-- אינטגרל -->
-    <div class="node node-parent s-progress" id="p3" style="left:706px; top:120px;">
-      <div class="flex items-center justify-between mb-1">
-        <span class="dot d-progress"></span>
-        <span style="font-size:9px;color:#6b7280;">משותף</span>
+      <div>
+        <div style="font-size:10px;color:var(--muted);margin-bottom:2px;letter-spacing:.02em;">NEXT RECOMMENDED</div>
+        <div style="font-size:13px;font-weight:700;color:var(--indigo-hi);">אינטגרל מסוים</div>
+        <div style="font-size:11px;color:var(--text-sub);margin-top:1px;">כל prerequisite עבר</div>
       </div>
-      <div class="text-sm font-semibold text-gray-200">אינטגרל</div>
-      <div class="text-xs text-gray-600 mt-0.5">1 / 3 נושאי משנה</div>
-    </div>
-
-    <!-- ══════ LEVEL 2 — children of סדרות ══════ -->
-    <div class="node node-child s-mastered" id="c00" style="left:22px; top:270px;">
-      <div class="flex items-center gap-1.5 mb-1"><span class="dot d-mastered"></span><span class="text-xs text-gray-400">שלטו</span></div>
-      <div class="text-xs font-semibold text-gray-300">סדרות מתכנסות</div>
-      <div class="pbar"><div class="pfill" style="width:100%;background:#10b981;"></div></div>
-    </div>
-    <div class="node node-child s-mastered" id="c01" style="left:162px; top:270px;">
-      <div class="flex items-center gap-1.5 mb-1"><span class="dot d-mastered"></span><span class="text-xs text-gray-400">שלטו</span></div>
-      <div class="text-xs font-semibold text-gray-300">קריטריוני התכנסות</div>
-      <div class="pbar"><div class="pfill" style="width:100%;background:#10b981;"></div></div>
-    </div>
-
-    <!-- ══════ LEVEL 2 — children of גבולות ══════ -->
-    <div class="node node-child s-mastered" id="c10" style="left:192px; top:270px;">
-      <div class="flex items-center gap-1.5 mb-1"><span class="dot d-mastered"></span><span class="text-xs text-gray-400">שלטו</span></div>
-      <div class="text-xs font-semibold text-gray-300">גבול בנקודה</div>
-      <div class="pbar"><div class="pfill" style="width:100%;background:#10b981;"></div></div>
-    </div>
-    <div class="node node-child s-progress" id="c11" style="left:330px; top:270px;">
-      <div class="flex items-center gap-1.5 mb-1"><span class="dot d-progress"></span><span class="text-xs" style="color:#f59e0b;">בתהליך</span></div>
-      <div class="text-xs font-semibold text-gray-300">כלל L'Hôpital</div>
-      <div class="pbar"><div class="pfill" style="width:50%;background:#f59e0b;"></div></div>
-    </div>
-    <div class="node node-child s-failed" id="c12" style="left:468px; top:270px;">
-      <div class="flex items-center gap-1.5 mb-1"><span class="dot d-failed"></span><span class="text-xs" style="color:#ef4444;">נכשל</span></div>
-      <div class="text-xs font-semibold text-gray-300">רציפות</div>
-      <div class="pbar"><div class="pfill" style="width:20%;background:#ef4444;"></div></div>
-    </div>
-
-    <!-- ══════ LEVEL 2 — children of נגזרות ══════ -->
-    <div class="node node-child s-failed" id="c20" style="left:444px; top:270px;">
-      <div class="flex items-center gap-1.5 mb-1"><span class="dot d-failed"></span><span class="text-xs" style="color:#ef4444;">נכשל</span></div>
-      <div class="text-xs font-semibold text-gray-300">כלל השרשרת</div>
-      <div class="pbar"><div class="pfill" style="width:25%;background:#ef4444;"></div></div>
-    </div>
-    <div class="node node-child s-blocked" id="c21" style="left:582px; top:270px;">
-      <div class="flex items-center gap-1.5 mb-1"><span class="dot" style="background:#2d3748;border:1px solid #4a5568"></span><span class="text-xs text-gray-700">חסום</span></div>
-      <div class="text-xs font-semibold text-gray-600">נגזרות גבוהות</div>
-    </div>
-    <div class="node node-child s-blocked" id="c22" style="left:582px; top:355px;">
-      <div class="flex items-center gap-1.5 mb-1"><span class="dot" style="background:#2d3748;border:1px solid #4a5568"></span><span class="text-xs text-gray-700">חסום</span></div>
-      <div class="text-xs font-semibold text-gray-600">נקודות קיצון</div>
-    </div>
-
-    <!-- ══════ LEVEL 2 — children of אינטגרל ══════ -->
-    <div class="node node-child s-next" id="c30" style="left:672px; top:270px;">
-      <div class="flex items-center gap-1.5 mb-1"><span class="dot d-next"></span><span class="text-xs font-medium" style="color:#818cf8;">הבא</span></div>
-      <div class="text-xs font-semibold text-gray-300">אינטגרל מסוים</div>
-      <div class="text-xs text-gray-600 mt-0.5">טרם התחיל</div>
-    </div>
-    <div class="node node-child s-empty" id="c31" style="left:810px; top:270px;">
-      <div class="flex items-center gap-1.5 mb-1"><span class="dot d-empty" style="border-color:#4a5568;"></span><span class="text-xs text-gray-600">טרם</span></div>
-      <div class="text-xs font-semibold text-gray-300">אינטגרל בחלקים</div>
-    </div>
-    <div class="node node-child s-blocked" id="c32" style="left:738px; top:355px;">
-      <div class="flex items-center gap-1.5 mb-1"><span class="dot" style="background:#2d3748;border:1px solid #4a5568"></span><span class="text-xs text-gray-700">חסום</span></div>
-      <div class="text-xs font-semibold text-gray-600">שיטות מתקדמות</div>
-    </div>
-
-    <!-- ══════ LEVEL 3 — grandchildren ══════ -->
-    <!-- children of רציפות (c12) -->
-    <div class="node node-child s-blocked" id="g120" style="left:416px; top:440px;">
-      <div class="flex items-center gap-1.5 mb-1"><span class="dot" style="background:#2d3748;border:1px solid #4a5568"></span><span class="text-xs text-gray-700">חסום</span></div>
-      <div class="text-xs font-semibold text-gray-600">רציפות אחידה</div>
-    </div>
-    <div class="node node-child s-blocked" id="g121" style="left:554px; top:440px;">
-      <div class="flex items-center gap-1.5 mb-1"><span class="dot" style="background:#2d3748;border:1px solid #4a5568"></span><span class="text-xs text-gray-700">חסום</span></div>
-      <div class="text-xs font-semibold text-gray-600">משפט ערך ביניים</div>
-    </div>
-
-    <!-- children of כלל השרשרת (c20) -->
-    <div class="node node-child s-blocked" id="g200" style="left:392px; top:440px;">
-      <div class="flex items-center gap-1.5 mb-1"><span class="dot" style="background:#2d3748;border:1px solid #4a5568"></span><span class="text-xs text-gray-700">חסום</span></div>
-      <div class="text-xs font-semibold text-gray-600">אופטימיזציה</div>
+      <button class="rec-btn">צור שיעור ←</button>
     </div>
 
   </div>
-</div>
+
+  <!-- ── topic map ── -->
+  <div class="section-label">נושאים ראשיים</div>
+
+  <!-- parent cards row -->
+  <div class="topic-grid">
+
+    <!-- גבולות — mastered -->
+    <div class="ptopic acc-green open" id="card-gvulot" onclick="toggle('gvulot')">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <span class="badge badge-green">
+          <svg width="7" height="7" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3" fill="currentColor"/></svg>
+          שלטו
+        </span>
+        <span class="badge-shared">משותף</span>
+      </div>
+
+      <!-- ring + name -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <div class="ring-wrap" style="width:46px;height:46px;">
+          <svg width="46" height="46" viewBox="0 0 46 46">
+            <defs>
+              <linearGradient id="rg1" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#059669"/>
+                <stop offset="100%" stop-color="#34d399"/>
+              </linearGradient>
+            </defs>
+            <circle cx="23" cy="23" r="17" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="4"/>
+            <circle cx="23" cy="23" r="17" fill="none" stroke="url(#rg1)" stroke-width="4"
+              stroke-linecap="round" stroke-dasharray="106.8" stroke-dashoffset="0"/>
+          </svg>
+          <div class="ring-label">
+            <span style="font-size:10px;font-weight:800;color:#34d399;">100%</span>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--text);">גבולות</div>
+          <div style="font-size:11px;color:var(--text-sub);margin-top:1px;">3 שיעורים</div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:11px;color:var(--muted);">10/10 משימות</span>
+        <svg class="chevron-icon rotate-180" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+    </div>
+
+    <!-- נגזרות — struggling -->
+    <div class="ptopic acc-red" id="card-nigzarot" onclick="toggle('nigzarot')">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <span class="badge badge-red">
+          <svg width="7" height="7" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3" fill="currentColor"/></svg>
+          נכשל
+        </span>
+        <span class="badge-shared">משותף</span>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <div class="ring-wrap" style="width:46px;height:46px;">
+          <svg width="46" height="46" viewBox="0 0 46 46">
+            <defs>
+              <linearGradient id="rg2" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#dc2626"/>
+                <stop offset="100%" stop-color="#f87171"/>
+              </linearGradient>
+            </defs>
+            <circle cx="23" cy="23" r="17" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="4"/>
+            <circle cx="23" cy="23" r="17" fill="none" stroke="url(#rg2)" stroke-width="4"
+              stroke-linecap="round" stroke-dasharray="106.8" stroke-dashoffset="85.4"/>
+          </svg>
+          <div class="ring-label">
+            <span style="font-size:10px;font-weight:800;color:#f87171;">20%</span>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--text);">נגזרות</div>
+          <div style="font-size:11px;color:var(--text-sub);margin-top:1px;">2 שיעורים</div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:11px;color:var(--red-hi);display:flex;align-items:center;gap:4px;">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+          3 דוחות קושי
+        </span>
+        <svg class="chevron-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+    </div>
+
+    <!-- אינטגרל — in progress -->
+    <div class="ptopic acc-amber" id="card-integral" onclick="toggle('integral')">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <span class="badge badge-amber">
+          <svg width="7" height="7" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3" fill="currentColor"/></svg>
+          בתהליך
+        </span>
+        <span class="badge-shared">משותף</span>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <div class="ring-wrap" style="width:46px;height:46px;">
+          <svg width="46" height="46" viewBox="0 0 46 46">
+            <defs>
+              <linearGradient id="rg3" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#d97706"/>
+                <stop offset="100%" stop-color="#fbbf24"/>
+              </linearGradient>
+            </defs>
+            <circle cx="23" cy="23" r="17" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="4"/>
+            <circle cx="23" cy="23" r="17" fill="none" stroke="url(#rg3)" stroke-width="4"
+              stroke-linecap="round" stroke-dasharray="106.8" stroke-dashoffset="64.1"/>
+          </svg>
+          <div class="ring-label">
+            <span style="font-size:10px;font-weight:800;color:#fbbf24;">40%</span>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--text);">אינטגרל</div>
+          <div style="font-size:11px;color:var(--text-sub);margin-top:1px;">1 שיעור</div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:11px;color:var(--muted);">2/5 משימות</span>
+        <svg class="chevron-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+    </div>
+
+    <!-- טורים — not started -->
+    <div class="ptopic acc-slate" id="card-torim" onclick="toggle('torim')">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <span class="badge badge-slate">
+          <span class="dot-sm" style="background:#475569;"></span>
+          טרם
+        </span>
+        <span class="badge-shared">משותף</span>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <div class="ring-wrap" style="width:46px;height:46px;">
+          <svg width="46" height="46" viewBox="0 0 46 46">
+            <circle cx="23" cy="23" r="17" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="4"/>
+            <circle cx="23" cy="23" r="17" fill="none" stroke="#1e2d40" stroke-width="4"
+              stroke-linecap="round" stroke-dasharray="106.8" stroke-dashoffset="106.8"/>
+          </svg>
+          <div class="ring-label">
+            <span style="font-size:10px;font-weight:800;color:#4a5568;">0%</span>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:#64748b;">טורים</div>
+          <div style="font-size:11px;color:#374151;margin-top:1px;">אין שיעורים</div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:11px;color:#334155;">0/4 משימות</span>
+        <svg class="chevron-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- connectors row -->
+  <div class="sub-panels-row" style="margin-top:0;">
+    <div><div class="connector open" id="con-gvulot" style="background:linear-gradient(to bottom,rgba(16,185,129,0.3),transparent);"></div></div>
+    <div><div class="connector" id="con-nigzarot" style="background:linear-gradient(to bottom,rgba(239,68,68,0.3),transparent);"></div></div>
+    <div><div class="connector" id="con-integral" style="background:linear-gradient(to bottom,rgba(245,158,11,0.3),transparent);"></div></div>
+    <div><div class="connector" id="con-torim" style="background:linear-gradient(to bottom,rgba(71,85,105,0.2),transparent);"></div></div>
+  </div>
+
+  <!-- sub-panels row -->
+  <div class="sub-panels-row">
+
+    <!-- גבולות subs -->
+    <div>
+      <div class="sub-panel open" id="panel-gvulot">
+        <div style="display:flex;flex-direction:column;gap:7px;padding-bottom:24px;">
+
+          <div class="stopic">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:12px;font-weight:600;color:var(--text);">גבול חד-צדדי</span>
+              <span style="font-size:11px;color:var(--green-hi);font-weight:700;">100%</span>
+            </div>
+            <div class="hbar"><div class="hfill" style="width:100%;background:linear-gradient(90deg,#059669,#34d399);"></div></div>
+            <div style="font-size:10px;color:var(--muted);margin-top:5px;">4/4 משימות</div>
+          </div>
+
+          <div class="stopic">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:12px;font-weight:600;color:var(--text);">כלל L'Hôpital</span>
+              <span style="font-size:11px;color:var(--green-hi);font-weight:700;">100%</span>
+            </div>
+            <div class="hbar"><div class="hfill" style="width:100%;background:linear-gradient(90deg,#059669,#34d399);"></div></div>
+            <div style="font-size:10px;color:var(--muted);margin-top:5px;">3/3 משימות</div>
+          </div>
+
+          <div class="stopic">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:12px;font-weight:600;color:var(--text);">רציפות</span>
+              <span style="font-size:11px;color:var(--green-hi);font-weight:700;">100%</span>
+            </div>
+            <div class="hbar"><div class="hfill" style="width:100%;background:linear-gradient(90deg,#059669,#34d399);"></div></div>
+            <div style="font-size:10px;color:var(--muted);margin-top:5px;">3/3 משימות</div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- נגזרות subs -->
+    <div>
+      <div class="sub-panel" id="panel-nigzarot">
+        <div style="display:flex;flex-direction:column;gap:7px;padding-bottom:24px;">
+
+          <div class="stopic" style="border-color:var(--red-bd);">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:12px;font-weight:600;color:var(--text);">כלל השרשרת</span>
+              <span style="font-size:11px;color:var(--red-hi);font-weight:700;">25%</span>
+            </div>
+            <div class="hbar"><div class="hfill" style="width:25%;background:linear-gradient(90deg,#dc2626,#f87171);"></div></div>
+            <div style="font-size:10px;color:var(--red-hi);margin-top:5px;display:flex;align-items:center;gap:3px;">
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+              2 דוחות קושי
+            </div>
+          </div>
+
+          <div class="stopic" style="border-color:var(--amber-bd);">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:12px;font-weight:600;color:var(--text);">נגזרות גבוהות</span>
+              <span style="font-size:11px;color:var(--amber-hi);font-weight:700;">50%</span>
+            </div>
+            <div class="hbar"><div class="hfill" style="width:50%;background:linear-gradient(90deg,#d97706,#fbbf24);"></div></div>
+            <div style="font-size:10px;color:var(--muted);margin-top:5px;">2/4 משימות</div>
+          </div>
+
+          <div class="stopic blocked">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:12px;font-weight:600;color:#475569;">נקודות קיצון</span>
+              <span style="font-size:10px;background:var(--faint);color:#475569;padding:1px 7px;border-radius:20px;border:1px solid var(--border);">חסום</span>
+            </div>
+            <div class="hbar"><div class="hfill" style="width:0%;background:#334155;"></div></div>
+            <div style="font-size:10px;color:#374151;margin-top:5px;">ממתין לכלל השרשרת</div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- אינטגרל subs -->
+    <div>
+      <div class="sub-panel" id="panel-integral">
+        <div style="display:flex;flex-direction:column;gap:7px;padding-bottom:24px;">
+
+          <div class="stopic" style="border-color:var(--indigo-bd);background:var(--indigo-bg);">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:12px;font-weight:600;color:var(--indigo-hi);">אינטגרל מסוים</span>
+              <span style="font-size:10px;color:var(--indigo-hi);font-weight:700;display:flex;align-items:center;gap:3px;">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                הבא
+              </span>
+            </div>
+            <div class="hbar" style="background:rgba(99,102,241,0.1);"><div class="hfill" style="width:0%;background:var(--indigo);"></div></div>
+            <div style="font-size:10px;color:var(--indigo);margin-top:5px;">כל prerequisite עבר ✓</div>
+          </div>
+
+          <div class="stopic" style="border-color:var(--amber-bd);">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:12px;font-weight:600;color:var(--text);">אינטגרל בחלקים</span>
+              <span style="font-size:11px;color:var(--amber-hi);font-weight:700;">40%</span>
+            </div>
+            <div class="hbar"><div class="hfill" style="width:40%;background:linear-gradient(90deg,#d97706,#fbbf24);"></div></div>
+            <div style="font-size:10px;color:var(--muted);margin-top:5px;">2/5 משימות</div>
+          </div>
+
+          <div class="stopic blocked">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:12px;font-weight:600;color:#475569;">שיטות מתקדמות</span>
+              <span style="font-size:10px;background:var(--faint);color:#475569;padding:1px 7px;border-radius:20px;border:1px solid var(--border);">חסום</span>
+            </div>
+            <div class="hbar"><div class="hfill" style="width:0%;background:#334155;"></div></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- טורים subs -->
+    <div>
+      <div class="sub-panel" id="panel-torim">
+        <div style="display:flex;flex-direction:column;gap:7px;padding-bottom:24px;">
+          <div class="stopic blocked">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:12px;font-weight:600;color:#475569;">טורי חזקה</span>
+              <span style="font-size:11px;color:#334155;">0%</span>
+            </div>
+            <div class="hbar"><div class="hfill" style="width:0%;"></div></div>
+          </div>
+          <div class="stopic blocked">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:12px;font-weight:600;color:#475569;">קריטריון דלמבר</span>
+              <span style="font-size:11px;color:#334155;">0%</span>
+            </div>
+            <div class="hbar"><div class="hfill" style="width:0%;"></div></div>
+          </div>
+          <div class="stopic blocked">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:12px;font-weight:600;color:#475569;">אינטגרל גאוס</span>
+              <span style="font-size:11px;color:#334155;">0%</span>
+            </div>
+            <div class="hbar"><div class="hfill" style="width:0%;"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div><!-- /main -->
+</div><!-- /wrap -->
 
 <script>
-const svg = document.getElementById('svg');
-const canvas = document.getElementById('canvas');
+const state = { gvulot: true, nigzarot: false, integral: false, torim: false };
 
-function pos(id) {
-  const el = document.getElementById(id);
-  if (!el) return null;
-  return {
-    left:   parseInt(el.style.left),
-    top:    parseInt(el.style.top),
-    w:      el.offsetWidth,
-    h:      el.offsetHeight,
-  };
+function toggle(id) {
+  const card    = document.getElementById('card-' + id);
+  const panel   = document.getElementById('panel-' + id);
+  const con     = document.getElementById('con-' + id);
+  const chevron = card.querySelector('.chevron-icon');
+  const isOpen  = state[id];
+
+  state[id] = !isOpen;
+
+  if (isOpen) {
+    panel.classList.remove('open');
+    card.classList.remove('open');
+    con.classList.remove('open');
+    chevron.style.transform = '';
+  } else {
+    panel.classList.add('open');
+    card.classList.add('open');
+    con.classList.add('open');
+    chevron.style.transform = 'rotate(180deg)';
+  }
 }
 
-function cx(p) { return p.left + p.w / 2; }
-function cy(p) { return p.top + p.h / 2; }
-
-function addMarker(id, color) {
-  let defs = svg.querySelector('defs');
-  if (!defs) { defs = document.createElementNS('http://www.w3.org/2000/svg','defs'); svg.appendChild(defs); }
-  const m = document.createElementNS('http://www.w3.org/2000/svg','marker');
-  m.setAttribute('id', id); m.setAttribute('viewBox','0 0 6 6');
-  m.setAttribute('refX','5'); m.setAttribute('refY','3');
-  m.setAttribute('markerWidth','4'); m.setAttribute('markerHeight','4');
-  m.setAttribute('orient','auto');
-  const path = document.createElementNS('http://www.w3.org/2000/svg','path');
-  path.setAttribute('d','M0,0 L6,3 L0,6 Z'); path.setAttribute('fill',color);
-  m.appendChild(path); defs.appendChild(m);
-}
-
-function connect(fromId, toId, color='#1e2a3a', dashed=false) {
-  const f = pos(fromId), t = pos(toId);
-  if (!f || !t) return;
-
-  const x1 = cx(f), y1 = f.top + f.h;
-  const x2 = cx(t), y2 = t.top;
-  const mid = (y1 + y2) / 2;
-
-  const p = document.createElementNS('http://www.w3.org/2000/svg','path');
-  p.setAttribute('d', `M${x1},${y1} C${x1},${mid} ${x2},${mid} ${x2},${y2}`);
-  p.setAttribute('fill','none');
-  p.setAttribute('stroke', color);
-  p.setAttribute('stroke-width', '1.5');
-  if (dashed) p.setAttribute('stroke-dasharray','4,3');
-  const mkId = 'mk'+color.replace(/[^a-z0-9]/gi,'');
-  p.setAttribute('marker-end',`url(#${mkId})`);
-  svg.appendChild(p);
-}
-
-window.addEventListener('load', () => {
-  addMarker('mk2d6a4f', '#2d6a4f');  // green
-  addMarker('mk1e2a3a', '#1e2a3a');  // dark (blocked)
-  addMarker('mk4f1616', '#4f1616');  // red (failed)
-  addMarker('mk6366f1', '#6366f1');  // indigo (next)
-  addMarker('mk1e2330', '#1e2330');  // subtle
-
-  // root → L1
-  connect('r0','p0','#2d3561');
-  connect('r0','p1','#2d3561');
-  connect('r0','p2','#2d3561');
-  connect('r0','p3','#2d3561');
-
-  // סדרות → children (green, mastered)
-  connect('p0','c00','#2d6a4f');
-  connect('p0','c01','#2d6a4f');
-
-  // גבולות → children
-  connect('p1','c10','#2d6a4f');
-  connect('p1','c11','#1e5a3a');
-  connect('p1','c12','#4f1616',true);
-
-  // נגזרות → children (red/blocked)
-  connect('p2','c20','#4f1616',true);
-  connect('p2','c21','#1e2330',true);
-
-  // אינטגרל → children
-  connect('p3','c30','#6366f1');
-  connect('p3','c31','#1e2a3a');
-
-  // L3
-  connect('c12','g120','#1e2330',true);
-  connect('c12','g121','#1e2330',true);
-  connect('c20','g200','#1e2330',true);
-  connect('c21','g200','#1e2330',true);
-  connect('c31','c32','#1e2330',true);
-});
+// init state for the card that's open by default
+document.getElementById('card-gvulot').querySelector('.chevron-icon').style.transform = 'rotate(180deg)';
 </script>
 </body>
 </html>
