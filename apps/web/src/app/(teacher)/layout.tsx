@@ -9,6 +9,7 @@ import { LanguageToggle } from "@/components/ui/language-toggle";
 import { cn } from "@/lib/utils";
 import { Users, LayoutDashboard, MessageSquare, CalendarClock, LogOut, BookOpen } from "lucide-react";
 import { useRealtimeSync } from "@/hooks/use-realtime-sync";
+import { Logo } from "@/components/brand/logo";
 
 export default function TeacherLayout({
   children,
@@ -39,8 +40,8 @@ export default function TeacherLayout({
     <div className="min-h-screen flex">
       <aside className="w-60 bg-white border-e border-gray-100 flex flex-col">
         <div className="px-6 py-5 border-b border-gray-100">
-          <span className="text-xl font-bold text-brand-700">Studiq</span>
-          <p className="text-xs text-gray-500 mt-0.5">{user?.full_name}</p>
+          <Logo size={28} withWordmark />
+          <p className="text-xs text-gray-500 mt-2">{user?.full_name}</p>
           <span className="text-xs text-brand-500 font-medium">
             {t("teacher.role")}
           </span>

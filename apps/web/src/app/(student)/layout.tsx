@@ -9,6 +9,7 @@ import { LanguageToggle } from "@/components/ui/language-toggle";
 import { cn } from "@/lib/utils";
 import { BookOpen, CheckSquare, BarChart2, CalendarDays, Map, LogOut } from "lucide-react";
 import { useRealtimeSync } from "@/hooks/use-realtime-sync";
+import { Logo } from "@/components/brand/logo";
 
 export default function StudentLayout({
   children,
@@ -40,8 +41,8 @@ export default function StudentLayout({
       {/* Sidebar */}
       <aside className="w-60 bg-white border-e border-gray-100 flex flex-col">
         <div className="px-6 py-5 border-b border-gray-100">
-          <span className="text-xl font-bold text-brand-700">Studiq</span>
-          <p className="text-xs text-gray-500 mt-0.5">{user?.full_name}</p>
+          <Logo size={28} withWordmark />
+          <p className="text-xs text-gray-500 mt-2">{user?.full_name}</p>
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1">
