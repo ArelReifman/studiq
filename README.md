@@ -91,7 +91,9 @@ pnpm --filter @studiq/api db:migrate
 pnpm dev
 ```
 
-The app runs at `http://localhost:3000` (web) and `http://localhost:3001` (API).
+The app runs at `http://localhost:3002` (web) and `http://localhost:3003` (API).
+
+> **Note on `DATABASE_URL`:** Supabase's direct connection (`db.<ref>.supabase.co:5432`) is IPv6-only. On IPv4 networks (most home ISPs and many CI providers), use the **Transaction Pooler** instead: `postgres.<ref>:<pw>@aws-<region>.pooler.supabase.com:6543/postgres`. The DB client already disables prepared statements when a pooler URL is detected.
 
 ### Testing
 
