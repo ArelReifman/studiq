@@ -43,8 +43,13 @@ function setAuthCookies(
   });
 }
 
+const emailField = z
+  .string()
+  .email()
+  .transform((s) => s.trim().toLowerCase());
+
 const registerSchema = z.object({
-  email: z.string().email(),
+  email: emailField,
   password: z.string().min(8),
   full_name: z.string().min(1),
   role: z.enum(["teacher", "student"]),
@@ -52,7 +57,7 @@ const registerSchema = z.object({
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: emailField,
   password: z.string(),
 });
 
@@ -217,7 +222,7 @@ export const authRoutes = new Hono()
 
   .post(
     "/forgot-password",
-    zValidator("json", z.object({ email: z.string().email() })),
+    zValidator("json", z.object({ email: emailField })),
     async (c) => {
       const { email } = c.req.valid("json");
       const supabase = getAdminClient();
