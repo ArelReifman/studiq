@@ -37,7 +37,7 @@ export default function TeacherLayout({
   }
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-dvh flex">
       <aside className="w-60 bg-white border-e border-gray-100 flex flex-col">
         <div className="px-6 py-5 border-b border-gray-100">
           <Logo size={28} withWordmark />

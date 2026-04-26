@@ -37,7 +37,7 @@ export default function StudentLayout({
   }
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-dvh flex">
       {/* Sidebar */}
       <aside className="w-60 bg-white border-e border-gray-100 flex flex-col">
         <div className="px-6 py-5 border-b border-gray-100">
