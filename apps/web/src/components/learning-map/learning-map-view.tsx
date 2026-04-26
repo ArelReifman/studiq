@@ -57,17 +57,17 @@ export function LearningMapView({
       className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden"
     >
       {/* TOPBAR */}
-      <div className="flex items-center flex-wrap gap-3 h-14 px-5 border-b border-gray-100 bg-gray-50/60">
+      <div className="flex items-center flex-wrap gap-x-3 gap-y-2 min-h-14 py-2 px-4 sm:px-5 border-b border-gray-100 bg-gray-50/60">
         <span className="inline-flex items-center text-[10px] font-bold tracking-wider uppercase text-gray-500 border border-gray-200 rounded px-2 py-0.5">
           {role === "teacher" ? "מורה" : "תלמיד"}
         </span>
         <span className="text-sm font-semibold text-gray-900">מפת למידה</span>
-        <span className="w-px h-4 bg-gray-200" />
+        <span className="w-px h-4 bg-gray-200 hidden sm:inline-block" />
         <span className="text-xs text-gray-500 font-medium truncate">
           {map.course_name}
         </span>
         <div className="flex-1" />
-        <div className="flex items-center gap-4">
+        <div className="flex items-center flex-wrap gap-x-3 sm:gap-x-4 gap-y-1 w-full sm:w-auto">
           <Stat label="סה״כ" value={counts.total_topics} />
           <Stat label="שלטו" value={counts.mastered} tone="mastered" />
           <Stat
@@ -80,9 +80,9 @@ export function LearningMapView({
         </div>
       </div>
 
-      <div className="flex">
+      <div className="flex flex-col lg:flex-row">
         {/* SIDE PANEL */}
-        <aside className="w-56 flex-shrink-0 border-s border-gray-100 flex flex-col p-3 gap-3">
+        <aside className="w-full lg:w-56 lg:flex-shrink-0 order-2 lg:order-none border-t lg:border-t-0 lg:border-s border-gray-100 flex flex-col p-3 gap-3">
           {role === "teacher" && recommendation && (
             <div className="bg-brand-50/60 border border-brand-100 rounded-lg p-3 flex flex-col gap-2">
               <div className="flex items-center gap-2">
@@ -178,9 +178,9 @@ export function LearningMapView({
         </aside>
 
         {/* MAIN */}
-        <main className="flex-1 flex flex-col min-w-0">
+        <main className="flex-1 flex flex-col min-w-0 order-1 lg:order-none">
           {/* Card row */}
-          <div className="px-5 pt-4 overflow-x-auto">
+          <div className="px-4 sm:px-5 pt-4 overflow-x-auto">
             <div
               className="flex gap-3 pb-4"
               style={{ width: "max-content" }}
@@ -205,7 +205,7 @@ export function LearningMapView({
 
           {/* Detail panel */}
           {active && (
-            <div className="mx-5 mb-5 border border-gray-100 rounded-lg bg-gray-50/40 overflow-hidden">
+            <div className="mx-4 sm:mx-5 mb-5 border border-gray-100 rounded-lg bg-gray-50/40 overflow-hidden">
               <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-white">
                 <span className="text-sm font-semibold text-gray-900 flex-1 truncate">
                   {active.name}
@@ -228,7 +228,7 @@ export function LearningMapView({
               </div>
 
               {/* Stat grid */}
-              <div className="grid grid-cols-4 divide-x divide-x-reverse divide-gray-100 border-b border-gray-100">
+              <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-x-reverse divide-gray-100 border-b border-gray-100">
                 <KpiCell
                   label="התקדמות"
                   value={`${active.stats.pct}%`}
