@@ -27,6 +27,9 @@
   "login.backToRoles": "Back to role selection",
   "login.wrongRoleStudent": "This account is not a student account.",
   "login.wrongRoleTeacher": "This account is not a teacher account.",
+  "login.wrongPasswordTitle": "Incorrect password",
+  "login.wrongPasswordBody": "The email or password you entered is incorrect. Please try again.",
+  "login.backToMenu": "Back to menu",
 
   "register.title": "Studiq",
   "register.studentSetup": "Set up your student account",

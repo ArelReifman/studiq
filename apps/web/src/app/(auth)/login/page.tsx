@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/store/auth";
 import { useT } from "@/i18n";
 import { LanguageToggle } from "@/components/ui/language-toggle";
-import { GraduationCap, BookOpen } from "lucide-react";
+import { GraduationCap, BookOpen, AlertCircle } from "lucide-react";
 
 type Mode = "pick" | "student" | "teacher";
 
@@ -26,6 +26,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [authErrorOpen, setAuthErrorOpen] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -69,15 +70,64 @@ export default function LoginPage() {
           : "/student/dashboard"
       );
     } catch (err: any) {
-      setError(err.message ?? t("error.loginFailed"));
+      const msg = (err?.message ?? "").toString().toLowerCase();
+      const isCredsError =
+        msg.includes("invalid credentials") ||
+        msg.includes("invalid login") ||
+        msg.includes("401");
+      if (isCredsError) {
+        setAuthErrorOpen(true);
+      } else {
+        setError(err.message ?? t("error.loginFailed"));
+      }
     } finally {
       setLoading(false);
     }
   }
 
+  function dismissAuthError() {
+    setAuthErrorOpen(false);
+    setError("");
+    setPassword("");
+    setMode("pick");
+  }
+
+  const authErrorModal = authErrorOpen ? (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
+      onClick={dismissAuthError}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center animate-in fade-in zoom-in-95 duration-150"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+          <AlertCircle size={28} className="text-red-600" />
+        </div>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">
+          {t("login.wrongPasswordTitle")}
+        </h2>
+        <p className="text-sm text-gray-600 mb-6">
+          {t("login.wrongPasswordBody")}
+        </p>
+        <button
+          onClick={dismissAuthError}
+          autoFocus
+          className="w-full bg-brand-600 text-white rounded-lg py-2.5 font-medium hover:bg-brand-700 transition-colors"
+        >
+          {t("login.backToMenu")}
+        </button>
+      </div>
+    </div>
+  ) : null;
+
   // ── Role picker screen ──
   if (mode === "pick") {
     return (
+      <>
+      {authErrorModal}
       <div className="bg-white rounded-2xl shadow-lg p-8 relative">
         <div className="absolute top-4 end-4">
           <LanguageToggle />
@@ -115,11 +165,14 @@ export default function LoginPage() {
           </button>
         </div>
       </div>
+      </>
     );
   }
 
   // ── Login form (student or teacher) ──
   return (
+    <>
+    {authErrorModal}
     <div className="bg-white rounded-2xl shadow-lg p-8 relative">
       <div className="absolute top-4 end-4">
         <LanguageToggle />
@@ -209,5 +262,6 @@ export default function LoginPage() {
         </button>
       </div>
     </div>
+    </>
   );
 }

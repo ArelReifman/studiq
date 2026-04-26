@@ -11,8 +11,17 @@ async function parseErrorResponse(res: Response): Promise<string> {
   const ct = res.headers.get("content-type") ?? "";
   try {
     if (ct.includes("application/json")) {
-      const body = (await res.json()) as { error?: string; message?: string };
-      return body.error ?? body.message ?? `HTTP ${res.status}`;
+      const body = (await res.json()) as {
+        error?: string | { issues?: Array<{ message?: string }> };
+        message?: string;
+      };
+      const err = body.error;
+      if (typeof err === "string") return err;
+      if (err && typeof err === "object" && Array.isArray(err.issues)) {
+        return err.issues.map((i) => i.message).filter(Boolean).join(", ") ||
+          `HTTP ${res.status}`;
+      }
+      return body.message ?? `HTTP ${res.status}`;
     }
     const text = await res.text();
     const snippet = text.slice(0, 120).replace(/\s+/g, " ").trim();
@@ -55,8 +64,10 @@ class ApiClient {
     }
 
     if (!res.ok) {
-      // If token expired, force re-login so the user doesn't get silent failures
-      if (res.status === 401 && typeof window !== "undefined") {
+      // If token expired, force re-login so the user doesn't get silent failures.
+      // Skip auth endpoints — a 401 there means "wrong credentials", not "session expired".
+      const isAuthEndpoint = path.startsWith("/auth/");
+      if (res.status === 401 && !isAuthEndpoint && typeof window !== "undefined") {
         const { useAuthStore } = await import("@/store/auth");
         useAuthStore.getState().clearAuth();
         window.location.href = "/login";

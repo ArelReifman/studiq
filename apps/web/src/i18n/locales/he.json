@@ -27,6 +27,9 @@
   "login.backToRoles": "חזרה לבחירת תפקיד",
   "login.wrongRoleStudent": "חשבון זה אינו חשבון תלמיד.",
   "login.wrongRoleTeacher": "חשבון זה אינו חשבון מורה.",
+  "login.wrongPasswordTitle": "סיסמה שגויה",
+  "login.wrongPasswordBody": "האימייל או הסיסמה שהזנת אינם נכונים. נסו שוב.",
+  "login.backToMenu": "חזרה לתפריט",
 
   "register.title": "Studiq",
   "register.studentSetup": "הגדרת חשבון תלמיד/ה",
