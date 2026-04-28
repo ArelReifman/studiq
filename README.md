@@ -34,7 +34,7 @@ An AI-tutor platform built solo. Teachers approve student accounts, the AI autho
    middleware.ts decides where you land
 ```
 
-### Things I'd defend in an interview
+### Engineering highlights
 
 #### Race-safe approvals
 Three writes (`status` flip, `students` insert, `student_ai_profiles` insert) inside one transaction. The status flip uses `WHERE status = 'pending'`, so two teachers approving the same user concurrently can't both win. Loser sees `409`. Idempotent inserts let a retry resume after a partial failure.
