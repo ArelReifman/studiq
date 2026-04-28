@@ -103,7 +103,7 @@
   "teacher.deleteWarning": "כל הנתונים של התלמיד/ה יימחקו לצמיתות.",
   "teacher.role": "מורה",
 
-  "student.myLesson": "השיעור שלי",
+  "student.myLesson": "תרגול עצמי",
   "student.history": "היסטוריה",
   "student.progress": "התקדמות",
   "student.welcomeBack": "שלום, {name}!",

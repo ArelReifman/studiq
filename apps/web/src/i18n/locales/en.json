@@ -103,7 +103,7 @@
   "teacher.deleteWarning": "This will remove all their data permanently.",
   "teacher.role": "Teacher",
 
-  "student.myLesson": "My Lesson",
+  "student.myLesson": "Self-practice",
   "student.history": "History",
   "student.progress": "Progress",
   "student.welcomeBack": "Welcome back, {name}!",
