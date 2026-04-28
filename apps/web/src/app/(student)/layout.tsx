@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { useT } from "@/i18n";
 import { LanguageToggle } from "@/components/ui/language-toggle";
 import { cn } from "@/lib/utils";
-import { BookOpen, CheckSquare, BarChart2, CalendarDays, Map, LogOut, Menu, X } from "lucide-react";
+import { BookOpen, CheckSquare, BarChart2, CalendarDays, Map, LogOut, Menu, X, UserCog } from "lucide-react";
 import { useRealtimeSync } from "@/hooks/use-realtime-sync";
 import { Logo } from "@/components/brand/logo";
 
@@ -30,10 +30,11 @@ export default function StudentLayout({
 
   const nav = [
     { href: "/student/dashboard", label: t("student.myLesson"), icon: BookOpen },
-    { href: "/student/map", label: "מפת למידה", icon: Map },
+    { href: "/student/map", label: t("map.title"), icon: Map },
     { href: "/student/lessons", label: t("student.history"), icon: CheckSquare },
     { href: "/student/book", label: t("student.bookLesson"), icon: CalendarDays },
     { href: "/student/reports", label: t("student.progress"), icon: BarChart2 },
+    { href: "/student/profile", label: t("profile.navLabel"), icon: UserCog },
   ];
 
   function logout() {

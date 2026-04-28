@@ -7,11 +7,16 @@ import type {
   LearningMapTopic,
   TopicStatus,
 } from "@studiq/types";
+import { useT } from "@/i18n";
 
 /**
  * Learning Map — light theme matching Studiq system chrome.
  * Horizontal scrollable topic cards with SVG progress rings, click to
  * expand sub-topic panel. One component, two roles (teacher | student).
+ *
+ * NOTE: All visible text goes through t(). Direction is inherited from
+ * <html dir> set in the root layout based on the user's locale, so no
+ * hardcoded `dir` attribute here.
  */
 export function LearningMapView({
   role,
@@ -22,61 +27,72 @@ export function LearningMapView({
   map: LearningMap;
   onCreateLesson?: (topicId: string) => void;
 }) {
+  const t = useT();
   const topics = map.topics;
 
   const initialId = useMemo(() => {
-    const struggling = topics.find((t) => t.stats.status === "struggling");
+    const struggling = topics.find((tp) => tp.stats.status === "struggling");
     if (struggling) return struggling.id;
-    const inProg = topics.find((t) => t.stats.status === "in_progress");
+    const inProg = topics.find((tp) => tp.stats.status === "in_progress");
     return inProg?.id ?? topics[0]?.id ?? null;
   }, [topics]);
 
   const [activeId, setActiveId] = useState<string | null>(initialId);
-  const active = topics.find((t) => t.id === activeId) ?? null;
+  const active = topics.find((tp) => tp.id === activeId) ?? null;
 
   const recommendation = useMemo(() => {
     const struggling = topics.find(
-      (t) => t.stats.status === "struggling" && !t.locked
+      (tp) => tp.stats.status === "struggling" && !tp.locked
     );
     if (struggling) return struggling;
     const inProgress = topics
-      .filter((t) => t.stats.status === "in_progress" && !t.locked)
+      .filter((tp) => tp.stats.status === "in_progress" && !tp.locked)
       .sort((a, b) => a.stats.pct - b.stats.pct)[0];
     if (inProgress) return inProgress;
     const notStarted = topics.find(
-      (t) => t.stats.status === "not_started" && !t.locked
+      (tp) => tp.stats.status === "not_started" && !tp.locked
     );
-    return notStarted ?? topics.find((t) => !t.locked) ?? null;
+    return notStarted ?? topics.find((tp) => !tp.locked) ?? null;
   }, [topics]);
 
   const counts = map.overall;
 
   return (
-    <div
-      dir="rtl"
-      className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden"
-    >
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
       {/* TOPBAR */}
       <div className="flex items-center flex-wrap gap-x-3 gap-y-2 min-h-14 py-2 px-4 sm:px-5 border-b border-gray-100 bg-gray-50/60">
         <span className="inline-flex items-center text-[10px] font-bold tracking-wider uppercase text-gray-500 border border-gray-200 rounded px-2 py-0.5">
-          {role === "teacher" ? "מורה" : "תלמיד"}
+          {role === "teacher" ? t("map.roleTeacher") : t("map.roleStudent")}
         </span>
-        <span className="text-sm font-semibold text-gray-900">מפת למידה</span>
+        <span className="text-sm font-semibold text-gray-900">
+          {t("map.title")}
+        </span>
         <span className="w-px h-4 bg-gray-200 hidden sm:inline-block" />
         <span className="text-xs text-gray-500 font-medium truncate">
           {map.course_name}
         </span>
         <div className="flex-1" />
         <div className="flex items-center flex-wrap gap-x-3 sm:gap-x-4 gap-y-1 w-full sm:w-auto">
-          <Stat label="סה״כ" value={counts.total_topics} />
-          <Stat label="שלטו" value={counts.mastered} tone="mastered" />
+          <Stat label={t("map.statTotal")} value={counts.total_topics} />
           <Stat
-            label="בתהליך"
+            label={t("map.statMastered")}
+            value={counts.mastered}
+            tone="mastered"
+          />
+          <Stat
+            label={t("map.statInProgress")}
             value={counts.in_progress}
             tone="in_progress"
           />
-          <Stat label="קשיים" value={counts.struggling} tone="struggling" />
-          <Stat label="כולל" value={`${counts.overall_pct}%`} />
+          <Stat
+            label={t("map.statStruggling")}
+            value={counts.struggling}
+            tone="struggling"
+          />
+          <Stat
+            label={t("map.statOverall")}
+            value={`${counts.overall_pct}%`}
+          />
         </div>
       </div>
 
@@ -90,22 +106,24 @@ export function LearningMapView({
                   <Sparkles size={12} className="text-brand-600" />
                 </div>
                 <span className="text-[10px] font-bold tracking-wider uppercase text-brand-700">
-                  המלצת AI
+                  {t("map.aiRecommendation")}
                 </span>
               </div>
               <div className="text-[13px] font-semibold text-gray-900 leading-tight line-clamp-2">
                 {recommendation.name}
               </div>
               <div className="text-[10px] text-gray-500">
-                {recReasonLabel(recommendation.stats.status)}
+                {t(`map.recReason.${recReasonKey(recommendation.stats.status)}`)}
                 {recommendation.stats.tasks_failed > 0 &&
-                  ` · ${recommendation.stats.tasks_failed} קשיים`}
+                  ` · ${t("map.failuresCount", {
+                    count: recommendation.stats.tasks_failed,
+                  })}`}
               </div>
               <button
                 onClick={() => onCreateLesson?.(recommendation.id)}
                 className="h-7 rounded-md bg-white border border-brand-200 text-[11px] font-semibold text-brand-700 hover:bg-brand-50 transition-colors"
               >
-                צור שיעור
+                {t("map.createLesson")}
               </button>
             </div>
           )}
@@ -116,61 +134,67 @@ export function LearningMapView({
                 <Flame size={16} className="text-amber-500" />
                 <div className="min-w-0">
                   <div className="text-[13px] font-semibold text-gray-900 leading-tight">
-                    {counts.overall_pct}% מהמסלול
+                    {t("map.routePct", { pct: counts.overall_pct })}
                   </div>
-                  <div className="text-[10px] text-gray-500">המשך ככה</div>
+                  <div className="text-[10px] text-gray-500">
+                    {t("map.keepGoing")}
+                  </div>
                 </div>
               </div>
               <div className="h-1 bg-gray-200 rounded-full overflow-hidden relative">
                 <div
-                  className="absolute right-0 top-0 bottom-0 bg-green-500 rounded-full"
+                  className="absolute end-0 top-0 bottom-0 bg-green-500 rounded-full"
                   style={{ width: `${counts.overall_pct}%` }}
                 />
               </div>
               <div className="flex justify-between text-[10px] text-gray-400">
-                <span>{counts.mastered} שלטת</span>
-                <span>{counts.in_progress} בתהליך</span>
+                <span>
+                  {t("map.youMasteredCount", { count: counts.mastered })}
+                </span>
+                <span>
+                  {t("map.inProgressCount", { count: counts.in_progress })}
+                </span>
               </div>
             </div>
           )}
 
           <div className="text-[10px] font-bold tracking-wider uppercase text-gray-400 px-1 pt-1">
-            כל הנושאים
+            {t("map.allTopics")}
           </div>
           <div className="flex flex-col gap-0.5">
-            {topics.map((t) => (
+            {topics.map((tp) => (
               <button
-                key={t.id}
-                onClick={() => !t.locked && setActiveId(t.id)}
-                disabled={t.locked}
+                key={tp.id}
+                onClick={() => !tp.locked && setActiveId(tp.id)}
+                disabled={tp.locked}
                 className={`flex items-center gap-2 h-8 px-2 rounded-md text-start w-full transition-colors ${
-                  t.locked
+                  tp.locked
                     ? "opacity-40 cursor-default"
-                    : activeId === t.id
+                    : activeId === tp.id
                     ? "bg-gray-100"
                     : "hover:bg-gray-50"
                 }`}
               >
                 <span
                   className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotBg(
-                    t.stats.status
+                    tp.stats.status
                   )}`}
                 />
                 <span
                   className={`text-[11px] flex-1 truncate ${
-                    activeId === t.id
+                    activeId === tp.id
                       ? "text-gray-900 font-semibold"
                       : "text-gray-600"
                   }`}
                 >
-                  {t.name}
+                  {tp.name}
                 </span>
                 <span
                   className={`text-[11px] font-bold tabular-nums ${statusText(
-                    t.stats.status
+                    tp.stats.status
                   )}`}
                 >
-                  {t.stats.pct}%
+                  {tp.stats.pct}%
                 </span>
               </button>
             ))}
@@ -185,19 +209,19 @@ export function LearningMapView({
               className="flex gap-3 pb-4"
               style={{ width: "max-content" }}
             >
-              {topics.map((t) => (
+              {topics.map((tp) => (
                 <TopicCard
-                  key={t.id}
-                  topic={t}
-                  active={activeId === t.id}
+                  key={tp.id}
+                  topic={tp}
+                  active={activeId === tp.id}
                   role={role}
-                  onClick={() => !t.locked && setActiveId(t.id)}
+                  onClick={() => !tp.locked && setActiveId(tp.id)}
                   onCreateLesson={onCreateLesson}
                 />
               ))}
               {topics.length === 0 && (
                 <div className="text-gray-400 text-sm p-6">
-                  אין נושאים במסלול הזה עדיין
+                  {t("map.noTopics")}
                 </div>
               )}
             </div>
@@ -215,14 +239,14 @@ export function LearningMapView({
                     active.stats.status
                   )}`}
                 >
-                  {statusLabel(active.stats.status, role)}
+                  {statusLabel(t, active.stats.status, role)}
                 </span>
                 {role === "teacher" && !active.locked && (
                   <button
                     onClick={() => onCreateLesson?.(active.id)}
                     className="text-[11px] font-semibold px-3 py-1 rounded-md bg-brand-50 border border-brand-100 text-brand-700 hover:bg-brand-100/70 transition-colors whitespace-nowrap"
                   >
-                    צור שיעור בנושא זה
+                    {t("map.createLessonOnTopic")}
                   </button>
                 )}
               </div>
@@ -230,20 +254,23 @@ export function LearningMapView({
               {/* Stat grid */}
               <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-x-reverse divide-gray-100 border-b border-gray-100">
                 <KpiCell
-                  label="התקדמות"
+                  label={t("map.kpiProgress")}
                   value={`${active.stats.pct}%`}
                   tone={active.stats.status}
                 />
                 <KpiCell
-                  label="שיעורים"
+                  label={t("map.kpiLessons")}
                   value={active.stats.lessons_total}
                 />
                 <KpiCell
-                  label="משימות"
-                  value={`${active.stats.tasks_completed}/${active.stats.tasks_total}`}
+                  label={t("map.kpiTasks")}
+                  value={t("map.tasksFraction", {
+                    done: active.stats.tasks_completed,
+                    total: active.stats.tasks_total,
+                  })}
                 />
                 <KpiCell
-                  label="קשיים"
+                  label={t("map.kpiStruggling")}
                   value={active.stats.tasks_failed}
                   tone={
                     active.stats.tasks_failed > 0
@@ -263,9 +290,9 @@ export function LearningMapView({
                 <div className="px-4 py-5 text-[12px] text-gray-400 text-center">
                   {active.stats.lessons_total === 0
                     ? role === "teacher"
-                      ? "עוד לא נוצרו שיעורים בנושא הזה"
-                      : "עוד לא התחלת את הנושא"
-                    : "אין תת-נושאים"}
+                      ? t("map.noLessonsTeacher")
+                      : t("map.notStartedStudent")
+                    : t("map.noSubtopics")}
                 </div>
               )}
             </div>
@@ -321,7 +348,7 @@ function KpiCell({
 }
 
 function TopicCard({
-  topic: t,
+  topic: tp,
   active,
   role,
   onClick,
@@ -333,8 +360,9 @@ function TopicCard({
   onClick: () => void;
   onCreateLesson?: (id: string) => void;
 }) {
-  const status = t.stats.status;
-  const pct = t.stats.pct;
+  const t = useT();
+  const status = tp.stats.status;
+  const pct = tp.stats.pct;
 
   return (
     <div
@@ -343,7 +371,7 @@ function TopicCard({
         active
           ? "border-brand-300 shadow-md ring-1 ring-brand-100"
           : "border-gray-100 hover:border-gray-200 hover:shadow-sm"
-      } ${t.locked ? "opacity-50 cursor-not-allowed" : ""}`}
+      } ${tp.locked ? "opacity-50 cursor-not-allowed" : ""}`}
     >
       {/* stripe */}
       <div
@@ -358,13 +386,13 @@ function TopicCard({
             status
           )}`}
         >
-          {statusLabel(status, role)}
+          {statusLabel(t, status, role)}
         </span>
-        {t.locked ? (
+        {tp.locked ? (
           <Lock size={11} className="text-gray-300" />
         ) : (
           <span className="text-[9px] text-gray-400">
-            {t.stats.lessons_total} שיעורים
+            {t("map.lessonsCount", { count: tp.stats.lessons_total })}
           </span>
         )}
       </div>
@@ -380,36 +408,39 @@ function TopicCard({
                 : "text-gray-900"
             }`}
           >
-            {t.name}
+            {tp.name}
           </div>
           <div className="text-[9px] text-gray-400 mt-1">
-            {t.children.length > 0
-              ? `${t.children.length} תת-נושאים`
-              : "נושא עצמאי"}
+            {tp.children.length > 0
+              ? t("map.subtopicsCount", { count: tp.children.length })
+              : t("map.standalone")}
           </div>
         </div>
         <ProgressRing pct={pct} status={status} />
       </div>
 
       <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
-        {t.stats.tasks_failed > 0 ? (
+        {tp.stats.tasks_failed > 0 ? (
           <span className="text-[10px] text-red-600 font-medium">
-            <b className="tabular-nums">{t.stats.tasks_failed}</b> קשיים
+            {t("map.failuresCount", { count: tp.stats.tasks_failed })}
           </span>
         ) : (
           <span className="text-[10px] text-gray-400 tabular-nums">
-            {t.stats.tasks_completed}/{t.stats.tasks_total}
+            {t("map.tasksFraction", {
+              done: tp.stats.tasks_completed,
+              total: tp.stats.tasks_total,
+            })}
           </span>
         )}
-        {role === "teacher" && !t.locked ? (
+        {role === "teacher" && !tp.locked ? (
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onCreateLesson?.(t.id);
+              onCreateLesson?.(tp.id);
             }}
             className="text-[10px] font-semibold px-2 py-0.5 rounded border border-gray-200 text-gray-600 hover:text-brand-700 hover:border-brand-200 hover:bg-brand-50 transition-colors whitespace-nowrap"
           >
-            שיעור
+            {t("map.lessonShort")}
           </button>
         ) : (
           <span
@@ -418,8 +449,8 @@ function TopicCard({
             {pct === 100
               ? "✓"
               : status === "not_started"
-              ? "טרם"
-              : "המשך"}
+              ? t("map.notStartedShort")
+              : t("map.continue")}
           </span>
         )}
       </div>
@@ -477,13 +508,14 @@ function ProgressRing({
 }
 
 function SubtopicRow({
-  topic: t,
+  topic: tp,
   role,
 }: {
   topic: LearningMapTopic;
   role: "teacher" | "student";
 }) {
-  const status = t.stats.status;
+  const t = useT();
+  const status = tp.stats.status;
   return (
     <div className="flex items-center h-10 px-4 gap-3 border-b border-gray-100 last:border-b-0 hover:bg-white transition-colors">
       <span
@@ -498,19 +530,19 @@ function SubtopicRow({
             : "text-gray-900"
         }`}
       >
-        {t.name}
+        {tp.name}
       </span>
       <div className="flex items-center gap-2">
         <div className="w-16 h-1 bg-gray-200 rounded-full overflow-hidden relative">
           <div
-            className={`absolute right-0 top-0 bottom-0 rounded-full ${barBg(
+            className={`absolute end-0 top-0 bottom-0 rounded-full ${barBg(
               status
             )}`}
-            style={{ width: `${t.stats.pct}%` }}
+            style={{ width: `${tp.stats.pct}%` }}
           />
         </div>
         <span className="text-[11px] font-bold tabular-nums w-7 text-start text-gray-600">
-          {t.stats.pct}%
+          {tp.stats.pct}%
         </span>
       </div>
       <span
@@ -518,7 +550,7 @@ function SubtopicRow({
           status
         )}`}
       >
-        {statusLabel(status, role)}
+        {statusLabel(t, status, role)}
       </span>
     </div>
   );
@@ -526,35 +558,29 @@ function SubtopicRow({
 
 // ─── Color + label helpers ────────────────────────────────────────────────
 
-function statusLabel(s: TopicStatus, role: "teacher" | "student"): string {
-  const map = {
-    teacher: {
-      mastered: "שלטו",
-      in_progress: "בתהליך",
-      struggling: "קשיים",
-      not_started: "טרם",
-    },
-    student: {
-      mastered: "שלטת",
-      in_progress: "בתהליך",
-      struggling: "לחיזוק",
-      not_started: "טרם",
-    },
-  } as const;
-  return map[role][s];
+/** Map a status + role into the right translation key. */
+function statusLabel(
+  t: ReturnType<typeof useT>,
+  s: TopicStatus,
+  role: "teacher" | "student"
+): string {
+  const suffix = role === "teacher" ? "Teacher" : "Student";
+  const base =
+    s === "mastered"
+      ? "statusMastered"
+      : s === "in_progress"
+      ? "statusInProgress"
+      : s === "struggling"
+      ? "statusStruggling"
+      : "statusNotStarted";
+  return t(`map.${base}${suffix}`);
 }
 
-function recReasonLabel(s: TopicStatus): string {
-  switch (s) {
-    case "struggling":
-      return "זוהו קשיים";
-    case "in_progress":
-      return "בתהליך";
-    case "not_started":
-      return "טרם התחלתם";
-    default:
-      return "המשך כאן";
-  }
+function recReasonKey(s: TopicStatus): string {
+  if (s === "struggling") return "struggling";
+  if (s === "in_progress") return "in_progress";
+  if (s === "not_started") return "not_started";
+  return "default";
 }
 
 function statusText(s: TopicStatus): string {

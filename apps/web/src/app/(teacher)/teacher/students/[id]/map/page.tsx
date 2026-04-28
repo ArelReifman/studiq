@@ -8,6 +8,7 @@ import { ArrowLeft } from "lucide-react";
 import { api } from "@/lib/api";
 import { LearningMapView } from "@/components/learning-map/learning-map-view";
 import { CreateLessonModal } from "@/components/teacher/create-lesson-modal";
+import { useT } from "@/i18n";
 import type { LearningMap } from "@studiq/types";
 
 interface Course {
@@ -21,6 +22,7 @@ interface StudentDetail {
 }
 
 export default function TeacherLearningMapPage() {
+  const t = useT();
   const { id } = useParams<{ id: string }>();
   const [courseId, setCourseId] = useState<string>("");
   const [lessonModal, setLessonModal] = useState<{
@@ -56,12 +58,12 @@ export default function TeacherLearningMapPage() {
         href={`/teacher/students/${id}`}
         className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-4"
       >
-        <ArrowLeft size={14} className="rtl:rotate-180" /> חזרה לתלמיד
+        <ArrowLeft size={14} className="rtl:rotate-180" /> {t("map.backToStudent")}
       </Link>
 
       <div className="flex items-center justify-between mb-5 gap-3">
         <div>
-          <h1 className="text-2xl font-bold">מפת למידה</h1>
+          <h1 className="text-2xl font-bold">{t("map.title")}</h1>
           {student && (
             <p className="text-sm text-gray-500 mt-1">{student.full_name}</p>
           )}
@@ -83,15 +85,15 @@ export default function TeacherLearningMapPage() {
 
       {isLoading && (
         <div className="text-gray-400 text-sm py-10 text-center">
-          טוען מפת למידה...
+          {t("map.loadingMap")}
         </div>
       )}
 
       {!isLoading && !effectiveCourseId && (
         <div className="text-gray-400 text-sm py-10 text-center">
-          אין עדיין מסלולים.{" "}
+          {t("map.teacherNoCourses")}{" "}
           <Link href="/teacher/courses" className="text-brand-600 underline">
-            צור מסלול
+            {t("map.createCourse")}
           </Link>
         </div>
       )}
