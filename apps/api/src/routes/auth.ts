@@ -13,6 +13,7 @@ import {
   studentAiProfiles,
 } from "../db/schema.js";
 import { authMiddleware } from "../middleware/auth.js";
+import { notifyTelegram, escapeTelegramHtml } from "../lib/notify.js";
 import type { Context } from "hono";
 
 /** Set HttpOnly auth cookie + non-HttpOnly user-info cookie */
@@ -177,6 +178,23 @@ export const authRoutes = new Hono()
           status: "pending",
           signup_note: body.signup_note ?? null,
         });
+
+        // Notify teacher. We `await` because Vercel serverless may suspend
+        // the function before fire-and-forget promises resolve. notifyTelegram
+        // swallows its own errors so this can never break registration.
+        // All user-supplied fields are HTML-escaped to keep Telegram's parser happy.
+        const safeName = escapeTelegramHtml(body.full_name);
+        const safeEmail = escapeTelegramHtml(body.email);
+        const noteLine = body.signup_note
+          ? `\n📝 <b>הערה:</b> ${escapeTelegramHtml(body.signup_note)}`
+          : "";
+        await notifyTelegram(
+          `🎓 <b>סטודנט חדש ממתין לאישור</b>\n\n` +
+          `👤 <b>שם:</b> ${safeName}\n` +
+          `📧 <b>אימייל:</b> ${safeEmail}` +
+          noteLine +
+          `\n\n👉 כנס ל-Studiq לאשר`
+        );
       }
     } catch (err) {
       // Roll back the auth user if DB insert fails
