@@ -34,7 +34,7 @@
   "pending.checking": "Checking...",
   "register.noInviteHint": "No invite code? You can still register — a teacher will approve manually.",
   "register.signupNote": "Note to teacher (optional)",
-  "register.signupNotePlaceholder": "Where did you come from? Class? Any info to help the teacher approve you",
+  "register.signupNotePlaceholder": "Which platform did you find us on? Anything the teacher should know before your first lesson — current level, learning goals, topics you struggle with, or any other relevant context.",
   "register.pendingSubmitted": "Request submitted — your teacher will approve soon",
   "approvals.title": "Student approvals",
   "approvals.empty": "No pending requests.",
