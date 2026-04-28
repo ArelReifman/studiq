@@ -103,7 +103,7 @@ export default function RegisterPage() {
     }
   }
 
-  if (isStudent && inviteError) {
+  if (hasInvite && inviteError) {
     return (
       <div className="bg-white rounded-2xl shadow-lg p-8 text-center relative">
         <div className="absolute top-4 end-4">
@@ -122,7 +122,9 @@ export default function RegisterPage() {
     );
   }
 
-  if (isStudent && !invite) {
+  // Only show the "loading invite" splash when we're actually fetching one.
+  // Self-signup students (?role=student, no token) skip this entirely.
+  if (hasInvite && !invite) {
     return (
       <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
         <h1 className="text-2xl font-bold text-brand-700 mb-2">{t("register.title")}</h1>
