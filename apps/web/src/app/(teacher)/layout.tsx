@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { useT } from "@/i18n";
 import { LanguageToggle } from "@/components/ui/language-toggle";
 import { cn } from "@/lib/utils";
-import { Users, LayoutDashboard, MessageSquare, CalendarClock, LogOut, BookOpen, Menu, X } from "lucide-react";
+import { Users, LayoutDashboard, MessageSquare, CalendarClock, LogOut, BookOpen, Menu, X, UserCheck } from "lucide-react";
 import { useRealtimeSync } from "@/hooks/use-realtime-sync";
 import { Logo } from "@/components/brand/logo";
 
@@ -23,15 +23,33 @@ export default function TeacherLayout({
   const t = useT();
   useRealtimeSync();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
 
   // Close drawer on route change
   useEffect(() => {
     setDrawerOpen(false);
   }, [pathname]);
 
+  // Pending approvals badge — refreshed on every route change so the count
+  // stays accurate after the teacher acts on the approvals page.
+  // No realtime: low-volume signal, polling on nav is enough.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ count: number }>("/approvals/count")
+      .then((r) => {
+        if (!cancelled) setPendingCount(r.count);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
+
   const nav = [
     { href: "/teacher/dashboard", label: t("teacher.dashboard"), icon: LayoutDashboard },
     { href: "/teacher/students", label: t("teacher.students"), icon: Users },
+    { href: "/teacher/approvals", label: t("approvals.navLabel"), icon: UserCheck, badge: pendingCount },
     { href: "/teacher/courses", label: t("teacher.courses"), icon: BookOpen },
     { href: "/teacher/schedule", label: t("teacher.schedule"), icon: CalendarClock },
     { href: "/teacher/feedback", label: t("teacher.aiFeedback"), icon: MessageSquare },
@@ -54,7 +72,7 @@ export default function TeacherLayout({
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {nav.map(({ href, label, icon: Icon }) => (
+        {nav.map(({ href, label, icon: Icon, badge }) => (
           <Link
             key={href}
             href={href}
@@ -66,7 +84,12 @@ export default function TeacherLayout({
             )}
           >
             <Icon size={16} />
-            {label}
+            <span className="flex-1">{label}</span>
+            {badge && badge > 0 ? (
+              <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 text-[10px] font-bold rounded-full bg-amber-500 text-white">
+                {badge}
+              </span>
+            ) : null}
           </Link>
         ))}
       </nav>

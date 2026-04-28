@@ -7,6 +7,9 @@ interface AuthUser {
   email: string;
   role: "teacher" | "student";
   full_name: string;
+  // Approval gate. Older sessions/cookies may not carry this — middleware
+  // treats undefined as "approved" so legacy logins keep working.
+  status?: "pending" | "approved" | "rejected";
 }
 
 interface AuthStore {

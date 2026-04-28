@@ -6,7 +6,7 @@ export function middleware(request: NextRequest) {
 
   // Read user info from the non-HttpOnly cookie
   const userCookie = request.cookies.get("studiq-user");
-  let user: { role?: string } | null = null;
+  let user: { role?: string; status?: string } | null = null;
 
   if (userCookie?.value) {
     try {
@@ -18,6 +18,8 @@ export function middleware(request: NextRequest) {
 
   const isAuthenticated = !!user;
   const role = user?.role;
+  // Treat unset status as approved (legacy users / migrated rows).
+  const status = user?.status ?? "approved";
 
   // Public routes that don't require authentication
   const isPublicRoute =
@@ -25,6 +27,7 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/register") ||
     pathname.startsWith("/auth/callback") ||
     pathname.startsWith("/auth/set-password") ||
+    pathname.startsWith("/auth/pending") ||
     pathname.startsWith("/forgot-password");
 
   // Redirect unauthenticated users to login
@@ -32,8 +35,24 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  // Redirect wrong-role users
   if (isAuthenticated) {
+    // Pending users are routed exclusively to /auth/pending until approved.
+    // The API auth middleware enforces the same gate server-side, so client
+    // routing is just a UX nicety, not the security boundary.
+    if (status === "pending" && !pathname.startsWith("/auth/pending")) {
+      return NextResponse.redirect(new URL("/auth/pending", request.url));
+    }
+    // An approved user landing on /auth/pending → push them to their dashboard.
+    if (status === "approved" && pathname.startsWith("/auth/pending")) {
+      return NextResponse.redirect(
+        new URL(
+          role === "teacher" ? "/teacher/dashboard" : "/student/dashboard",
+          request.url
+        )
+      );
+    }
+
+    // Redirect wrong-role users
     if (pathname.startsWith("/teacher") && role !== "teacher") {
       return NextResponse.redirect(new URL("/student/dashboard", request.url));
     }

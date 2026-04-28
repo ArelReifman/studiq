@@ -18,6 +18,11 @@ import { relations } from "drizzle-orm";
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
 export const userRoleEnum = pgEnum("user_role", ["teacher", "student"]);
+export const profileStatusEnum = pgEnum("profile_status", [
+  "pending",
+  "approved",
+  "rejected",
+]);
 export const topicSourceEnum = pgEnum("topic_source", [
   "initial_choice",
   "ai_inferred",
@@ -91,6 +96,14 @@ export const profiles = pgTable("profiles", {
   full_name: text("full_name").notNull(),
   email: text("email").notNull().unique(),
   avatar_url: text("avatar_url"),
+  // Approval gate: existing rows default to 'approved' so live users keep working.
+  // New self-service registrations land as 'pending' until a teacher approves them.
+  status: profileStatusEnum("status").notNull().default("approved"),
+  approved_at: timestamp("approved_at", { withTimezone: true }),
+  approved_by: uuid("approved_by"),
+  rejected_at: timestamp("rejected_at", { withTimezone: true }),
+  // Optional self-described context surfaced to the teacher during review.
+  signup_note: text("signup_note"),
   created_at: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

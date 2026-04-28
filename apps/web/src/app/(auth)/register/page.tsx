@@ -18,7 +18,14 @@ export default function RegisterPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const inviteToken = searchParams.get("token");
-  const isStudent = !!inviteToken;
+  const roleParam = searchParams.get("role");
+  // Three flavors of this page:
+  //   ?token=...      → student joining via teacher's invite link (auto-approved)
+  //   ?role=student   → student self-registration (lands as pending)
+  //   (no params)     → teacher signup
+  const hasInvite = !!inviteToken;
+  const isStudentSelfSignup = !inviteToken && roleParam === "student";
+  const isStudent = hasInvite || isStudentSelfSignup;
   const setAuth = useAuthStore((s) => s.setAuth);
   const t = useT();
 
@@ -28,6 +35,7 @@ export default function RegisterPage() {
     full_name: "",
     email: "",
     password: "",
+    signup_note: "",
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -56,9 +64,12 @@ export default function RegisterPage() {
 
     try {
       await api.post("/auth/register", {
-        ...form,
+        full_name: form.full_name,
+        email: form.email,
+        password: form.password,
         role: isStudent ? "student" : "teacher",
         teacher_invite_token: inviteToken ?? undefined,
+        signup_note: isStudentSelfSignup && form.signup_note ? form.signup_note : undefined,
       });
 
       const loginData = await api.post<{
@@ -68,10 +79,17 @@ export default function RegisterPage() {
           email: string;
           role: "teacher" | "student";
           full_name: string;
+          status?: "pending" | "approved" | "rejected";
         };
       }>("/auth/login", { email: form.email, password: form.password });
 
       setAuth(loginData.user, loginData.access_token);
+
+      // Self-registered student → waiting room. Otherwise → dashboard.
+      if (loginData.user.status === "pending") {
+        router.push("/auth/pending");
+        return;
+      }
 
       router.push(
         loginData.user.role === "teacher"
@@ -125,9 +143,15 @@ export default function RegisterPage() {
         </p>
       </div>
 
-      {isStudent && invite && (
+      {hasInvite && invite && (
         <div className="mb-4 bg-brand-50 border border-brand-100 rounded-lg px-4 py-3 text-sm text-brand-700">
           {t("register.welcomeStudent", { name: invite.full_name })}
+        </div>
+      )}
+
+      {isStudentSelfSignup && (
+        <div className="mb-4 bg-amber-50 border border-amber-100 rounded-lg px-4 py-3 text-xs text-amber-800">
+          {t("register.noInviteHint")}
         </div>
       )}
 
@@ -175,6 +199,23 @@ export default function RegisterPage() {
           />
           <p className="text-xs text-gray-400 mt-1">{t("register.password8")}</p>
         </div>
+
+        {isStudentSelfSignup && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t("register.signupNote")}
+            </label>
+            <textarea
+              name="signup_note"
+              value={form.signup_note}
+              onChange={(e) => setForm((p) => ({ ...p, signup_note: e.target.value }))}
+              rows={3}
+              maxLength={500}
+              placeholder={t("register.signupNotePlaceholder")}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
+            />
+          </div>
+        )}
 
         {error && (
           <p className="text-red-500 text-sm bg-red-50 rounded-lg px-3 py-2">

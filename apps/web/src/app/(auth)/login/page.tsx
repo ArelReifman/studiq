@@ -42,6 +42,7 @@ export default function LoginPage() {
           email: string;
           role: "teacher" | "student";
           full_name: string;
+          status?: "pending" | "approved" | "rejected";
         };
       }>("/auth/login", { email, password });
 
@@ -64,6 +65,13 @@ export default function LoginPage() {
 
       setAuth(data.user, data.access_token);
 
+      // Pending users go to the waiting room. Status defaults to 'approved'
+      // for older sessions where the server didn't return a status field.
+      if (data.user.status === "pending") {
+        router.push("/auth/pending");
+        return;
+      }
+
       router.push(
         data.user.role === "teacher"
           ? "/teacher/dashboard"
@@ -75,7 +83,10 @@ export default function LoginPage() {
         msg.includes("invalid credentials") ||
         msg.includes("invalid login") ||
         msg.includes("401");
-      if (isCredsError) {
+      const isRejected = msg.includes("account access denied");
+      if (isRejected) {
+        setError(t("login.rejected"));
+      } else if (isCredsError) {
         setAuthErrorOpen(true);
       } else {
         setError(err.message ?? t("error.loginFailed"));
@@ -247,7 +258,15 @@ export default function LoginPage() {
           </p>
         )}
         {mode === "student" && (
-          <p className="text-xs text-gray-400">{t("login.noAccount")}</p>
+          <p className="text-xs text-gray-400">
+            {t("login.noAccount")}{" "}
+            <Link
+              href="/register?role=student"
+              className="text-brand-600 hover:underline"
+            >
+              {t("register.createAccount")}
+            </Link>
+          </p>
         )}
         <button
           onClick={() => {

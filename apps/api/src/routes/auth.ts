@@ -19,7 +19,13 @@ import type { Context } from "hono";
 function setAuthCookies(
   c: Context,
   accessToken: string,
-  user: { id: string; email: string; role: string; full_name: string }
+  user: {
+    id: string;
+    email: string;
+    role: string;
+    full_name: string;
+    status?: "pending" | "approved" | "rejected";
+  }
 ) {
   const isProduction = process.env["NODE_ENV"] === "production";
   const maxAge = 60 * 60 * 24 * 7; // 7 days
@@ -54,6 +60,8 @@ const registerSchema = z.object({
   full_name: z.string().min(1),
   role: z.enum(["teacher", "student"]),
   teacher_invite_token: z.string().optional(),
+  // Optional self-described context shown to the teacher on the approvals page.
+  signup_note: z.string().max(500).optional(),
 });
 
 const loginSchema = z.object({
@@ -73,12 +81,13 @@ export const authRoutes = new Hono()
     const body = c.req.valid("json");
     const supabase = getAdminClient();
 
-    // If student, validate invite token
+    // Resolve invite (only when a token is supplied).
+    // Three valid paths:
+    //   teacher                              → auto-approved
+    //   student WITH invite token            → auto-approved (existing flow)
+    //   student WITHOUT invite token         → pending, awaits teacher approval
     let invite: typeof studentInvites.$inferSelect | undefined;
-    if (body.role === "student") {
-      if (!body.teacher_invite_token) {
-        return c.json({ error: "Invite token required for students" }, 400);
-      }
+    if (body.role === "student" && body.teacher_invite_token) {
       const [found] = await db
         .select()
         .from(studentInvites)
@@ -96,6 +105,10 @@ export const authRoutes = new Hono()
       invite = found;
     }
 
+    // pendingApproval = student who showed up with no invite token.
+    // Their account is created but locked at the middleware until a teacher approves.
+    const pendingApproval = body.role === "student" && !invite;
+
     // Create Supabase auth user
     const { data: authData, error: authError } =
       await supabase.auth.admin.createUser({
@@ -111,54 +124,80 @@ export const authRoutes = new Hono()
     }
 
     const userId = authData.user.id;
+    const now = new Date();
 
-    if (body.role === "teacher") {
-      // Insert profile + teacher row
-      await db.transaction(async (tx) => {
-        await tx.insert(profiles).values({
-          id: userId,
-          role: body.role,
-          full_name: body.full_name,
-          email: body.email,
+    try {
+      if (body.role === "teacher") {
+        // Teachers always self-approve for now (single-tenant).
+        await db.transaction(async (tx) => {
+          await tx.insert(profiles).values({
+            id: userId,
+            role: body.role,
+            full_name: body.full_name,
+            email: body.email,
+            status: "approved",
+            approved_at: now,
+          });
+          await tx.insert(teachers).values({ id: userId });
         });
-        await tx.insert(teachers).values({ id: userId });
-      });
-    } else {
-      // Student path: invite is guaranteed set here
-      const inv = invite!;
-      try {
+      } else if (invite) {
+        // Student WITH invite — existing trusted path.
         await db.transaction(async (tx) => {
           await tx.insert(profiles).values({
             id: userId,
             role: "student",
-            full_name: body.full_name || inv.full_name,
+            full_name: body.full_name || invite!.full_name,
             email: body.email,
+            status: "approved",
+            approved_at: now,
+            approved_by: invite!.teacher_id,
           });
           await tx.insert(students).values({
             id: userId,
-            teacher_id: inv.teacher_id,
-            grade_level: inv.grade_level,
-            notes: inv.notes,
+            teacher_id: invite!.teacher_id,
+            grade_level: invite!.grade_level,
+            notes: invite!.notes,
           });
-          await tx.insert(studentAiProfiles).values({
-            student_id: userId,
-          });
+          await tx.insert(studentAiProfiles).values({ student_id: userId });
           await tx
             .update(studentInvites)
-            .set({ used_at: new Date() })
-            .where(eq(studentInvites.token, inv.token));
+            .set({ used_at: now })
+            .where(eq(studentInvites.token, invite!.token));
         });
-      } catch (err) {
-        // Roll back the auth user if DB insert fails
-        await supabase.auth.admin.deleteUser(userId);
-        return c.json(
-          { error: (err as Error).message ?? "Failed to register student" },
-          500
-        );
+      } else {
+        // Student WITHOUT invite — pending approval.
+        // We create ONLY the profile row. No `students` row yet, so they appear
+        // in no teacher's roster until approved. The approval endpoint creates
+        // the students + student_ai_profiles rows atomically.
+        await db.insert(profiles).values({
+          id: userId,
+          role: "student",
+          full_name: body.full_name,
+          email: body.email,
+          status: "pending",
+          signup_note: body.signup_note ?? null,
+        });
       }
+    } catch (err) {
+      // Roll back the auth user if DB insert fails
+      await supabase.auth.admin.deleteUser(userId);
+      console.warn(`[AUTH] Registration rollback for ${body.email} — ${(err as Error).message}`);
+      return c.json(
+        { error: (err as Error).message ?? "Failed to register" },
+        500
+      );
     }
 
-    return c.json({ message: "Registered successfully" }, 201);
+    if (pendingApproval) {
+      return c.json(
+        {
+          message: "Registered successfully — pending teacher approval",
+          status: "pending",
+        },
+        201
+      );
+    }
+    return c.json({ message: "Registered successfully", status: "approved" }, 201);
   })
 
   // Public lookup of invite details by token (for register page prefill)
@@ -203,11 +242,27 @@ export const authRoutes = new Hono()
       return c.json({ error: "Invalid credentials" }, 401);
     }
 
+    // Pull status from profiles. Rejected users cannot log in.
+    // Pending users CAN log in (they need a session to reach /auth/pending),
+    // but the auth middleware will block them from any protected route.
+    const [profile] = await db
+      .select({ status: profiles.status, full_name: profiles.full_name })
+      .from(profiles)
+      .where(eq(profiles.id, data.user.id))
+      .limit(1);
+
+    if (profile?.status === "rejected") {
+      // Drop the supabase session so the rejected user has no token.
+      await supabase.auth.signOut();
+      return c.json({ error: "Account access denied" }, 403);
+    }
+
     const user = {
       id: data.user.id,
       email: data.user.email!,
       role: data.user.user_metadata?.["role"] as string,
-      full_name: data.user.user_metadata?.["full_name"] as string,
+      full_name: (profile?.full_name ?? data.user.user_metadata?.["full_name"]) as string,
+      status: (profile?.status ?? "approved") as "pending" | "approved" | "rejected",
     };
 
     // Set HttpOnly cookie with access token
@@ -254,7 +309,12 @@ export const authRoutes = new Hono()
       .where(eq(profiles.id, userId))
       .limit(1);
 
-    return c.json({ userId, role: c.get("userRole"), profile });
+    return c.json({
+      userId,
+      role: c.get("userRole"),
+      status: c.get("userStatus"),
+      profile,
+    });
   })
 
   .post("/logout", (c) => {
