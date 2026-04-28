@@ -151,12 +151,6 @@ export default function RegisterPage() {
         </div>
       )}
 
-      {isStudentSelfSignup && (
-        <div className="mb-4 bg-amber-50 border border-amber-100 rounded-lg px-4 py-3 text-xs text-amber-800">
-          {t("register.noInviteHint")}
-        </div>
-      )}
-
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
