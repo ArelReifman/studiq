@@ -21,7 +21,7 @@
   "login.signIn": "התחברות",
   "login.signingIn": "מתחבר...",
   "login.registered": "החשבון נוצר בהצלחה! התחבר/י עם האימייל והסיסמה שבחרת.",
-  "login.noAccount": "אין לך חשבון? בקש/י מהמורה קישור הזמנה.",
+  "login.noAccount": "אין לך חשבון? הירשם/י וחכה/י לאישור המורה.",
   "login.newTeacher": "מורה חדש/ה?",
   "login.createAccount": "יצירת חשבון",
   "login.backToRoles": "חזרה לבחירת תפקיד",

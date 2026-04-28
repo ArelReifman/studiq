@@ -272,13 +272,12 @@ export default function LoginPage() {
           </p>
         )}
         {mode === "student" && (
-          <p className="text-xs text-gray-400">
-            {t("login.noAccount")}{" "}
+          <p className="text-sm text-gray-500">
             <Link
               href="/register?role=student"
               className="text-brand-600 hover:underline"
             >
-              {t("register.createAccount")}
+              {t("login.noAccount")}
             </Link>
           </p>
         )}

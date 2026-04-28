@@ -21,7 +21,7 @@
   "login.signIn": "Sign in",
   "login.signingIn": "Signing in...",
   "login.registered": "Account created successfully! Sign in with your email and password.",
-  "login.noAccount": "Don't have an account? Ask your teacher for an invite link.",
+  "login.noAccount": "Don't have an account? Sign up and wait for teacher approval.",
   "login.newTeacher": "New teacher?",
   "login.createAccount": "Create an account",
   "login.backToRoles": "Back to role selection",
