@@ -48,7 +48,6 @@ export default function TeacherLayout({
 
   const nav = [
     { href: "/teacher/dashboard", label: t("teacher.dashboard"), icon: LayoutDashboard },
-    { href: "/teacher/students", label: t("teacher.students"), icon: Users },
     { href: "/teacher/approvals", label: t("approvals.navLabel"), icon: UserCheck, badge: pendingCount },
     { href: "/teacher/courses", label: t("teacher.courses"), icon: BookOpen },
     { href: "/teacher/schedule", label: t("teacher.schedule"), icon: CalendarClock },
