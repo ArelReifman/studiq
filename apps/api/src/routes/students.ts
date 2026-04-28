@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { createClient } from "@supabase/supabase-js";
 import { db } from "../db/client.js";
 import {
@@ -13,6 +13,7 @@ import {
   lessonSessions,
   homeworkItems,
   todoItems,
+  difficultyReports,
 } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 
@@ -27,6 +28,9 @@ export const studentRoutes = new Hono()
   .use(requireRole("teacher"))
 
   // GET /students — teacher's roster
+  // Includes unreviewed_difficulties count per student so the dashboard
+  // can surface "needs attention" right on each student card without
+  // needing a separate global difficulties feed.
   .get("/", async (c) => {
     const teacherId = c.get("userId");
 
@@ -43,6 +47,13 @@ export const studentRoutes = new Hono()
         ai_summary: studentAiProfiles.ai_summary,
         avg_completion_rate: studentAiProfiles.avg_completion_rate,
         weak_topics: studentAiProfiles.weak_topics,
+        // Correlated subquery: cheap because difficulty_reports has an
+        // index on (reviewed) and joining student_id is keyed.
+        unreviewed_difficulties: sql<number>`(
+          SELECT COUNT(*)::int FROM ${difficultyReports}
+          WHERE ${difficultyReports.student_id} = ${students.id}
+            AND ${difficultyReports.reviewed} = false
+        )`,
       })
       .from(students)
       .innerJoin(profiles, eq(profiles.id, students.id))

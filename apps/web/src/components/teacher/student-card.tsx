@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { formatPercent } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { useT } from "@/i18n";
-import { User, ArrowRight, Trash2 } from "lucide-react";
+import { User, ArrowRight, Trash2, AlertTriangle } from "lucide-react";
 
 interface StudentCardProps {
   id: string;
@@ -17,6 +17,7 @@ interface StudentCardProps {
   avg_completion_rate: string | null;
   weak_topics: string[];
   ai_summary: string | null;
+  unreviewed_difficulties?: number;
 }
 
 export function StudentCard({
@@ -26,6 +27,7 @@ export function StudentCard({
   avg_completion_rate,
   weak_topics,
   ai_summary,
+  unreviewed_difficulties = 0,
 }: StudentCardProps) {
   const rate = avg_completion_rate ? Number(avg_completion_rate) : null;
   const qc = useQueryClient();
@@ -83,23 +85,36 @@ export function StudentCard({
 
       <Link href={`/teacher/students/${id}`}>
         <div className="flex items-start justify-between mb-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center flex-shrink-0">
               <User size={16} className="text-brand-600" />
             </div>
-            <div>
-              <p className="font-medium text-sm">{full_name}</p>
+            <div className="min-w-0">
+              <p className="font-medium text-sm truncate">{full_name}</p>
             </div>
           </div>
-          {rate !== null && (
-            <Badge
-              variant={
-                rate >= 0.7 ? "success" : rate >= 0.4 ? "warning" : "danger"
-              }
-            >
-              {formatPercent(rate)}
-            </Badge>
-          )}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {unreviewed_difficulties > 0 && (
+              <span title={t("teacher.difficulties")}>
+                <Badge
+                  variant="danger"
+                  className="inline-flex items-center gap-1"
+                >
+                  <AlertTriangle size={11} />
+                  {unreviewed_difficulties}
+                </Badge>
+              </span>
+            )}
+            {rate !== null && (
+              <Badge
+                variant={
+                  rate >= 0.7 ? "success" : rate >= 0.4 ? "warning" : "danger"
+                }
+              >
+                {formatPercent(rate)}
+              </Badge>
+            )}
+          </div>
         </div>
 
         {weak_topics.length > 0 && (
