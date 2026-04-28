@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
@@ -27,6 +27,20 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [authErrorOpen, setAuthErrorOpen] = useState(false);
+
+  // Recovery / magic-link landing forwarder.
+  // Supabase normalizes redirect_to back to Site URL (the bare host) even when
+  // the requested path is in the allow list, so the verify response lands on
+  // "/" with auth tokens in the URL hash. Middleware then redirects unauth'd
+  // visitors to /login, dragging the hash with them. We catch the hash here
+  // and bounce to /auth/callback which knows how to consume it.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hash = window.location.hash;
+    if (hash && hash.includes("access_token=") && hash.includes("type=")) {
+      router.replace(`/auth/callback${hash}`);
+    }
+  }, [router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
