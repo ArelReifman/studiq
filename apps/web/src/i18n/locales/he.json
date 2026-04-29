@@ -261,6 +261,8 @@
   "teacher.bookedOnThisDate": "תפוס בתאריך זה",
   "teacher.upcomingLessons": "השיעורים הקרובים",
   "teacher.noUpcomingLessons": "אין שיעורים מאושרים עתידיים.",
+  "teacher.cancelLesson": "ביטול",
+  "teacher.confirmCancelLesson": "לבטל את השיעור הזה? לא ניתן לבטל את הפעולה.",
 
   "day.sunday": "ראשון",
   "day.monday": "שני",

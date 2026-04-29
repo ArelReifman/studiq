@@ -1,6 +1,7 @@
 import { eq, and, gte, isNotNull } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { teacherAvailability } from "../../db/schema.js";
+import { getIsraelToday } from "../../lib/time.js";
 
 /**
  * Default availability policy.
@@ -44,13 +45,13 @@ function minToTime(min: number): string {
  * so new teachers and rolling time windows fill themselves without a cron.
  */
 export async function ensureDefaultSlots(teacherId: string): Promise<void> {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // Anchor the window on Israel's "today" so we don't generate yesterday's
+  // slots (or skip today's) at the UTC↔Israel midnight boundary.
+  const todayStr = getIsraelToday();
+  const today = new Date(todayStr + "T00:00:00");
 
   const horizon = new Date(today);
   horizon.setDate(today.getDate() + 7 * WEEKS_AHEAD);
-
-  const todayStr = ymd(today);
 
   // Pull every date in the window that already has any slot (active or not).
   // Even inactive rows count — a teacher who deleted a slot shouldn't see it

@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { useT } from "@/i18n";
 import { Card } from "@/components/ui/card";
 import { Calendar, TimeSlotGrid, type TimeSlot } from "@/components/calendar/calendar";
-import { Plus, CalendarCheck, MessageSquare } from "lucide-react";
+import { Plus, CalendarCheck, MessageSquare, X } from "lucide-react";
 import { groupConsecutiveBookings } from "@/lib/booking-grouping";
 
 interface Slot extends TimeSlot {
@@ -133,6 +133,24 @@ export default function TeacherSchedulePage() {
     onError: (e: Error) => setError(e.message),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-availability"] });
+    },
+  });
+
+  // Cancel an approved (or pending) lesson — fans out across every slot in the
+  // grouped range so a 2-hour booking is cancelled in one click.
+  const cancelLessonMutation = useMutation({
+    mutationFn: async ({ ids }: { ids: string[] }) => {
+      await Promise.all(
+        ids.map((id) =>
+          api.patch(`/bookings/${id}`, { status: "cancelled" })
+        )
+      );
+    },
+    onError: (e: Error) => setError(e.message),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["my-bookings-as-teacher"] });
+      qc.invalidateQueries({ queryKey: ["my-availability"] });
+      qc.invalidateQueries({ queryKey: ["booking-slots"] });
     },
   });
 
@@ -335,6 +353,19 @@ export default function TeacherSchedulePage() {
                     </div>
                   )}
                 </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm(t("teacher.confirmCancelLesson"))) {
+                      cancelLessonMutation.mutate({ ids: g.ids });
+                    }
+                  }}
+                  disabled={cancelLessonMutation.isPending}
+                  className="flex-shrink-0 inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded-md px-2 py-1 transition-colors disabled:opacity-50"
+                >
+                  <X size={13} />
+                  {t("teacher.cancelLesson")}
+                </button>
               </div>
             ))}
           </div>

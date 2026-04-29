@@ -261,6 +261,8 @@
   "teacher.bookedOnThisDate": "Taken on this date",
   "teacher.upcomingLessons": "Upcoming lessons",
   "teacher.noUpcomingLessons": "No upcoming approved lessons.",
+  "teacher.cancelLesson": "Cancel",
+  "teacher.confirmCancelLesson": "Cancel this lesson? This cannot be undone.",
 
   "day.sunday": "Sunday",
   "day.monday": "Monday",

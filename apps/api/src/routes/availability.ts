@@ -6,6 +6,7 @@ import { db } from "../db/client.js";
 import { teacherAvailability, lessonBookings } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { ensureDefaultSlots } from "../services/scheduling/ensure-default-slots.js";
+import { getIsraelToday } from "../lib/time.js";
 
 const slotSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD"),
@@ -56,9 +57,8 @@ export const availabilityRoutes = new Hono()
       return c.json({ error: "End time must be after start time" }, 400);
     }
 
-    // Block past dates
-    const today = new Date().toISOString().split("T")[0]!;
-    if (body.date < today) {
+    // Block past dates (Israel timezone)
+    if (body.date < getIsraelToday()) {
       return c.json({ error: "Cannot create slots in the past" }, 400);
     }
 

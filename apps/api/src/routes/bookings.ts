@@ -13,6 +13,7 @@ import {
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { notifyTelegram, escapeTelegramHtml } from "../lib/notify.js";
 import { ensureDefaultSlots } from "../services/scheduling/ensure-default-slots.js";
+import { getIsraelToday, isSlotInPastIsrael } from "../lib/time.js";
 
 const bookSchema = z.object({
   availability_id: z.string().uuid(),
@@ -20,7 +21,7 @@ const bookSchema = z.object({
 });
 
 const respondSchema = z.object({
-  status: z.enum(["approved", "rejected"]),
+  status: z.enum(["approved", "rejected", "cancelled"]),
   note: z.string().max(500).optional(),
 });
 
@@ -54,7 +55,7 @@ export const bookingRoutes = new Hono()
       // page recently.
       await ensureDefaultSlots(student.teacher_id);
 
-      const today = new Date().toISOString().split("T")[0]!;
+      const today = getIsraelToday();
       const conds = [
         eq(teacherAvailability.teacher_id, student.teacher_id),
         eq(teacherAvailability.is_active, true),
@@ -69,8 +70,9 @@ export const bookingRoutes = new Hono()
         .where(and(...conds))
         .orderBy(teacherAvailability.date, teacherAvailability.start_time);
 
-      // Hide slots already taken (approved or pending booking)
       if (slots.length === 0) return c.json([]);
+
+      // Hide slots already taken (approved or pending booking)
       const slotIds = slots.map((s) => s.id);
       const takenRows = await db
         .select({ availability_id: lessonBookings.availability_id })
@@ -82,7 +84,17 @@ export const bookingRoutes = new Hono()
           )
         );
       const taken = new Set(takenRows.map((r) => r.availability_id));
-      return c.json(slots.filter((s) => !taken.has(s.id)));
+
+      // Also hide today's slots whose start_time has already passed in Israel
+      // time — otherwise a student loading the page at 14:00 still sees an
+      // 11:30 slot they can't actually take.
+      const visible = slots.filter(
+        (s) =>
+          !taken.has(s.id) &&
+          s.date != null &&
+          !isSlotInPastIsrael(s.date, s.start_time)
+      );
+      return c.json(visible);
     }
   )
 
@@ -116,10 +128,9 @@ export const bookingRoutes = new Hono()
       return c.json({ error: "Slot not found" }, 404);
     }
 
-    // Block past
-    const today = new Date().toISOString().split("T")[0]!;
-    if (slot.date < today) {
-      return c.json({ error: "Cannot book in the past" }, 400);
+    // Block past — in Israel time. Includes today's already-passed slots.
+    if (isSlotInPastIsrael(slot.date, slot.start_time)) {
+      return c.json({ error: "This time has already passed" }, 400);
     }
 
     // Block double-booking on the same slot (any non-final status)
@@ -219,7 +230,7 @@ export const bookingRoutes = new Hono()
     return c.json({ count: rows.length });
   })
 
-  // ── Teacher: approve or reject a booking
+  // ── Teacher: approve / reject (from pending) or cancel (from pending|approved)
   .patch(
     "/:id",
     requireRole("teacher"),
@@ -228,6 +239,11 @@ export const bookingRoutes = new Hono()
       const teacherId = c.get("userId");
       const bookingId = c.req.param("id")!;
       const body = c.req.valid("json");
+
+      // Cancellation may happen on an already-approved lesson (life happens).
+      // Approve/reject still only flip a pending request.
+      const allowedFromStatuses: ("pending" | "approved")[] =
+        body.status === "cancelled" ? ["pending", "approved"] : ["pending"];
 
       const [updated] = await db
         .update(lessonBookings)
@@ -240,7 +256,7 @@ export const bookingRoutes = new Hono()
           and(
             eq(lessonBookings.id, bookingId),
             eq(lessonBookings.teacher_id, teacherId),
-            eq(lessonBookings.status, "pending")
+            inArray(lessonBookings.status, allowedFromStatuses)
           )
         )
         .returning();
@@ -248,6 +264,26 @@ export const bookingRoutes = new Hono()
       if (!updated) {
         return c.json({ error: "Booking not found or already handled" }, 404);
       }
+
+      // Telegram log when the teacher cancels — confirms the action was
+      // applied. (No SMS to the student; if needed, we can add a separate
+      // notify hook later.)
+      if (body.status === "cancelled") {
+        void (async () => {
+          const [studentRow] = await db
+            .select({ name: profiles.full_name })
+            .from(profiles)
+            .where(eq(profiles.id, updated.student_id))
+            .limit(1);
+          const studentName = studentRow?.name ?? "Student";
+          await notifyTelegram(
+            `🚫 <b>Lesson cancelled by you</b>\n${escapeTelegramHtml(
+              studentName
+            )} · ${updated.date} · ${updated.start_time}–${updated.end_time}`
+          );
+        })();
+      }
+
       return c.json(updated);
     }
   )
