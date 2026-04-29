@@ -1,47 +1,49 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and } from "drizzle-orm";
+import { eq, and, gte, lte, isNotNull, sql } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { teacherAvailability } from "../db/schema.js";
+import { teacherAvailability, lessonBookings } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 
 const slotSchema = z.object({
-  day_of_week: z.enum([
-    "sunday",
-    "monday",
-    "tuesday",
-    "wednesday",
-    "thursday",
-    "friday",
-    "saturday",
-  ]),
-  start_time: z.string().regex(/^\d{2}:\d{2}$/, "Must be HH:mm format"),
-  end_time: z.string().regex(/^\d{2}:\d{2}$/, "Must be HH:mm format"),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD"),
+  start_time: z.string().regex(/^\d{2}:\d{2}$/, "Must be HH:mm"),
+  end_time: z.string().regex(/^\d{2}:\d{2}$/, "Must be HH:mm"),
+});
+
+const rangeSchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 export const availabilityRoutes = new Hono()
   .use(authMiddleware)
   .use(requireRole("teacher"))
 
-  // Get all availability slots for the teacher
-  .get("/", async (c) => {
+  // List per-date slots, optionally filtered by ?from=YYYY-MM-DD&to=YYYY-MM-DD
+  .get("/", zValidator("query", rangeSchema), async (c) => {
     const teacherId = c.get("userId");
+    const { from, to } = c.req.valid("query");
+
+    const conds = [
+      eq(teacherAvailability.teacher_id, teacherId),
+      eq(teacherAvailability.is_active, true),
+      isNotNull(teacherAvailability.date),
+    ];
+    if (from) conds.push(gte(teacherAvailability.date, from));
+    if (to) conds.push(lte(teacherAvailability.date, to));
+
     const slots = await db
       .select()
       .from(teacherAvailability)
-      .where(
-        and(
-          eq(teacherAvailability.teacher_id, teacherId),
-          eq(teacherAvailability.is_active, true)
-        )
-      )
-      .orderBy(teacherAvailability.day_of_week, teacherAvailability.start_time);
+      .where(and(...conds))
+      .orderBy(teacherAvailability.date, teacherAvailability.start_time);
 
     return c.json(slots);
   })
 
-  // Add a new availability slot
+  // Add a per-date slot
   .post("/", zValidator("json", slotSchema), async (c) => {
     const teacherId = c.get("userId");
     const body = c.req.valid("json");
@@ -50,11 +52,36 @@ export const availabilityRoutes = new Hono()
       return c.json({ error: "End time must be after start time" }, 400);
     }
 
+    // Block past dates
+    const today = new Date().toISOString().split("T")[0]!;
+    if (body.date < today) {
+      return c.json({ error: "Cannot create slots in the past" }, 400);
+    }
+
+    // Prevent overlapping slot on same date
+    const existing = await db
+      .select()
+      .from(teacherAvailability)
+      .where(
+        and(
+          eq(teacherAvailability.teacher_id, teacherId),
+          eq(teacherAvailability.is_active, true),
+          eq(teacherAvailability.date, body.date)
+        )
+      );
+
+    const overlaps = existing.some(
+      (s) => s.start_time < body.end_time && s.end_time > body.start_time
+    );
+    if (overlaps) {
+      return c.json({ error: "Slot overlaps an existing one" }, 409);
+    }
+
     const [slot] = await db
       .insert(teacherAvailability)
       .values({
         teacher_id: teacherId,
-        day_of_week: body.day_of_week,
+        date: body.date,
         start_time: body.start_time,
         end_time: body.end_time,
       })
@@ -63,10 +90,40 @@ export const availabilityRoutes = new Hono()
     return c.json(slot, 201);
   })
 
-  // Delete (deactivate) a slot
+  // Delete (deactivate) a slot — refuses if slot has an approved booking.
   .delete("/:id", async (c) => {
     const teacherId = c.get("userId");
     const slotId = c.req.param("id");
+
+    // Block delete if there's an approved booking on this slot
+    const [approved] = await db
+      .select({ id: lessonBookings.id })
+      .from(lessonBookings)
+      .where(
+        and(
+          eq(lessonBookings.availability_id, slotId),
+          eq(lessonBookings.status, "approved")
+        )
+      )
+      .limit(1);
+
+    if (approved) {
+      return c.json(
+        { error: "Cannot delete a slot with an approved booking" },
+        409
+      );
+    }
+
+    // Cancel any pending booking on this slot
+    await db
+      .update(lessonBookings)
+      .set({ status: "cancelled", updated_at: new Date() })
+      .where(
+        and(
+          eq(lessonBookings.availability_id, slotId),
+          eq(lessonBookings.status, "pending")
+        )
+      );
 
     const [updated] = await db
       .update(teacherAvailability)

@@ -1,19 +1,20 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, gte, lte, isNotNull, inArray } from "drizzle-orm";
 import { db } from "../db/client.js";
 import {
   lessonBookings,
   teacherAvailability,
   students,
   profiles,
+  teachers,
 } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
+import { notifyTelegram, escapeTelegramHtml } from "../lib/notify.js";
 
 const bookSchema = z.object({
   availability_id: z.string().uuid(),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD"),
   note: z.string().max(500).optional(),
 });
 
@@ -22,42 +23,68 @@ const respondSchema = z.object({
   note: z.string().max(500).optional(),
 });
 
+const rangeSchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+
 export const bookingRoutes = new Hono()
   .use(authMiddleware)
 
-  // ── Student: get teacher's available slots ──
-  .get("/available-slots", requireRole("student"), async (c) => {
-    const studentId = c.get("userId");
+  // ── Student: get teacher's available slots (per-date, future only, not yet taken)
+  .get(
+    "/available-slots",
+    requireRole("student"),
+    zValidator("query", rangeSchema),
+    async (c) => {
+      const studentId = c.get("userId");
+      const { from, to } = c.req.valid("query");
 
-    // Get the student's teacher
-    const [student] = await db
-      .select({ teacher_id: students.teacher_id })
-      .from(students)
-      .where(eq(students.id, studentId))
-      .limit(1);
+      const [student] = await db
+        .select({ teacher_id: students.teacher_id })
+        .from(students)
+        .where(eq(students.id, studentId))
+        .limit(1);
 
-    if (!student) return c.json({ error: "Student not found" }, 404);
+      if (!student) return c.json({ error: "Student not found" }, 404);
 
-    const slots = await db
-      .select()
-      .from(teacherAvailability)
-      .where(
-        and(
-          eq(teacherAvailability.teacher_id, student.teacher_id),
-          eq(teacherAvailability.is_active, true)
-        )
-      )
-      .orderBy(teacherAvailability.day_of_week, teacherAvailability.start_time);
+      const today = new Date().toISOString().split("T")[0]!;
+      const conds = [
+        eq(teacherAvailability.teacher_id, student.teacher_id),
+        eq(teacherAvailability.is_active, true),
+        isNotNull(teacherAvailability.date),
+        gte(teacherAvailability.date, from && from > today ? from : today),
+      ];
+      if (to) conds.push(lte(teacherAvailability.date, to));
 
-    return c.json(slots);
-  })
+      const slots = await db
+        .select()
+        .from(teacherAvailability)
+        .where(and(...conds))
+        .orderBy(teacherAvailability.date, teacherAvailability.start_time);
 
-  // ── Student: book a lesson ──
+      // Hide slots already taken (approved or pending booking)
+      if (slots.length === 0) return c.json([]);
+      const slotIds = slots.map((s) => s.id);
+      const takenRows = await db
+        .select({ availability_id: lessonBookings.availability_id })
+        .from(lessonBookings)
+        .where(
+          and(
+            inArray(lessonBookings.availability_id, slotIds),
+            inArray(lessonBookings.status, ["approved", "pending"])
+          )
+        );
+      const taken = new Set(takenRows.map((r) => r.availability_id));
+      return c.json(slots.filter((s) => !taken.has(s.id)));
+    }
+  )
+
+  // ── Student: book a lesson on a specific availability slot
   .post("/", requireRole("student"), zValidator("json", bookSchema), async (c) => {
     const studentId = c.get("userId");
     const body = c.req.valid("json");
 
-    // Get student's teacher
     const [student] = await db
       .select({ teacher_id: students.teacher_id })
       .from(students)
@@ -66,7 +93,6 @@ export const bookingRoutes = new Hono()
 
     if (!student) return c.json({ error: "Student not found" }, 404);
 
-    // Verify the slot exists and belongs to the teacher
     const [slot] = await db
       .select()
       .from(teacherAvailability)
@@ -74,43 +100,36 @@ export const bookingRoutes = new Hono()
         and(
           eq(teacherAvailability.id, body.availability_id),
           eq(teacherAvailability.teacher_id, student.teacher_id),
-          eq(teacherAvailability.is_active, true)
+          eq(teacherAvailability.is_active, true),
+          isNotNull(teacherAvailability.date)
         )
       )
       .limit(1);
 
-    if (!slot) return c.json({ error: "Slot not found" }, 404);
+    if (!slot || !slot.date) {
+      return c.json({ error: "Slot not found" }, 404);
+    }
 
-    // Check the date is not in the past
-    const bookingDate = new Date(body.date);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (bookingDate < today) {
+    // Block past
+    const today = new Date().toISOString().split("T")[0]!;
+    if (slot.date < today) {
       return c.json({ error: "Cannot book in the past" }, 400);
     }
 
-    // Verify the date matches the day_of_week of the slot
-    const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-    const requestedDay = dayNames[bookingDate.getDay()];
-    if (requestedDay !== slot.day_of_week) {
-      return c.json({ error: "Date does not match the slot's day of week" }, 400);
-    }
-
-    // Check no existing booking for same date+time+student
+    // Block double-booking on the same slot (any non-final status)
     const [existing] = await db
       .select()
       .from(lessonBookings)
       .where(
         and(
-          eq(lessonBookings.date, body.date),
-          eq(lessonBookings.start_time, slot.start_time),
-          eq(lessonBookings.student_id, studentId)
+          eq(lessonBookings.availability_id, slot.id),
+          inArray(lessonBookings.status, ["pending", "approved"])
         )
       )
       .limit(1);
 
-    if (existing && existing.status !== "rejected" && existing.status !== "cancelled") {
-      return c.json({ error: "You already have a booking for this slot" }, 409);
+    if (existing) {
+      return c.json({ error: "This slot is already taken" }, 409);
     }
 
     const [booking] = await db
@@ -118,34 +137,47 @@ export const bookingRoutes = new Hono()
       .values({
         student_id: studentId,
         teacher_id: student.teacher_id,
-        availability_id: body.availability_id,
-        date: body.date,
+        availability_id: slot.id,
+        date: slot.date,
         start_time: slot.start_time,
         end_time: slot.end_time,
         student_note: body.note,
       })
       .returning();
 
+    // Telegram: notify the teacher of the new booking request
+    void (async () => {
+      const [studentRow] = await db
+        .select({ name: profiles.full_name })
+        .from(profiles)
+        .where(eq(profiles.id, studentId))
+        .limit(1);
+      const studentName = studentRow?.name ?? "Student";
+      const noteLine = body.note
+        ? `\n📝 ${escapeTelegramHtml(body.note)}`
+        : "";
+      await notifyTelegram(
+        `📅 <b>New lesson request</b>\n${escapeTelegramHtml(studentName)} · ${slot.date} · ${slot.start_time}–${slot.end_time}${noteLine}`
+      );
+    })();
+
     return c.json(booking, 201);
   })
 
-  // ── Student: my bookings ──
+  // ── Student: my bookings
   .get("/my", requireRole("student"), async (c) => {
     const studentId = c.get("userId");
-
     const bookings = await db
       .select()
       .from(lessonBookings)
       .where(eq(lessonBookings.student_id, studentId))
       .orderBy(desc(lessonBookings.date));
-
     return c.json(bookings);
   })
 
-  // ── Teacher: all booking requests ──
+  // ── Teacher: all booking requests
   .get("/requests", requireRole("teacher"), async (c) => {
     const teacherId = c.get("userId");
-
     const bookings = await db
       .select({
         id: lessonBookings.id,
@@ -163,11 +195,25 @@ export const bookingRoutes = new Hono()
       .innerJoin(profiles, eq(profiles.id, lessonBookings.student_id))
       .where(eq(lessonBookings.teacher_id, teacherId))
       .orderBy(desc(lessonBookings.created_at));
-
     return c.json(bookings);
   })
 
-  // ── Teacher: approve or reject a booking ──
+  // ── Teacher: count of pending booking requests (for badge)
+  .get("/requests/count", requireRole("teacher"), async (c) => {
+    const teacherId = c.get("userId");
+    const rows = await db
+      .select({ id: lessonBookings.id })
+      .from(lessonBookings)
+      .where(
+        and(
+          eq(lessonBookings.teacher_id, teacherId),
+          eq(lessonBookings.status, "pending")
+        )
+      );
+    return c.json({ count: rows.length });
+  })
+
+  // ── Teacher: approve or reject a booking
   .patch(
     "/:id",
     requireRole("teacher"),
@@ -193,12 +239,14 @@ export const bookingRoutes = new Hono()
         )
         .returning();
 
-      if (!updated) return c.json({ error: "Booking not found or already handled" }, 404);
+      if (!updated) {
+        return c.json({ error: "Booking not found or already handled" }, 404);
+      }
       return c.json(updated);
     }
   )
 
-  // ── Student: cancel a booking ──
+  // ── Student: cancel a booking
   .delete("/:id", requireRole("student"), async (c) => {
     const studentId = c.get("userId");
     const bookingId = c.req.param("id")!;
@@ -210,11 +258,27 @@ export const bookingRoutes = new Hono()
         and(
           eq(lessonBookings.id, bookingId),
           eq(lessonBookings.student_id, studentId),
-          eq(lessonBookings.status, "pending")
+          inArray(lessonBookings.status, ["pending", "approved"])
         )
       )
       .returning();
 
-    if (!updated) return c.json({ error: "Booking not found or cannot be cancelled" }, 404);
+    if (!updated) {
+      return c.json({ error: "Booking not found or cannot be cancelled" }, 404);
+    }
+
+    // Telegram: notify the teacher of the cancellation
+    void (async () => {
+      const [studentRow] = await db
+        .select({ name: profiles.full_name })
+        .from(profiles)
+        .where(eq(profiles.id, studentId))
+        .limit(1);
+      const studentName = studentRow?.name ?? "Student";
+      await notifyTelegram(
+        `❌ <b>Booking cancelled</b>\n${escapeTelegramHtml(studentName)} · ${updated.date} · ${updated.start_time}–${updated.end_time}`
+      );
+    })();
+
     return c.json({ message: "Booking cancelled" });
   });

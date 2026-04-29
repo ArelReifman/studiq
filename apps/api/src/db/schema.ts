@@ -470,6 +470,8 @@ export const studentReports = pgTable(
 
 // ─── Teacher Availability Slots ──────────────────────────────────────────────
 
+// Per-date availability slots. Teacher creates a slot for a specific date+time.
+// `day_of_week` is kept nullable for legacy recurring slots, but new code uses `date`.
 export const teacherAvailability = pgTable(
   "teacher_availability",
   {
@@ -477,7 +479,10 @@ export const teacherAvailability = pgTable(
     teacher_id: uuid("teacher_id")
       .notNull()
       .references(() => teachers.id, { onDelete: "cascade" }),
-    day_of_week: dayOfWeekEnum("day_of_week").notNull(),
+    // New per-date model: this is the canonical field.
+    date: date("date"),
+    // Legacy: kept nullable so existing rows still work; new rows use `date`.
+    day_of_week: dayOfWeekEnum("day_of_week"),
     start_time: text("start_time").notNull(), // "09:00" (HH:mm)
     end_time: text("end_time").notNull(), // "10:00" (HH:mm)
     is_active: boolean("is_active").notNull().default(true),
@@ -485,7 +490,10 @@ export const teacherAvailability = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [index("idx_teacher_availability_teacher_id").on(t.teacher_id)]
+  (t) => [
+    index("idx_teacher_availability_teacher_id").on(t.teacher_id),
+    index("idx_teacher_availability_date").on(t.date),
+  ]
 );
 
 // ─── Lesson Bookings ─────────────────────────────────────────────────────────

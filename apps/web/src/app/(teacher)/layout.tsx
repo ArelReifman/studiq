@@ -30,17 +30,17 @@ export default function TeacherLayout({
     setDrawerOpen(false);
   }, [pathname]);
 
-  // Pending approvals badge — refreshed on every route change so the count
-  // stays accurate after the teacher acts on the approvals page.
-  // No realtime: low-volume signal, polling on nav is enough.
+  // Pending approvals badge — sums registration requests + booking requests.
+  // Refreshed on every route change so the count stays accurate after the
+  // teacher acts on the approvals page. No realtime: low-volume signal.
   useEffect(() => {
     let cancelled = false;
-    api
-      .get<{ count: number }>("/approvals/count")
-      .then((r) => {
-        if (!cancelled) setPendingCount(r.count);
-      })
-      .catch(() => {});
+    Promise.all([
+      api.get<{ count: number }>("/approvals/count").catch(() => ({ count: 0 })),
+      api.get<{ count: number }>("/bookings/requests/count").catch(() => ({ count: 0 })),
+    ]).then(([reg, book]) => {
+      if (!cancelled) setPendingCount(reg.count + book.count);
+    });
     return () => {
       cancelled = true;
     };
