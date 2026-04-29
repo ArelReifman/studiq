@@ -2,105 +2,73 @@
 
 # Studiq
 
-**A multi-tenant tutoring platform. Teachers manage their students, the AI writes the lessons, and every screen updates live.**
+**An AI-powered personalization engine for tutors. The AI learns your teaching style and applies it per student.**
 
-[Live](https://studiq-three.vercel.app) &nbsp;·&nbsp; Next.js 15 · Hono · Postgres · Claude
+Built solo &nbsp;·&nbsp; [Live](https://studiq-three.vercel.app) &nbsp;·&nbsp; Next.js 15 · Hono · Postgres · Claude
 
 </div>
 
 ---
 
-End-to-end production system, built solo. A teacher signs up, gets a roster of approved students, sees their progress in real time, and every lesson the AI authors is conditioned on that specific student's history. Hebrew (RTL) and English from one codebase, one Vercel project, one cookie scope.
+A tutor approves a student, the AI watches how the tutor teaches *and* how the student learns, and every generated lesson is shaped by both. Two students of the same tutor get different lessons. Two tutors of the same student would too.
 
-### By the numbers
+### What the AI does
 
-| | |
-|---|---|
-| **Postgres tables** | 17 (`profiles`, `students`, `lessons`, `tasks`, `reports`, `bookings`, `difficulties`, `feedback`, …) |
-| **Realtime channels** | 10 tables streamed via Supabase WebSocket — every dashboard updates without refresh |
-| **Pages** | 23 (App Router, RSC + client islands) |
-| **API surface** | 16 route modules, every payload Zod-validated, all role-gated |
-| **Locales** | Hebrew (RTL) + English from one stylesheet |
-| **Lifecycle states** | `pending → approved → rejected`, enforced in middleware |
-| **Deploy** | 1 origin, 1 cookie scope, 1 push to `main` |
+| Loop | Reads | Writes |
+|---|---|---|
+| **Style learner** | your feedback, notes, manually-authored lessons | `teaching_style_summary` |
+| **Profile builder** | completed/failed tasks, tagged difficulties | `student_ai_profile` (strong/weak topics, learning style) |
+| **Difficulty tagger** | a flagged task | topic labels |
+| **Report writer** | last 7 days of activity | weekly summary + recommendations |
+| **Lesson generator** | all of the above | tailored lesson + homework + todos |
 
-### Domain model
+→ `apps/api/src/services/ai/`
 
-```
-   profiles ─┬─▶ teachers ──┬─▶ courses ──▶ topics
-             │              │
-             └─▶ students ──┴─▶ lesson_sessions ──▶ homework_items
-                  │                                ▶ todo_items
-                  ├─▶ student_ai_profiles
-                  ├─▶ student_reports
-                  ├─▶ difficulty_reports ───▶ teacher (review queue)
-                  └─▶ lesson_bookings ─────▶ teacher_availability
-```
-
-A teacher owns many students, every student carries a live AI profile + history, and every action a student takes (a failed task, a flagged difficulty, a saved reflection) feeds the next lesson the AI generates.
-
-### Architecture
+### The personalization loop
 
 ```
-   Next.js 15 (web)  ──HttpOnly JWT──▶  Hono API  ──▶  Postgres + Drizzle
-        │                                  │             ▲
-        │ readable cookie                  ├──▶  Claude  │
-        │ {role, status}                   └──▶  Telegram│
-        │                                                │
-        └──── Supabase Realtime ◀────WebSocket───────────┘
-              (10 tables → useQuery cache invalidation, no refresh)
+   teacher writes feedback / notes / manual lessons
+                         │
+                         ▼
+              [1] teaching_style_summary ──┐
+                                           │
+   student does work / flags difficulty    │
+                         │                 │
+                         ▼                 │
+                  [3] tag topics           │
+                         │                 │
+                         ▼                 │
+              [2] student_ai_profile ──────┤
+                         │                 │
+                         ▼                 ▼
+                          [5] generate lesson
+                         │                 │
+                         ▼                 ▼
+                    new lesson    [4] weekly report
+                         │
+                         └──▶ student work ──▶ back to top
 ```
 
-A push to a Postgres table flows through Supabase Realtime, hits a hook on the client, and invalidates the React Query cache for the affected entity. The teacher's dashboard reflects a student's submission within a second.
+### Engineering decisions worth calling out
 
-### Engineering highlights
-
-#### Race-safe approvals
-Three writes (`status` flip, `students` insert, `student_ai_profiles` insert) inside one transaction. The status flip uses `WHERE status = 'pending'`, so two teachers approving the same user concurrently can't both win. Loser sees `409`. Idempotent inserts let a retry resume after a partial failure.
-→ `apps/api/src/routes/approvals.ts`
-
-#### Live UI on top of an authoritative DB
-A single `useRealtimeSync` hook subscribes to 10 tables on one Supabase channel and translates each event into a React Query invalidation. No manual refetch loops anywhere in the codebase; every dashboard, badge, and counter is reactive by default.
-→ `apps/web/src/hooks/use-realtime-sync.ts`
-
-#### Defense-in-depth auth
-HttpOnly cookie for the JWT (XSS-resistant) plus a parallel readable cookie carrying `{role, status}` so middleware can route without a round-trip. Every state-changing request gated by `X-Requested-With` (CSRF). 20 req/min/IP on auth. A `pending` user can hit `/auth/me` and `/auth/logout` and nothing else.
-→ `apps/api/src/middleware/auth.ts`
-
-#### Cold-start friendly DB client
-Drizzle wrapped in a `Proxy` — connection opens on first use, not on module import. Tests can import the client without a live database. Auto-detects Supabase pooler URLs (port 6543) and disables prepared statements, which break under PgBouncer transaction mode.
-→ `apps/api/src/db/client.ts`
-
-#### Notifications without yet-another-SaaS
-A 30-line helper hits the Telegram Bot API. Awaited so Vercel's serverless function doesn't suspend the promise; error-swallowing so a Telegram outage can't break registration. User-supplied text is HTML-escaped before going on the wire.
-→ `apps/api/src/lib/notify.ts`
+- **Race-safe approvals** — three writes in one transaction gated on `WHERE status = 'pending'`. Two teachers approving the same user concurrently can't both win. → `routes/approvals.ts`
+- **Reactive UI by default** — one Supabase channel, 10 tables, one hook translates events to React Query invalidations. No manual refetch anywhere. → `hooks/use-realtime-sync.ts`
+- **Defense-in-depth auth** — HttpOnly JWT + parallel readable `{role, status}` cookie for middleware routing. CSRF via `X-Requested-With`, rate-limited, lifecycle states enforced in middleware. → `middleware/auth.ts`
+- **Cold-start friendly DB** — Drizzle behind a `Proxy`, opens on first use; auto-detects Supabase pooler and disables prepared statements. → `db/client.ts`
+- **Bilingual** — Hebrew (RTL) and English from one stylesheet, one Vercel project, one cookie scope.
 
 ### Stack
 
-| | |
-|---|---|
-| Web | Next.js 15 (App Router), React 19, Tailwind v4, TanStack Query |
-| API | Hono on Node 22, Zod, Drizzle ORM |
-| DB / Auth / Realtime | Supabase (Postgres + Auth + WebSocket subscriptions) |
-| AI | Anthropic Claude (lesson generation, analysis, feedback loop) |
-| Push | Telegram Bot API |
-| Infra | pnpm workspaces, Turborepo, Vercel |
+Next.js 15 · React 19 · TypeScript · Tailwind v4 · TanStack Query · Hono · Drizzle · Zod · Supabase (Postgres + Auth + Realtime) · Anthropic Claude · pnpm + Turborepo · Vercel
 
-### Run locally
+### By the numbers
 
-```bash
-pnpm install
-cp .env.example .env       # DATABASE_URL · SUPABASE_* · ANTHROPIC_API_KEY · TELEGRAM_* (optional)
-pnpm --filter @studiq/api db:migrate
-pnpm dev
-```
-
-`http://localhost:3002` (web) · `:3003` (API)
+17 Postgres tables · 10 realtime channels · 23 pages · 16 Zod-validated routes · 5 Claude-powered services
 
 ---
 
 <div align="center">
 
-Built by <a href="mailto:arelreifmannn@gmail.com">Arel Reifman</a>
+<a href="mailto:arelreifmannn@gmail.com">Arel Reifman</a> · <a href="https://www.linkedin.com/in/arelreifman/">LinkedIn</a> · <a href="https://github.com/ArelReifman">GitHub</a>
 
 </div>
