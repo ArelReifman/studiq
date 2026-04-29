@@ -248,6 +248,7 @@
   "approvals.registrationRequests": "בקשות הרשמה",
   "approvals.studentNote": "הערה מהתלמיד:",
   "approvals.optionalNote": "הערה (אופציונלי)",
+  "approvals.hoursCount": "{count} שעות",
   "teacher.scheduleHint": "סמן/י תאריכים והוסף/הוסיפי שעות זמינות לכל יום",
   "teacher.activeDatesHint": "ימים מודגשים = יש לך שעות זמינות",
   "teacher.noSlotsForDate": "אין שעות לתאריך זה. הוסף/הוסיפי למטה.",

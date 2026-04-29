@@ -248,6 +248,7 @@
   "approvals.registrationRequests": "Registration requests",
   "approvals.studentNote": "Student note:",
   "approvals.optionalNote": "Optional note",
+  "approvals.hoursCount": "{count}h",
   "teacher.scheduleHint": "Pick dates and add the times you're available",
   "teacher.activeDatesHint": "Highlighted days = you have open times",
   "teacher.noSlotsForDate": "No times yet for this date. Add one below.",

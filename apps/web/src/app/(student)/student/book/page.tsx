@@ -7,6 +7,7 @@ import { useT } from "@/i18n";
 import { Card } from "@/components/ui/card";
 import { Calendar, TimeSlotGrid, type TimeSlot } from "@/components/calendar/calendar";
 import { Send, X, Plus } from "lucide-react";
+import { groupConsecutiveBookings, type BookingLike } from "@/lib/booking-grouping";
 
 interface Slot extends TimeSlot {
   date: string;
@@ -142,10 +143,23 @@ export default function StudentBookPage() {
     },
   });
 
-  const pending = bookings.filter((b) => b.status === "pending");
-  const approved = bookings.filter((b) => b.status === "approved");
-  const past = bookings.filter(
-    (b) => b.status === "rejected" || b.status === "cancelled"
+  // Group consecutive bookings (e.g. 11:30+12:30 → "11:30–13:30").
+  // The student's own bookings don't carry student_id/name, so synthesize
+  // constants — all rows belong to the same student by definition.
+  const groupedBookings = useMemo(() => {
+    const augmented: BookingLike[] = bookings.map((b) => ({
+      ...b,
+      student_id: "self",
+      student_name: "",
+      teacher_note: b.teacher_note,
+    }));
+    return groupConsecutiveBookings(augmented);
+  }, [bookings]);
+
+  const pending = groupedBookings.filter((g) => g.status === "pending");
+  const approved = groupedBookings.filter((g) => g.status === "approved");
+  const past = groupedBookings.filter(
+    (g) => g.status === "rejected" || g.status === "cancelled"
   );
 
   if (slotsLoading || bookingsLoading) {
@@ -293,41 +307,48 @@ export default function StudentBookPage() {
           <p className="text-sm text-gray-400">{t("student.noBookings")}</p>
         ) : (
           <div className="space-y-2">
-            {[...pending, ...approved, ...past].map((b) => (
+            {[...pending, ...approved, ...past].map((g) => (
               <div
-                key={b.id}
+                key={g.key}
                 className={
-                  b.status === "pending"
+                  g.status === "pending"
                     ? "border border-orange-200 bg-orange-50 rounded-lg p-3 flex items-center justify-between"
-                    : b.status === "approved"
+                    : g.status === "approved"
                       ? "border border-green-200 bg-green-50 rounded-lg p-3 flex items-center justify-between"
                       : "border border-gray-100 rounded-lg p-3 flex items-center justify-between opacity-60"
                 }
               >
                 <div>
                   <p className="font-medium text-gray-800">
-                    {formatDate(b.date)} · {b.start_time}–{b.end_time}
+                    {formatDate(g.date)} · {g.start_time}–{g.end_time}
+                    {g.hours > 1 && (
+                      <span className="ms-2 text-xs text-gray-500">
+                        ({t("approvals.hoursCount", { count: g.hours })})
+                      </span>
+                    )}
                   </p>
                   <span
                     className={
-                      b.status === "pending"
+                      g.status === "pending"
                         ? "text-xs text-orange-600"
-                        : b.status === "approved"
+                        : g.status === "approved"
                           ? "text-xs text-green-700"
                           : "text-xs text-gray-500"
                     }
                   >
-                    {t(`booking.${b.status}`)}
+                    {t(`booking.${g.status}`)}
                   </span>
-                  {b.teacher_note && (
+                  {g.teacher_note && (
                     <p className="text-xs text-gray-500 mt-1 italic">
-                      &ldquo;{b.teacher_note}&rdquo;
+                      &ldquo;{g.teacher_note}&rdquo;
                     </p>
                   )}
                 </div>
-                {(b.status === "pending" || b.status === "approved") && (
+                {(g.status === "pending" || g.status === "approved") && (
                   <button
-                    onClick={() => cancelMutation.mutate(b.id)}
+                    onClick={() =>
+                      Promise.all(g.ids.map((id) => cancelMutation.mutateAsync(id)))
+                    }
                     disabled={cancelMutation.isPending}
                     className="text-sm text-red-500 hover:text-red-700 flex items-center gap-1"
                   >

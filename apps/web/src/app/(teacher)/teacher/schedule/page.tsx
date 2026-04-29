@@ -7,6 +7,7 @@ import { useT } from "@/i18n";
 import { Card } from "@/components/ui/card";
 import { Calendar, TimeSlotGrid, type TimeSlot } from "@/components/calendar/calendar";
 import { Plus, CalendarCheck, MessageSquare } from "lucide-react";
+import { groupConsecutiveBookings } from "@/lib/booking-grouping";
 
 interface Slot extends TimeSlot {
   date: string;
@@ -58,14 +59,13 @@ export default function TeacherSchedulePage() {
 
   const upcomingApproved = useMemo(
     () =>
-      bookings
-        .filter((b) => b.status === "approved" && b.date >= today)
-        .sort((a, b) =>
-          a.date === b.date
-            ? a.start_time.localeCompare(b.start_time)
-            : a.date.localeCompare(b.date)
-        ),
+      bookings.filter((b) => b.status === "approved" && b.date >= today),
     [bookings, today]
+  );
+
+  const upcomingGroups = useMemo(
+    () => groupConsecutiveBookings(upcomingApproved),
+    [upcomingApproved]
   );
 
   const bookedDates = useMemo(
@@ -104,19 +104,15 @@ export default function TeacherSchedulePage() {
       .filter((s) => !taken.has(`${s.start_time}-${s.end_time}`));
   }, [slots, bookings, selectedDate]);
 
-  const bookingsOnSelectedDate = useMemo(
-    () =>
-      selectedDate
-        ? bookings
-            .filter(
-              (b) =>
-                b.date === selectedDate &&
-                (b.status === "approved" || b.status === "pending")
-            )
-            .sort((a, b) => a.start_time.localeCompare(b.start_time))
-        : [],
-    [bookings, selectedDate]
-  );
+  const groupsOnSelectedDate = useMemo(() => {
+    if (!selectedDate) return [];
+    const dayBookings = bookings.filter(
+      (b) =>
+        b.date === selectedDate &&
+        (b.status === "approved" || b.status === "pending")
+    );
+    return groupConsecutiveBookings(dayBookings);
+  }, [bookings, selectedDate]);
 
   const addMutation = useMutation({
     mutationFn: () =>
@@ -186,35 +182,40 @@ export default function TeacherSchedulePage() {
         <Card>
           {selectedDate ? (
             <>
-              {bookingsOnSelectedDate.length > 0 && (
+              {groupsOnSelectedDate.length > 0 && (
                 <div className="mb-4 pb-4 border-b border-gray-100 space-y-2">
                   <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
                     {t("teacher.bookedOnThisDate")}
                   </p>
-                  {bookingsOnSelectedDate.map((b) => (
+                  {groupsOnSelectedDate.map((g) => (
                     <div
-                      key={b.id}
+                      key={g.key}
                       className={
-                        b.status === "approved"
+                        g.status === "approved"
                           ? "flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm"
                           : "flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 text-sm"
                       }
                     >
                       <span className="font-mono text-gray-700">
-                        {b.start_time}–{b.end_time}
+                        {g.start_time}–{g.end_time}
                       </span>
+                      {g.hours > 1 && (
+                        <span className="text-xs text-gray-500">
+                          ({t("approvals.hoursCount", { count: g.hours })})
+                        </span>
+                      )}
                       <span className="text-gray-700">·</span>
                       <span className="font-medium text-gray-800">
-                        {b.student_name}
+                        {g.student_name}
                       </span>
                       <span
                         className={
-                          b.status === "approved"
+                          g.status === "approved"
                             ? "ms-auto text-xs text-green-700"
                             : "ms-auto text-xs text-orange-600"
                         }
                       >
-                        {t(`booking.${b.status}`)}
+                        {t(`booking.${g.status}`)}
                       </span>
                     </div>
                   ))}
@@ -299,33 +300,38 @@ export default function TeacherSchedulePage() {
           )}
         </div>
 
-        {upcomingApproved.length === 0 ? (
+        {upcomingGroups.length === 0 ? (
           <p className="text-sm text-gray-400 py-6 text-center">
             {t("teacher.noUpcomingLessons")}
           </p>
         ) : (
           <div className="space-y-2">
-            {upcomingApproved.map((b) => (
+            {upcomingGroups.map((g) => (
               <div
-                key={b.id}
+                key={g.key}
                 className="flex items-start justify-between gap-3 border border-gray-100 rounded-lg p-3 hover:border-brand-200 transition-colors"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-3 flex-wrap">
                     <span className="font-mono text-sm text-gray-700">
-                      {formatDate(b.date)}
+                      {formatDate(g.date)}
                     </span>
                     <span className="font-mono text-sm font-semibold text-brand-700">
-                      {b.start_time}–{b.end_time}
+                      {g.start_time}–{g.end_time}
                     </span>
                     <span className="font-medium text-gray-800">
-                      {b.student_name}
+                      {g.student_name}
                     </span>
+                    {g.hours > 1 && (
+                      <span className="text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">
+                        {t("approvals.hoursCount", { count: g.hours })}
+                      </span>
+                    )}
                   </div>
-                  {b.student_note && (
+                  {g.student_note && (
                     <div className="flex items-start gap-1.5 mt-1.5 text-xs text-gray-500">
                       <MessageSquare size={11} className="flex-shrink-0 mt-0.5" />
-                      <span className="italic">{b.student_note}</span>
+                      <span className="italic">{g.student_note}</span>
                     </div>
                   )}
                 </div>

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, X, Mail, Clock, MessageSquare, CalendarClock, UserPlus } from "lucide-react";
 import { api } from "@/lib/api";
 import { useT } from "@/i18n";
 import { Card } from "@/components/ui/card";
+import { groupConsecutiveBookings } from "@/lib/booking-grouping";
 
 interface PendingProfile {
   id: string;
@@ -56,6 +57,11 @@ export default function ApprovalsPage() {
 
   const pendingRegs = registrations?.pending ?? [];
   const pendingBookings = bookings.filter((b) => b.status === "pending");
+  // Merge consecutive slots from the same student into a single visual row.
+  const pendingGroups = useMemo(
+    () => groupConsecutiveBookings(pendingBookings),
+    [pendingBookings]
+  );
   const totalPending = pendingRegs.length + pendingBookings.length;
 
   // ── Registration approval ─────────────────────────────────────
@@ -79,17 +85,35 @@ export default function ApprovalsPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["approvals-registrations"] }),
   });
 
-  // ── Booking approval ──────────────────────────────────────────
-  const respondBooking = useMutation({
-    mutationFn: ({ id, status, note }: { id: string; status: "approved" | "rejected"; note?: string }) =>
-      api.patch(`/bookings/${id}`, { status, note }),
-    onMutate: ({ id, status }) =>
-      setActionState((s) => ({ ...s, [id]: status === "approved" ? "approve" : "reject" })),
-    onSettled: (_d, _e, { id }) => setActionState((s) => ({ ...s, [id]: undefined })),
+  // ── Booking approval (acts on every slot in a consecutive group) ─────────
+  const respondBookingGroup = useMutation({
+    mutationFn: async ({
+      ids,
+      status,
+      note,
+    }: {
+      groupKey: string;
+      ids: string[];
+      status: "approved" | "rejected";
+      note?: string;
+    }) => {
+      // Approve / reject all slots in the group in parallel.
+      await Promise.all(
+        ids.map((id) => api.patch(`/bookings/${id}`, { status, note }))
+      );
+    },
+    onMutate: ({ groupKey, status }) =>
+      setActionState((s) => ({
+        ...s,
+        [groupKey]: status === "approved" ? "approve" : "reject",
+      })),
+    onSettled: (_d, _e, { groupKey }) =>
+      setActionState((s) => ({ ...s, [groupKey]: undefined })),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["approvals-bookings"] });
       qc.invalidateQueries({ queryKey: ["my-availability"] });
       qc.invalidateQueries({ queryKey: ["booking-slots"] });
+      qc.invalidateQueries({ queryKey: ["my-bookings-as-teacher"] });
     },
   });
 
@@ -124,7 +148,7 @@ export default function ApprovalsPage() {
       )}
 
       {/* ─── Lesson booking requests ─── */}
-      {pendingBookings.length > 0 && (
+      {pendingGroups.length > 0 && (
         <section className="space-y-3">
           <div className="flex items-center gap-2">
             <CalendarClock size={16} className="text-brand-500" />
@@ -132,47 +156,62 @@ export default function ApprovalsPage() {
               {t("approvals.bookingRequests")}
             </h2>
             <span className="text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-medium">
-              {pendingBookings.length}
+              {pendingGroups.length}
             </span>
           </div>
 
-          {pendingBookings.map((b) => {
-            const busy = actionState[b.id];
+          {pendingGroups.map((g) => {
+            const busy = actionState[g.key];
+            const isMulti = g.hours > 1;
             return (
-              <Card key={b.id}>
+              <Card key={g.key}>
                 <div className="flex items-start justify-between gap-4 mb-3">
                   <div className="min-w-0">
-                    <div className="font-semibold text-gray-900 truncate">{b.student_name}</div>
+                    <div className="font-semibold text-gray-900 truncate">
+                      {g.student_name}
+                    </div>
                     <div className="text-sm text-gray-600 mt-0.5">
-                      {formatBookingDate(b.date)} · {b.start_time}–{b.end_time}
+                      {formatBookingDate(g.date)} · {g.start_time}–{g.end_time}
+                      {isMulti && (
+                        <span className="ms-2 text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">
+                          {t("approvals.hoursCount", { count: g.hours })}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <span className="text-[11px] text-gray-400 whitespace-nowrap">
-                    {new Date(b.created_at).toLocaleDateString()}
+                    {new Date(g.bookings[0]!.created_at).toLocaleDateString()}
                   </span>
                 </div>
 
-                {b.student_note && (
+                {g.student_note && (
                   <div className="mb-3 bg-gray-50 border border-gray-100 rounded-lg p-3 text-xs text-gray-700">
                     <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
                       <MessageSquare size={10} /> {t("approvals.studentNote")}
                     </div>
-                    {b.student_note}
+                    {g.student_note}
                   </div>
                 )}
 
                 <input
                   type="text"
                   placeholder={t("approvals.optionalNote")}
-                  value={rejectNotes[b.id] ?? ""}
-                  onChange={(e) => setRejectNotes((p) => ({ ...p, [b.id]: e.target.value }))}
+                  value={rejectNotes[g.key] ?? ""}
+                  onChange={(e) =>
+                    setRejectNotes((p) => ({ ...p, [g.key]: e.target.value }))
+                  }
                   className="w-full text-sm border border-gray-200 rounded-md px-3 py-1.5 mb-3 focus:outline-none focus:ring-1 focus:ring-brand-300"
                 />
 
                 <div className="flex gap-2">
                   <button
                     onClick={() =>
-                      respondBooking.mutate({ id: b.id, status: "approved", note: rejectNotes[b.id] || undefined })
+                      respondBookingGroup.mutate({
+                        groupKey: g.key,
+                        ids: g.ids,
+                        status: "approved",
+                        note: rejectNotes[g.key] || undefined,
+                      })
                     }
                     disabled={!!busy}
                     className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 disabled:opacity-60 transition-colors"
@@ -182,7 +221,12 @@ export default function ApprovalsPage() {
                   </button>
                   <button
                     onClick={() =>
-                      respondBooking.mutate({ id: b.id, status: "rejected", note: rejectNotes[b.id] || undefined })
+                      respondBookingGroup.mutate({
+                        groupKey: g.key,
+                        ids: g.ids,
+                        status: "rejected",
+                        note: rejectNotes[g.key] || undefined,
+                      })
                     }
                     disabled={!!busy}
                     className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-white border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-red-50 hover:text-red-700 hover:border-red-200 disabled:opacity-60 transition-colors"
