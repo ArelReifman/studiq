@@ -12,6 +12,7 @@ import {
 } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { notifyTelegram, escapeTelegramHtml } from "../lib/notify.js";
+import { ensureDefaultSlots } from "../services/scheduling/ensure-default-slots.js";
 
 const bookSchema = z.object({
   availability_id: z.string().uuid(),
@@ -47,6 +48,11 @@ export const bookingRoutes = new Hono()
         .limit(1);
 
       if (!student) return c.json({ error: "Student not found" }, 404);
+
+      // Lazily backfill the teacher's default slots so the student always has
+      // a populated calendar even if the teacher hasn't visited the schedule
+      // page recently.
+      await ensureDefaultSlots(student.teacher_id);
 
       const today = new Date().toISOString().split("T")[0]!;
       const conds = [

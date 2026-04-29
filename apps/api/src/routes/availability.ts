@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and, gte, lte, isNotNull, sql } from "drizzle-orm";
+import { eq, and, gte, lte, isNotNull } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { teacherAvailability, lessonBookings } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
+import { ensureDefaultSlots } from "../services/scheduling/ensure-default-slots.js";
 
 const slotSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD"),
@@ -25,6 +26,9 @@ export const availabilityRoutes = new Hono()
   .get("/", zValidator("query", rangeSchema), async (c) => {
     const teacherId = c.get("userId");
     const { from, to } = c.req.valid("query");
+
+    // Lazily backfill default Sun–Thu slots for the next 4 weeks.
+    await ensureDefaultSlots(teacherId);
 
     const conds = [
       eq(teacherAvailability.teacher_id, teacherId),
