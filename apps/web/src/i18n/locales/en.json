@@ -249,6 +249,11 @@
   "teacher.add": "Add",
   "teacher.endAfterStart": "End time must be after start time",
   "teacher.pickDateFirst": "Pick a date on the calendar to add times",
+  "teacher.legendOpen": "Open days",
+  "teacher.legendBooked": "Confirmed lesson",
+  "teacher.bookedOnThisDate": "Taken on this date",
+  "teacher.upcomingLessons": "Upcoming lessons",
+  "teacher.noUpcomingLessons": "No upcoming approved lessons.",
 
   "day.sunday": "Sunday",
   "day.monday": "Monday",

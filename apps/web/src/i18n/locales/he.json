@@ -249,6 +249,11 @@
   "teacher.add": "הוספה",
   "teacher.endAfterStart": "שעת הסיום חייבת להיות אחרי שעת ההתחלה",
   "teacher.pickDateFirst": "בחר/י תאריך מהלוח כדי להוסיף שעות",
+  "teacher.legendOpen": "ימים זמינים",
+  "teacher.legendBooked": "שיעור מאושר",
+  "teacher.bookedOnThisDate": "תפוס בתאריך זה",
+  "teacher.upcomingLessons": "השיעורים הקרובים",
+  "teacher.noUpcomingLessons": "אין שיעורים מאושרים עתידיים.",
 
   "day.sunday": "ראשון",
   "day.monday": "שני",

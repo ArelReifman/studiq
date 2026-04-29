@@ -6,10 +6,31 @@ import { api } from "@/lib/api";
 import { useT } from "@/i18n";
 import { Card } from "@/components/ui/card";
 import { Calendar, TimeSlotGrid, type TimeSlot } from "@/components/calendar/calendar";
-import { Plus } from "lucide-react";
+import { Plus, CalendarCheck, MessageSquare } from "lucide-react";
 
 interface Slot extends TimeSlot {
   date: string;
+}
+
+interface BookingRow {
+  id: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  student_note: string | null;
+  teacher_note: string | null;
+  student_name: string;
+  student_id: string;
+  created_at: string;
+}
+
+function formatDate(s: string): string {
+  return new Date(s + "T00:00:00").toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 export default function TeacherSchedulePage() {
@@ -23,16 +44,78 @@ export default function TeacherSchedulePage() {
   const [endTime, setEndTime] = useState("15:00");
   const [error, setError] = useState<string | null>(null);
 
-  const { data: slots = [], isLoading } = useQuery<Slot[]>({
+  const { data: slots = [], isLoading: slotsLoading } = useQuery<Slot[]>({
     queryKey: ["my-availability"],
     queryFn: () => api.get("/availability"),
   });
 
+  const { data: bookings = [], isLoading: bookingsLoading } = useQuery<BookingRow[]>({
+    queryKey: ["my-bookings-as-teacher"],
+    queryFn: () => api.get("/bookings/requests"),
+  });
+
+  const today = new Date().toISOString().split("T")[0]!;
+
+  const upcomingApproved = useMemo(
+    () =>
+      bookings
+        .filter((b) => b.status === "approved" && b.date >= today)
+        .sort((a, b) =>
+          a.date === b.date
+            ? a.start_time.localeCompare(b.start_time)
+            : a.date.localeCompare(b.date)
+        ),
+    [bookings, today]
+  );
+
+  const bookedDates = useMemo(
+    () => new Set(upcomingApproved.map((b) => b.date)),
+    [upcomingApproved]
+  );
+
   const activeDates = useMemo(() => new Set(slots.map((s) => s.date)), [slots]);
 
-  const slotsForDate = useMemo(
-    () => (selectedDate ? slots.filter((s) => s.date === selectedDate) : []),
-    [slots, selectedDate]
+  // Hide slots that are already taken (have an approved or pending booking on
+  // them) so the teacher doesn't accidentally try to manage a booked slot.
+  const takenSlotIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const b of bookings) {
+      if (b.status === "approved" || b.status === "pending") {
+        // The booking has availability_id internally; here we don't have it,
+        // so we match by date+time. (See API: bookings inherit slot times.)
+      }
+    }
+    return ids;
+  }, [bookings]);
+
+  const slotsForDate = useMemo(() => {
+    if (!selectedDate) return [];
+    const taken = new Set(
+      bookings
+        .filter(
+          (b) =>
+            (b.status === "approved" || b.status === "pending") &&
+            b.date === selectedDate
+        )
+        .map((b) => `${b.start_time}-${b.end_time}`)
+    );
+    return slots
+      .filter((s) => s.date === selectedDate)
+      .filter((s) => !taken.has(`${s.start_time}-${s.end_time}`));
+  }, [slots, bookings, selectedDate]);
+
+  const bookingsOnSelectedDate = useMemo(
+    () =>
+      selectedDate
+        ? bookings
+            .filter(
+              (b) =>
+                b.date === selectedDate &&
+                (b.status === "approved" || b.status === "pending")
+            )
+            .sort((a, b) => a.start_time.localeCompare(b.start_time))
+        : [],
+    [bookings, selectedDate]
   );
 
   const addMutation = useMutation({
@@ -57,7 +140,7 @@ export default function TeacherSchedulePage() {
     },
   });
 
-  if (isLoading) {
+  if (slotsLoading || bookingsLoading) {
     return <p className="text-gray-500">{t("common.loading")}</p>;
   }
 
@@ -83,18 +166,61 @@ export default function TeacherSchedulePage() {
         <Card>
           <Calendar
             activeDates={activeDates}
+            bookedDates={bookedDates}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
           />
-          <p className="text-xs text-gray-400 text-center mt-3">
-            {t("teacher.activeDatesHint")}
-          </p>
+          <div className="flex flex-wrap gap-4 justify-center mt-3 text-xs text-gray-500">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-brand-100 border border-brand-200" />
+              {t("teacher.legendOpen")}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+              {t("teacher.legendBooked")}
+            </div>
+          </div>
         </Card>
 
         {/* Manage slots for selected date */}
         <Card>
           {selectedDate ? (
             <>
+              {bookingsOnSelectedDate.length > 0 && (
+                <div className="mb-4 pb-4 border-b border-gray-100 space-y-2">
+                  <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                    {t("teacher.bookedOnThisDate")}
+                  </p>
+                  {bookingsOnSelectedDate.map((b) => (
+                    <div
+                      key={b.id}
+                      className={
+                        b.status === "approved"
+                          ? "flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm"
+                          : "flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 text-sm"
+                      }
+                    >
+                      <span className="font-mono text-gray-700">
+                        {b.start_time}–{b.end_time}
+                      </span>
+                      <span className="text-gray-700">·</span>
+                      <span className="font-medium text-gray-800">
+                        {b.student_name}
+                      </span>
+                      <span
+                        className={
+                          b.status === "approved"
+                            ? "ms-auto text-xs text-green-700"
+                            : "ms-auto text-xs text-orange-600"
+                        }
+                      >
+                        {t(`booking.${b.status}`)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <TimeSlotGrid
                 date={selectedDate}
                 slots={slotsForDate}
@@ -158,6 +284,56 @@ export default function TeacherSchedulePage() {
           )}
         </Card>
       </div>
+
+      {/* Upcoming approved lessons */}
+      <Card>
+        <div className="flex items-center gap-2 mb-4">
+          <CalendarCheck size={18} className="text-green-600" />
+          <h2 className="text-lg font-semibold text-gray-800">
+            {t("teacher.upcomingLessons")}
+          </h2>
+          {upcomingApproved.length > 0 && (
+            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+              {upcomingApproved.length}
+            </span>
+          )}
+        </div>
+
+        {upcomingApproved.length === 0 ? (
+          <p className="text-sm text-gray-400 py-6 text-center">
+            {t("teacher.noUpcomingLessons")}
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {upcomingApproved.map((b) => (
+              <div
+                key={b.id}
+                className="flex items-start justify-between gap-3 border border-gray-100 rounded-lg p-3 hover:border-brand-200 transition-colors"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="font-mono text-sm text-gray-700">
+                      {formatDate(b.date)}
+                    </span>
+                    <span className="font-mono text-sm font-semibold text-brand-700">
+                      {b.start_time}–{b.end_time}
+                    </span>
+                    <span className="font-medium text-gray-800">
+                      {b.student_name}
+                    </span>
+                  </div>
+                  {b.student_note && (
+                    <div className="flex items-start gap-1.5 mt-1.5 text-xs text-gray-500">
+                      <MessageSquare size={11} className="flex-shrink-0 mt-0.5" />
+                      <span className="italic">{b.student_note}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

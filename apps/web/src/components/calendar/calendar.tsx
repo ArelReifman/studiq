@@ -53,6 +53,8 @@ function todayYmd(): string {
 export interface CalendarProps {
   /** ISO date strings (YYYY-MM-DD) that should be highlighted as having something */
   activeDates: Set<string>;
+  /** Optional: dates that have a confirmed/approved booking — get a green dot */
+  bookedDates?: Set<string>;
   /** Currently selected date (YYYY-MM-DD) */
   selectedDate?: string;
   onSelectDate: (date: string) => void;
@@ -64,6 +66,7 @@ export interface CalendarProps {
 
 export function Calendar({
   activeDates,
+  bookedDates,
   selectedDate,
   onSelectDate,
   allowPast = false,
@@ -150,6 +153,7 @@ export function Calendar({
           const isToday = c.date === today;
           const isSelected = c.date === selectedDate;
           const isActive = activeDates.has(c.date);
+          const isBooked = bookedDates?.has(c.date) ?? false;
           const clickable = !isPast;
 
           return (
@@ -159,7 +163,7 @@ export function Calendar({
               onClick={() => clickable && onSelectDate(c.date!)}
               disabled={!clickable}
               className={cn(
-                "aspect-square flex items-center justify-center rounded-full text-sm font-medium transition-all",
+                "relative aspect-square flex items-center justify-center rounded-full text-sm font-medium transition-all",
                 isSelected && "bg-brand-600 text-white shadow-md",
                 !isSelected && isActive && "bg-brand-50 text-brand-700 hover:bg-brand-100",
                 !isSelected && !isActive && !isPast && "text-gray-700 hover:bg-gray-100",
@@ -168,6 +172,15 @@ export function Calendar({
               )}
             >
               {c.day}
+              {isBooked && (
+                <span
+                  className={cn(
+                    "absolute bottom-1 w-1.5 h-1.5 rounded-full",
+                    isSelected ? "bg-white" : "bg-green-500"
+                  )}
+                  aria-hidden
+                />
+              )}
             </button>
           );
         })}
