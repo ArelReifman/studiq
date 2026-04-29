@@ -200,7 +200,8 @@ export interface TimeSlot {
 export interface TimeSlotGridProps {
   date: string;
   slots: TimeSlot[];
-  selectedSlotId?: string;
+  /** Set of slot IDs currently selected (multi-select). */
+  selectedSlotIds?: Set<string>;
   onSelectSlot: (slot: TimeSlot) => void;
   /** Optional remove handler — if provided, each slot shows an X. */
   onRemoveSlot?: (slot: TimeSlot) => void;
@@ -210,7 +211,7 @@ export interface TimeSlotGridProps {
 export function TimeSlotGrid({
   date,
   slots,
-  selectedSlotId,
+  selectedSlotIds,
   onSelectSlot,
   onRemoveSlot,
   emptyLabel,
@@ -238,7 +239,7 @@ export function TimeSlotGrid({
                 onClick={() => onSelectSlot(slot)}
                 className={cn(
                   "w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-all",
-                  selectedSlotId === slot.id
+                  selectedSlotIds?.has(slot.id)
                     ? "bg-brand-600 text-white border-brand-600 shadow-md"
                     : "bg-white text-gray-700 border-gray-200 hover:border-brand-400 hover:bg-brand-50"
                 )}

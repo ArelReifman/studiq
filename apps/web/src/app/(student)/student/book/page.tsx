@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { useT } from "@/i18n";
 import { Card } from "@/components/ui/card";
 import { Calendar, TimeSlotGrid, type TimeSlot } from "@/components/calendar/calendar";
-import { Send, X } from "lucide-react";
+import { Send, X, Plus } from "lucide-react";
 
 interface Slot extends TimeSlot {
   date: string;
@@ -37,9 +37,10 @@ export default function StudentBookPage() {
   const qc = useQueryClient();
 
   const [selectedDate, setSelectedDate] = useState<string | undefined>();
-  const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
+  const [picked, setPicked] = useState<Slot[]>([]);
   const [note, setNote] = useState("");
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const { data: slots = [], isLoading: slotsLoading } = useQuery<Slot[]>({
     queryKey: ["booking-slots"],
@@ -57,23 +58,80 @@ export default function StudentBookPage() {
   );
 
   const slotsForSelectedDate = useMemo(
-    () => (selectedDate ? slots.filter((s) => s.date === selectedDate) : []),
+    () =>
+      selectedDate
+        ? slots
+            .filter((s) => s.date === selectedDate)
+            .sort((a, b) => a.start_time.localeCompare(b.start_time))
+        : [],
     [slots, selectedDate]
   );
 
-  const bookMutation = useMutation({
-    mutationFn: () =>
-      api.post("/bookings", {
-        availability_id: selectedSlot!.id,
-        note: note || undefined,
-      }),
+  const pickedIds = useMemo(() => new Set(picked.map((s) => s.id)), [picked]);
+
+  // Find a slot adjacent to the latest pick — same date, start equals end of pick.
+  const latestPicked = useMemo(() => {
+    if (picked.length === 0) return null;
+    return [...picked].sort((a, b) =>
+      a.date === b.date
+        ? a.start_time.localeCompare(b.start_time)
+        : a.date.localeCompare(b.date)
+    ).pop()!;
+  }, [picked]);
+
+  const adjacentSlot = useMemo(() => {
+    if (!latestPicked) return null;
+    return (
+      slots.find(
+        (s) =>
+          s.date === latestPicked.date &&
+          s.start_time === latestPicked.end_time &&
+          !pickedIds.has(s.id)
+      ) ?? null
+    );
+  }, [slots, latestPicked, pickedIds]);
+
+  function toggleSlot(slot: Slot) {
+    setSuccess(false);
+    setError(null);
+    setPicked((prev) =>
+      prev.find((s) => s.id === slot.id)
+        ? prev.filter((s) => s.id !== slot.id)
+        : [...prev, slot]
+    );
+  }
+
+  function clearAll() {
+    setPicked([]);
+    setNote("");
+    setError(null);
+  }
+
+  const submitMutation = useMutation({
+    mutationFn: async () => {
+      // Send all bookings in parallel — each is independent on the server side.
+      const results = await Promise.allSettled(
+        picked.map((s) =>
+          api.post("/bookings", {
+            availability_id: s.id,
+            note: note || undefined,
+          })
+        )
+      );
+      const failures = results.filter((r) => r.status === "rejected");
+      if (failures.length > 0) {
+        throw new Error(
+          t("booking.partialFailure", { count: failures.length })
+        );
+      }
+    },
     onSuccess: () => {
       setSuccess(true);
-      setSelectedSlot(null);
-      setNote("");
+      clearAll();
       qc.invalidateQueries({ queryKey: ["booking-slots"] });
       qc.invalidateQueries({ queryKey: ["my-bookings"] });
     },
+    onError: (e: Error) => setError(e.message),
   });
 
   const cancelMutation = useMutation({
@@ -86,11 +144,21 @@ export default function StudentBookPage() {
 
   const pending = bookings.filter((b) => b.status === "pending");
   const approved = bookings.filter((b) => b.status === "approved");
-  const past = bookings.filter((b) => b.status === "rejected" || b.status === "cancelled");
+  const past = bookings.filter(
+    (b) => b.status === "rejected" || b.status === "cancelled"
+  );
 
   if (slotsLoading || bookingsLoading) {
     return <p className="text-gray-500">{t("common.loading")}</p>;
   }
+
+  // Sort picks for display (date asc, time asc)
+  const pickedSorted = [...picked].sort((a, b) =>
+    a.date === b.date
+      ? a.start_time.localeCompare(b.start_time)
+      : a.date.localeCompare(b.date)
+  );
+  const totalHours = picked.length;
 
   return (
     <div className="space-y-6">
@@ -104,18 +172,23 @@ export default function StudentBookPage() {
         </div>
       )}
 
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
       {/* Calendar + Time picker */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <Calendar
             activeDates={activeDates}
             selectedDate={selectedDate}
-            onSelectDate={(d) => {
-              setSelectedDate(d);
-              setSelectedSlot(null);
-              setSuccess(false);
-            }}
+            onSelectDate={(d) => setSelectedDate(d)}
           />
+          <p className="text-xs text-gray-400 text-center mt-3">
+            {t("booking.calendarHint")}
+          </p>
         </Card>
 
         <Card>
@@ -128,41 +201,87 @@ export default function StudentBookPage() {
               <TimeSlotGrid
                 date={selectedDate}
                 slots={slotsForSelectedDate}
-                selectedSlotId={selectedSlot?.id}
-                onSelectSlot={(s) => setSelectedSlot(s as Slot)}
+                selectedSlotIds={pickedIds}
+                onSelectSlot={(s) => toggleSlot(s as Slot)}
               />
 
-              {selectedSlot && (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    bookMutation.mutate();
-                  }}
-                  className="mt-4 pt-4 border-t border-gray-100 space-y-3"
+              {adjacentSlot && (
+                <button
+                  type="button"
+                  onClick={() => toggleSlot(adjacentSlot)}
+                  className="mt-3 w-full flex items-center justify-center gap-1.5 border border-dashed border-brand-300 text-brand-700 hover:bg-brand-50 rounded-lg py-2 text-xs font-medium transition-colors"
                 >
-                  <input
-                    type="text"
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder={t("student.addNote")}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  />
-                  <button
-                    type="submit"
-                    disabled={bookMutation.isPending}
-                    className="w-full flex items-center justify-center gap-2 bg-brand-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50"
-                  >
-                    <Send size={14} />
-                    {bookMutation.isPending
-                      ? t("student.sending")
-                      : t("student.sendRequest")}
-                  </button>
-                </form>
+                  <Plus size={14} />
+                  {t("booking.addConsecutive", {
+                    time: `${adjacentSlot.start_time}–${adjacentSlot.end_time}`,
+                  })}
+                </button>
               )}
             </>
           )}
         </Card>
       </div>
+
+      {/* Selection summary + submit */}
+      {picked.length > 0 && (
+        <Card>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-gray-800">
+              {t("booking.lessonSummary", { hours: totalHours })}
+            </h3>
+            <button
+              type="button"
+              onClick={clearAll}
+              className="text-xs text-gray-500 hover:text-gray-700"
+            >
+              {t("booking.clearAll")}
+            </button>
+          </div>
+
+          <div className="flex flex-wrap gap-2 mb-3">
+            {pickedSorted.map((s) => (
+              <span
+                key={s.id}
+                className="inline-flex items-center gap-1.5 bg-brand-50 border border-brand-200 text-brand-800 rounded-full ps-3 pe-1 py-1 text-sm"
+              >
+                <span className="font-medium">{formatDate(s.date)}</span>
+                <span className="text-gray-500">·</span>
+                <span className="font-mono">
+                  {s.start_time}–{s.end_time}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => toggleSlot(s)}
+                  className="w-5 h-5 rounded-full hover:bg-brand-100 flex items-center justify-center"
+                  aria-label="remove"
+                >
+                  <X size={12} />
+                </button>
+              </span>
+            ))}
+          </div>
+
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={t("student.addNote")}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-brand-500"
+          />
+
+          <button
+            type="button"
+            onClick={() => submitMutation.mutate()}
+            disabled={submitMutation.isPending}
+            className="w-full flex items-center justify-center gap-2 bg-brand-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50"
+          >
+            <Send size={14} />
+            {submitMutation.isPending
+              ? t("student.sending")
+              : t("booking.sendRequestN", { count: picked.length })}
+          </button>
+        </Card>
+      )}
 
       {/* My bookings */}
       <Card>
