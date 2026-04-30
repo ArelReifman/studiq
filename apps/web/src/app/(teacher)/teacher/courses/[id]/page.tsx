@@ -243,7 +243,7 @@ export default function CourseDetailPage() {
               ) : (
                 <>
                   <span className="flex-1 text-sm font-semibold text-gray-800">{parent.name}</span>
-                  <span className="text-xs text-gray-400">{parent.children.length} נושאי משנה</span>
+                  <span className="text-xs text-gray-400">{t("courses.subTopicsCount", { count: parent.children.length })}</span>
 
                   <button
                     onClick={() => patchTopic.mutate({ id: parent.id, body: { is_shared: !parent.is_shared } })}

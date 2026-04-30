@@ -9,6 +9,12 @@
   "common.deleting": "מוחק...",
   "common.back": "חזרה",
   "common.optional": "(אופציונלי)",
+  "common.previousMonth": "חודש קודם",
+  "common.nextMonth": "חודש הבא",
+  "common.todayLabel": "היום",
+  "common.remove": "הסרה",
+  "courses.subTopicsCount": "{count} נושאי משנה",
+  "studentDetail.learningMap": "מפת למידה",
 
   "login.title": "Studiq",
   "login.welcome": "ברוכים הבאים! מי אתם?",

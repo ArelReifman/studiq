@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useT } from "@/i18n";
+import { useT, useLocaleStore } from "@/i18n";
 
 const HEBREW_MONTHS = [
   "ינואר",
@@ -60,8 +60,6 @@ export interface CalendarProps {
   onSelectDate: (date: string) => void;
   /** When true, past dates are clickable too (for teacher view of past). Default: false. */
   allowPast?: boolean;
-  /** Locale: "he" (default) or "en". When "he" the calendar is RTL (Sat-rightmost). */
-  locale?: "he" | "en";
 }
 
 export function Calendar({
@@ -70,8 +68,11 @@ export function Calendar({
   selectedDate,
   onSelectDate,
   allowPast = false,
-  locale = "he",
 }: CalendarProps) {
+  const t = useT();
+  // Drive month / DOW labels from the global locale so the calendar follows
+  // the rest of the UI when the user toggles language.
+  const locale = useLocaleStore((s) => s.locale);
   const today = todayYmd();
   const [cursor, setCursor] = useState<Date>(() => {
     const d = selectedDate ? new Date(selectedDate + "T00:00:00") : new Date();
@@ -108,7 +109,7 @@ export function Calendar({
         <button
           onClick={() => shiftMonth(-1)}
           className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-          aria-label="Previous month"
+          aria-label={t("common.previousMonth")}
         >
           <ChevronLeft size={18} className="rtl:rotate-180" />
         </button>
@@ -118,7 +119,7 @@ export function Calendar({
         <button
           onClick={() => shiftMonth(1)}
           className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-          aria-label="Next month"
+          aria-label={t("common.nextMonth")}
         >
           <ChevronRight size={18} className="rtl:rotate-180" />
         </button>
@@ -217,7 +218,7 @@ export function TimeSlotGrid({
   emptyLabel,
 }: TimeSlotGridProps) {
   const t = useT();
-  const formatted = formatDateLabel(date);
+  const formatted = formatDateLabel(date, t("common.todayLabel"));
 
   return (
     <div>
@@ -255,7 +256,7 @@ export function TimeSlotGrid({
                     onRemoveSlot(slot);
                   }}
                   className="absolute -top-1.5 -end-1.5 w-5 h-5 rounded-full bg-red-100 text-red-600 hover:bg-red-200 flex items-center justify-center text-xs font-bold transition-colors"
-                  aria-label="Remove"
+                  aria-label={t("common.remove")}
                 >
                   ×
                 </button>
@@ -268,7 +269,7 @@ export function TimeSlotGrid({
   );
 }
 
-function formatDateLabel(date: string): string {
+function formatDateLabel(date: string, todayLabel: string): string {
   const d = new Date(date + "T00:00:00");
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -276,5 +277,5 @@ function formatDateLabel(date: string): string {
   const dd = pad(d.getDate());
   const mm = pad(d.getMonth() + 1);
   const yy = d.getFullYear();
-  return isToday ? `${dd}/${mm}/${yy} (היום)` : `${dd}/${mm}/${yy}`;
+  return isToday ? `${dd}/${mm}/${yy} (${todayLabel})` : `${dd}/${mm}/${yy}`;
 }

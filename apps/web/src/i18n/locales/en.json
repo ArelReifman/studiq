@@ -9,6 +9,12 @@
   "common.deleting": "Deleting...",
   "common.back": "Back",
   "common.optional": "(optional)",
+  "common.previousMonth": "Previous month",
+  "common.nextMonth": "Next month",
+  "common.todayLabel": "today",
+  "common.remove": "Remove",
+  "courses.subTopicsCount": "{count} sub-topics",
+  "studentDetail.learningMap": "Learning map",
 
   "login.title": "Studiq",
   "login.welcome": "Welcome! Who are you?",

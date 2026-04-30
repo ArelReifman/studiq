@@ -6,7 +6,10 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("en-US", {
+  // `undefined` → use the user's browser locale, so Hebrew users see Hebrew
+  // formatting and English users see English. Hardcoding "en-US" here forced
+  // English regardless of the i18n toggle.
+  return new Date(dateStr).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",

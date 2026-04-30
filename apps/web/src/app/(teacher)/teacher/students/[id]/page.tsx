@@ -101,7 +101,7 @@ export default function StudentDetailPage() {
             className="inline-flex items-center gap-1.5 border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-lg px-3 py-2 text-sm font-medium"
           >
             <Map size={15} />
-            מפת למידה
+            {t("studentDetail.learningMap")}
           </Link>
           <Button
             onClick={() => setShowCreateLesson(true)}
