@@ -245,6 +245,8 @@
   "booking.clearAll": "Clear all",
   "booking.sendRequestN": "Send request ({count})",
   "booking.partialFailure": "{count} request(s) failed. Try again.",
+  "booking.capStatus": "You have {active} of {max} active hours — {remaining} remaining",
+  "booking.capReached": "You can book up to {max} hours total",
   "approvals.bookingRequests": "Lesson requests",
   "approvals.registrationRequests": "Registration requests",
   "approvals.studentNote": "Student note:",

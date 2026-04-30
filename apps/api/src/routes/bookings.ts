@@ -157,6 +157,34 @@ export const bookingRoutes = new Hono()
       return c.json({ error: "This slot is already taken" }, 409);
     }
 
+    // Per-student cap: at most 3 active future bookings (pending / approved /
+    // cancel_requested). Past lessons and finalized statuses don't count.
+    const today = getIsraelToday();
+    const activeBookings = await db
+      .select({ id: lessonBookings.id })
+      .from(lessonBookings)
+      .where(
+        and(
+          eq(lessonBookings.student_id, studentId),
+          gte(lessonBookings.date, today),
+          inArray(lessonBookings.status, [
+            "pending",
+            "approved",
+            "cancel_requested",
+          ])
+        )
+      );
+
+    if (activeBookings.length >= 3) {
+      return c.json(
+        {
+          error: "Booking limit reached (max 3 active hours)",
+          code: "LIMIT_REACHED",
+        },
+        409
+      );
+    }
+
     const [booking] = await db
       .insert(lessonBookings)
       .values({

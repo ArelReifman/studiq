@@ -95,6 +95,14 @@ export default function StudentBookPage() {
   function toggleSlot(slot: Slot) {
     setSuccess(false);
     setError(null);
+    const alreadyPicked = picked.find((s) => s.id === slot.id);
+    if (!alreadyPicked && picked.length >= remainingCap) {
+      // Block adding past the cap. Removing is always allowed.
+      setError(
+        t("booking.capReached", { max: MAX_ACTIVE_HOURS })
+      );
+      return;
+    }
     setPicked((prev) =>
       prev.find((s) => s.id === slot.id)
         ? prev.filter((s) => s.id !== slot.id)
@@ -164,6 +172,19 @@ export default function StudentBookPage() {
     (g) => g.status === "rejected" || g.status === "cancelled"
   );
 
+  // Booking cap: count active future hours (each booking row = 1 hour).
+  const MAX_ACTIVE_HOURS = 3;
+  const todayStr = new Date().toISOString().split("T")[0]!;
+  const activeFutureCount = bookings.filter(
+    (b) =>
+      b.date >= todayStr &&
+      (b.status === "pending" ||
+        b.status === "approved" ||
+        b.status === "cancel_requested")
+  ).length;
+  const remainingCap = Math.max(0, MAX_ACTIVE_HOURS - activeFutureCount);
+  const exceedsCap = picked.length > remainingCap;
+
   if (slotsLoading || bookingsLoading) {
     return <p className="text-gray-500">{t("common.loading")}</p>;
   }
@@ -193,6 +214,23 @@ export default function StudentBookPage() {
           {error}
         </div>
       )}
+
+      {/* Cap status banner */}
+      <div
+        className={
+          remainingCap === 0
+            ? "bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-sm text-red-700"
+            : remainingCap === 1
+              ? "bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 text-sm text-amber-700"
+              : "bg-blue-50 border border-blue-100 rounded-lg px-4 py-2 text-sm text-blue-700"
+        }
+      >
+        {t("booking.capStatus", {
+          active: activeFutureCount,
+          max: MAX_ACTIVE_HOURS,
+          remaining: remainingCap,
+        })}
+      </div>
 
       {/* Calendar + Time picker */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -288,8 +326,8 @@ export default function StudentBookPage() {
           <button
             type="button"
             onClick={() => submitMutation.mutate()}
-            disabled={submitMutation.isPending}
-            className="w-full flex items-center justify-center gap-2 bg-brand-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50"
+            disabled={submitMutation.isPending || exceedsCap || remainingCap === 0}
+            className="w-full flex items-center justify-center gap-2 bg-brand-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send size={14} />
             {submitMutation.isPending

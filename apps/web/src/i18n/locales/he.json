@@ -245,6 +245,8 @@
   "booking.clearAll": "נקה הכל",
   "booking.sendRequestN": "שלח בקשה ({count})",
   "booking.partialFailure": "{count} בקשות נכשלו. נסה שוב.",
+  "booking.capStatus": "יש לך {active} מתוך {max} שעות פעילות — נשארו {remaining}",
+  "booking.capReached": "אפשר לבחור עד {max} שעות בסך הכל",
   "approvals.bookingRequests": "בקשות לשיעורים",
   "approvals.registrationRequests": "בקשות הרשמה",
   "approvals.studentNote": "הערה מהתלמיד:",
