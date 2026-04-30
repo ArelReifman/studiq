@@ -37,9 +37,14 @@ function minToTime(min: number): string {
 
 /**
  * Make sure the teacher has default slots populated for the next `WEEKS_AHEAD`
- * weeks. Idempotent and date-scoped: any date that already has at least one
- * slot is skipped — that means manual deletions stick (the function never
- * re-creates a slot the teacher removed).
+ * weeks. Idempotent and *slot-scoped*: for each Sun–Thu date in the window,
+ * the function adds only the default-grid hours that aren't already covered
+ * by an existing slot (overlap check, active or inactive — so manually
+ * deleted slots stay deleted).
+ *
+ * This is intentionally finer-grained than a date-level skip so that days
+ * with one custom or booked slot still get the rest of the day filled in
+ * with the standard 11:00–20:00 grid.
  *
  * Called lazily from the read paths (GET /availability and /available-slots)
  * so new teachers and rolling time windows fill themselves without a cron.
@@ -53,11 +58,14 @@ export async function ensureDefaultSlots(teacherId: string): Promise<void> {
   const horizon = new Date(today);
   horizon.setDate(today.getDate() + 7 * WEEKS_AHEAD);
 
-  // Pull every date in the window that already has any slot (active or not).
-  // Even inactive rows count — a teacher who deleted a slot shouldn't see it
-  // come back. Same for any explicit row they added manually.
+  // Pull every existing slot (active or inactive) in the window — any of them
+  // blocks the matching default grid slot via overlap, so teacher edits stick.
   const rows = await db
-    .select({ date: teacherAvailability.date })
+    .select({
+      date: teacherAvailability.date,
+      start_time: teacherAvailability.start_time,
+      end_time: teacherAvailability.end_time,
+    })
     .from(teacherAvailability)
     .where(
       and(
@@ -67,7 +75,12 @@ export async function ensureDefaultSlots(teacherId: string): Promise<void> {
       )
     );
 
-  const seenDates = new Set(rows.map((r) => r.date).filter((d): d is string => !!d));
+  const existingByDate = new Map<string, Array<{ start: string; end: string }>>();
+  for (const r of rows) {
+    if (!r.date) continue;
+    if (!existingByDate.has(r.date)) existingByDate.set(r.date, []);
+    existingByDate.get(r.date)!.push({ start: r.start_time, end: r.end_time });
+  }
 
   const startMin = timeToMin(DEFAULT_START);
   const endMin = timeToMin(DEFAULT_END);
@@ -87,16 +100,24 @@ export async function ensureDefaultSlots(teacherId: string): Promise<void> {
   ) {
     if (!DEFAULT_DAYS.has(cursor.getDay())) continue;
     const dateStr = ymd(cursor);
-    if (seenDates.has(dateStr)) continue;
+    const existing = existingByDate.get(dateStr) ?? [];
 
     let t = startMin;
     while (t + DEFAULT_SLOT_MINUTES <= endMin) {
-      toCreate.push({
-        teacher_id: teacherId,
-        date: dateStr,
-        start_time: minToTime(t),
-        end_time: minToTime(t + DEFAULT_SLOT_MINUTES),
-      });
+      const slotStart = minToTime(t);
+      const slotEnd = minToTime(t + DEFAULT_SLOT_MINUTES);
+      // [a, b) overlaps [c, d) iff a < d and c < b
+      const overlaps = existing.some(
+        (e) => e.start < slotEnd && e.end > slotStart
+      );
+      if (!overlaps) {
+        toCreate.push({
+          teacher_id: teacherId,
+          date: dateStr,
+          start_time: slotStart,
+          end_time: slotEnd,
+        });
+      }
       t += DEFAULT_SLOT_MINUTES;
     }
   }
