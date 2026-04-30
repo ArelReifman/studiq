@@ -11,8 +11,8 @@ import { getIsraelToday } from "../../lib/time.js";
  * manually on a per-date basis.
  */
 const DEFAULT_DAYS = new Set([0, 1, 2, 3, 4]); // 0=Sun ... 4=Thu
-const DEFAULT_START = "11:30";
-const DEFAULT_END = "21:00";
+const DEFAULT_START = "11:00";
+const DEFAULT_END = "20:00";
 const DEFAULT_SLOT_MINUTES = 60;
 const WEEKS_AHEAD = 4;
 
