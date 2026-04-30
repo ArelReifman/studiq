@@ -241,7 +241,7 @@
   "booking.noSlotsForDate": "No open times for this date",
   "booking.calendarHint": "You can pick multiple hours (even across days) before sending",
   "booking.addConsecutive": "Add consecutive hour ({time})",
-  "booking.lessonSummary": "Lesson summary — {hours} of 3 slots selected",
+  "booking.lessonSummary": "Lesson summary — {hours} hour(s) selected",
   "booking.clearAll": "Clear all",
   "booking.sendRequestN": "Send request ({count})",
   "booking.partialFailure": "{count} request(s) failed. Try again.",
