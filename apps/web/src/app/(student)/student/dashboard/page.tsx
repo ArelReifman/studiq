@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { TaskItem } from "@/components/student/task-item";
 import { formatDate } from "@/lib/utils";
 import type { LessonSession, HomeworkItem, TodoItem } from "@studiq/types";
-import { BookOpen, ArrowRight, FileText, ExternalLink } from "lucide-react";
+import { BookOpen, FileText, ExternalLink, History } from "lucide-react";
 
 export default function StudentDashboard() {
   const user = useAuthStore((s) => s.user);
@@ -22,6 +22,9 @@ export default function StudentDashboard() {
   });
 
   const activeLesson = lessons.find((l) => l.status === "active") ?? lessons[0];
+  // Everything that isn't the currently-rendered active lesson is "history" —
+  // shown lower on the same page (no separate /student/lessons screen).
+  const pastLessons = lessons.filter((l) => l.id !== activeLesson?.id);
 
   const { data: homework = [] } = useQuery<HomeworkItem[]>({
     queryKey: ["homework", activeLesson?.id ?? ""],
@@ -164,13 +167,54 @@ export default function StudentDashboard() {
         </div>
       )}
 
-      <Link
-        href="/student/lessons"
-        className="inline-flex items-center gap-1 text-sm text-brand-600 hover:underline"
-      >
-        {t("student.viewHistory")}{" "}
-        <ArrowRight size={14} className="rtl:rotate-180" />
-      </Link>
+      {/* Lesson history (merged from former /student/lessons page) */}
+      {pastLessons.length > 0 && (
+        <div className="mt-8">
+          <div className="flex items-center gap-2 mb-3">
+            <History size={16} className="text-gray-400" />
+            <h3 className="text-base font-semibold text-gray-700">
+              {t("student.history")}
+            </h3>
+            <span className="text-xs text-gray-400">
+              {t("lessons.count", { count: pastLessons.length })}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {pastLessons.map((lesson) => (
+              <Link key={lesson.id} href={`/student/lessons/${lesson.id}`}>
+                <Card className="hover:shadow-md transition-shadow cursor-pointer p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge
+                          variant={
+                            lesson.status === "completed"
+                              ? "success"
+                              : lesson.status === "active"
+                                ? "default"
+                                : "neutral"
+                          }
+                        >
+                          {t(`status.${lesson.status}`)}
+                        </Badge>
+                        {lesson.ai_generated && (
+                          <Badge variant="neutral">AI</Badge>
+                        )}
+                      </div>
+                      <h4 className="text-sm font-medium truncate">
+                        {lesson.title}
+                      </h4>
+                    </div>
+                    <span className="text-xs text-gray-400 flex-shrink-0 tabular-nums">
+                      {formatDate(lesson.generated_at)}
+                    </span>
+                  </div>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
