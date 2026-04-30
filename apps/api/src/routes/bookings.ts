@@ -72,7 +72,7 @@ export const bookingRoutes = new Hono()
 
       if (slots.length === 0) return c.json([]);
 
-      // Hide slots already taken (approved or pending booking)
+      // Hide slots already taken (approved, pending, or pending-cancellation)
       const slotIds = slots.map((s) => s.id);
       const takenRows = await db
         .select({ availability_id: lessonBookings.availability_id })
@@ -80,7 +80,11 @@ export const bookingRoutes = new Hono()
         .where(
           and(
             inArray(lessonBookings.availability_id, slotIds),
-            inArray(lessonBookings.status, ["approved", "pending"])
+            inArray(lessonBookings.status, [
+              "approved",
+              "pending",
+              "cancel_requested",
+            ])
           )
         );
       const taken = new Set(takenRows.map((r) => r.availability_id));
@@ -140,7 +144,11 @@ export const bookingRoutes = new Hono()
       .where(
         and(
           eq(lessonBookings.availability_id, slot.id),
-          inArray(lessonBookings.status, ["pending", "approved"])
+          inArray(lessonBookings.status, [
+            "pending",
+            "approved",
+            "cancel_requested",
+          ])
         )
       )
       .limit(1);
@@ -215,7 +223,8 @@ export const bookingRoutes = new Hono()
     return c.json(bookings);
   })
 
-  // ── Teacher: count of pending booking requests (for badge)
+  // ── Teacher: count of items needing teacher action (badge)
+  // Includes both new booking requests AND cancellation requests.
   .get("/requests/count", requireRole("teacher"), async (c) => {
     const teacherId = c.get("userId");
     const rows = await db
@@ -224,7 +233,7 @@ export const bookingRoutes = new Hono()
       .where(
         and(
           eq(lessonBookings.teacher_id, teacherId),
-          eq(lessonBookings.status, "pending")
+          inArray(lessonBookings.status, ["pending", "cancel_requested"])
         )
       );
     return c.json({ count: rows.length });
@@ -240,10 +249,20 @@ export const bookingRoutes = new Hono()
       const bookingId = c.req.param("id")!;
       const body = c.req.valid("json");
 
-      // Cancellation may happen on an already-approved lesson (life happens).
-      // Approve/reject still only flip a pending request.
-      const allowedFromStatuses: ("pending" | "approved")[] =
-        body.status === "cancelled" ? ["pending", "approved"] : ["pending"];
+      // Status transition matrix:
+      //   approved   ← pending | cancel_requested  (original-approve OR cancel-denial)
+      //   rejected   ← pending                     (deny original request)
+      //   cancelled  ← pending | approved | cancel_requested  (teacher cancels OR confirms cancel)
+      const allowedFromStatuses: (
+        | "pending"
+        | "approved"
+        | "cancel_requested"
+      )[] =
+        body.status === "cancelled"
+          ? ["pending", "approved", "cancel_requested"]
+          : body.status === "approved"
+            ? ["pending", "cancel_requested"]
+            : ["pending"];
 
       const [updated] = await db
         .update(lessonBookings)
@@ -289,38 +308,85 @@ export const bookingRoutes = new Hono()
   )
 
   // ── Student: cancel a booking
+  // Pending  → cancelled outright (it was never approved, no harm)
+  // Approved → cancel_requested (teacher must confirm before the slot frees)
+  // cancel_requested → no-op (already pending teacher review)
   .delete("/:id", requireRole("student"), async (c) => {
     const studentId = c.get("userId");
     const bookingId = c.req.param("id")!;
 
-    const [updated] = await db
-      .update(lessonBookings)
-      .set({ status: "cancelled", updated_at: new Date() })
+    // Read current status so we can pick the right next state.
+    const [current] = await db
+      .select({
+        id: lessonBookings.id,
+        status: lessonBookings.status,
+        date: lessonBookings.date,
+        start_time: lessonBookings.start_time,
+        end_time: lessonBookings.end_time,
+      })
+      .from(lessonBookings)
       .where(
         and(
           eq(lessonBookings.id, bookingId),
-          eq(lessonBookings.student_id, studentId),
-          inArray(lessonBookings.status, ["pending", "approved"])
+          eq(lessonBookings.student_id, studentId)
         )
       )
-      .returning();
+      .limit(1);
 
-    if (!updated) {
-      return c.json({ error: "Booking not found or cannot be cancelled" }, 404);
+    if (!current) {
+      return c.json({ error: "Booking not found" }, 404);
     }
 
-    // Telegram: notify the teacher of the cancellation
-    void (async () => {
-      const [studentRow] = await db
-        .select({ name: profiles.full_name })
-        .from(profiles)
-        .where(eq(profiles.id, studentId))
-        .limit(1);
-      const studentName = studentRow?.name ?? "Student";
-      await notifyTelegram(
-        `❌ <b>Booking cancelled</b>\n${escapeTelegramHtml(studentName)} · ${updated.date} · ${updated.start_time}–${updated.end_time}`
-      );
-    })();
+    if (current.status === "pending") {
+      const [updated] = await db
+        .update(lessonBookings)
+        .set({ status: "cancelled", updated_at: new Date() })
+        .where(eq(lessonBookings.id, bookingId))
+        .returning();
 
-    return c.json({ message: "Booking cancelled" });
+      void (async () => {
+        const [studentRow] = await db
+          .select({ name: profiles.full_name })
+          .from(profiles)
+          .where(eq(profiles.id, studentId))
+          .limit(1);
+        const studentName = studentRow?.name ?? "Student";
+        await notifyTelegram(
+          `❌ <b>Booking cancelled</b>\n${escapeTelegramHtml(studentName)} · ${updated!.date} · ${updated!.start_time}–${updated!.end_time}`
+        );
+      })();
+
+      return c.json({ message: "Booking cancelled", status: "cancelled" });
+    }
+
+    if (current.status === "approved") {
+      const [updated] = await db
+        .update(lessonBookings)
+        .set({ status: "cancel_requested", updated_at: new Date() })
+        .where(eq(lessonBookings.id, bookingId))
+        .returning();
+
+      // Telegram: tell the teacher this needs their attention.
+      void (async () => {
+        const [studentRow] = await db
+          .select({ name: profiles.full_name })
+          .from(profiles)
+          .where(eq(profiles.id, studentId))
+          .limit(1);
+        const studentName = studentRow?.name ?? "Student";
+        await notifyTelegram(
+          `⚠️ <b>Cancellation requested</b>\n${escapeTelegramHtml(studentName)} wants to cancel ${updated!.date} · ${updated!.start_time}–${updated!.end_time}`
+        );
+      })();
+
+      return c.json({
+        message: "Cancellation requested — pending your teacher's approval",
+        status: "cancel_requested",
+      });
+    }
+
+    return c.json(
+      { error: "Booking is not in a cancellable state" },
+      409
+    );
   });

@@ -157,7 +157,9 @@ export default function StudentBookPage() {
   }, [bookings]);
 
   const pending = groupedBookings.filter((g) => g.status === "pending");
-  const approved = groupedBookings.filter((g) => g.status === "approved");
+  const approved = groupedBookings.filter(
+    (g) => g.status === "approved" || g.status === "cancel_requested"
+  );
   const past = groupedBookings.filter(
     (g) => g.status === "rejected" || g.status === "cancelled"
   );
@@ -333,7 +335,9 @@ export default function StudentBookPage() {
                         ? "text-xs text-orange-600"
                         : g.status === "approved"
                           ? "text-xs text-green-700"
-                          : "text-xs text-gray-500"
+                          : g.status === "cancel_requested"
+                            ? "text-xs text-red-600"
+                            : "text-xs text-gray-500"
                     }
                   >
                     {t(`booking.${g.status}`)}

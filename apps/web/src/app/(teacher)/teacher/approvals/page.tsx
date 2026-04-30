@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, X, Mail, Clock, MessageSquare, CalendarClock, UserPlus } from "lucide-react";
+import { Check, X, Mail, Clock, MessageSquare, CalendarClock, UserPlus, AlertTriangle } from "lucide-react";
 import { api } from "@/lib/api";
 import { useT } from "@/i18n";
 import { Card } from "@/components/ui/card";
@@ -57,12 +57,18 @@ export default function ApprovalsPage() {
 
   const pendingRegs = registrations?.pending ?? [];
   const pendingBookings = bookings.filter((b) => b.status === "pending");
+  const cancelRequests = bookings.filter((b) => b.status === "cancel_requested");
   // Merge consecutive slots from the same student into a single visual row.
   const pendingGroups = useMemo(
     () => groupConsecutiveBookings(pendingBookings),
     [pendingBookings]
   );
-  const totalPending = pendingRegs.length + pendingBookings.length;
+  const cancelGroups = useMemo(
+    () => groupConsecutiveBookings(cancelRequests),
+    [cancelRequests]
+  );
+  const totalPending =
+    pendingRegs.length + pendingBookings.length + cancelRequests.length;
 
   // ── Registration approval ─────────────────────────────────────
   const approveReg = useMutation({
@@ -86,6 +92,10 @@ export default function ApprovalsPage() {
   });
 
   // ── Booking approval (acts on every slot in a consecutive group) ─────────
+  // The endpoint covers both original-approval AND cancellation-confirm flows.
+  // `action` ("approve" | "reject") is independent of `status` because in the
+  // cancel section "Keep lesson" sends status=approved but visually maps to a
+  // reject of the cancellation request.
   const respondBookingGroup = useMutation({
     mutationFn: async ({
       ids,
@@ -94,19 +104,16 @@ export default function ApprovalsPage() {
     }: {
       groupKey: string;
       ids: string[];
-      status: "approved" | "rejected";
+      status: "approved" | "rejected" | "cancelled";
+      action: "approve" | "reject";
       note?: string;
     }) => {
-      // Approve / reject all slots in the group in parallel.
       await Promise.all(
         ids.map((id) => api.patch(`/bookings/${id}`, { status, note }))
       );
     },
-    onMutate: ({ groupKey, status }) =>
-      setActionState((s) => ({
-        ...s,
-        [groupKey]: status === "approved" ? "approve" : "reject",
-      })),
+    onMutate: ({ groupKey, action }) =>
+      setActionState((s) => ({ ...s, [groupKey]: action })),
     onSettled: (_d, _e, { groupKey }) =>
       setActionState((s) => ({ ...s, [groupKey]: undefined })),
     onSuccess: () => {
@@ -210,6 +217,7 @@ export default function ApprovalsPage() {
                         groupKey: g.key,
                         ids: g.ids,
                         status: "approved",
+                        action: "approve",
                         note: rejectNotes[g.key] || undefined,
                       })
                     }
@@ -225,6 +233,7 @@ export default function ApprovalsPage() {
                         groupKey: g.key,
                         ids: g.ids,
                         status: "rejected",
+                        action: "reject",
                         note: rejectNotes[g.key] || undefined,
                       })
                     }
@@ -233,6 +242,85 @@ export default function ApprovalsPage() {
                   >
                     <X size={15} />
                     {busy === "reject" ? t("approvals.rejecting") : t("approvals.reject")}
+                  </button>
+                </div>
+              </Card>
+            );
+          })}
+        </section>
+      )}
+
+      {/* ─── Cancellation requests ─── */}
+      {cancelGroups.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={16} className="text-red-500" />
+            <h2 className="text-base font-semibold text-gray-800">
+              {t("approvals.cancellationRequests")}
+            </h2>
+            <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
+              {cancelGroups.length}
+            </span>
+          </div>
+
+          {cancelGroups.map((g) => {
+            const busy = actionState[g.key];
+            const isMulti = g.hours > 1;
+            return (
+              <Card key={g.key}>
+                <div className="flex items-start justify-between gap-4 mb-3">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-gray-900 truncate">
+                      {g.student_name}
+                    </div>
+                    <div className="text-sm text-gray-600 mt-0.5">
+                      {formatBookingDate(g.date)} · {g.start_time}–{g.end_time}
+                      {isMulti && (
+                        <span className="ms-2 text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">
+                          {t("approvals.hoursCount", { count: g.hours })}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-red-600 mt-1">
+                      {t("approvals.studentRequestedCancel")}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() =>
+                      respondBookingGroup.mutate({
+                        groupKey: g.key,
+                        ids: g.ids,
+                        status: "cancelled",
+                        action: "approve",
+                      })
+                    }
+                    disabled={!!busy}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60 transition-colors"
+                  >
+                    <Check size={15} />
+                    {busy === "approve"
+                      ? t("approvals.approving")
+                      : t("approvals.confirmCancel")}
+                  </button>
+                  <button
+                    onClick={() =>
+                      respondBookingGroup.mutate({
+                        groupKey: g.key,
+                        ids: g.ids,
+                        status: "approved",
+                        action: "reject",
+                      })
+                    }
+                    disabled={!!busy}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-white border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 disabled:opacity-60 transition-colors"
+                  >
+                    <X size={15} />
+                    {busy === "reject"
+                      ? t("approvals.rejecting")
+                      : t("approvals.keepLesson")}
                   </button>
                 </div>
               </Card>

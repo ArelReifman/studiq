@@ -71,6 +71,7 @@ export const bookingStatusEnum = pgEnum("booking_status", [
   "pending",
   "approved",
   "rejected",
+  "cancel_requested",
   "cancelled",
 ]);
 export const dayOfWeekEnum = pgEnum("day_of_week", [

@@ -18,7 +18,12 @@ interface BookingRow {
   date: string;
   start_time: string;
   end_time: string;
-  status: "pending" | "approved" | "rejected" | "cancelled";
+  status:
+    | "pending"
+    | "approved"
+    | "rejected"
+    | "cancel_requested"
+    | "cancelled";
   student_note: string | null;
   teacher_note: string | null;
   student_name: string;
@@ -57,20 +62,26 @@ export default function TeacherSchedulePage() {
 
   const today = new Date().toISOString().split("T")[0]!;
 
-  const upcomingApproved = useMemo(
+  // Approved + cancel-requested both still occupy the slot; show both in the
+  // upcoming list so the teacher sees a lesson that's pending cancellation.
+  const upcomingActive = useMemo(
     () =>
-      bookings.filter((b) => b.status === "approved" && b.date >= today),
+      bookings.filter(
+        (b) =>
+          (b.status === "approved" || b.status === "cancel_requested") &&
+          b.date >= today
+      ),
     [bookings, today]
   );
 
   const upcomingGroups = useMemo(
-    () => groupConsecutiveBookings(upcomingApproved),
-    [upcomingApproved]
+    () => groupConsecutiveBookings(upcomingActive),
+    [upcomingActive]
   );
 
   const bookedDates = useMemo(
-    () => new Set(upcomingApproved.map((b) => b.date)),
-    [upcomingApproved]
+    () => new Set(upcomingActive.map((b) => b.date)),
+    [upcomingActive]
   );
 
   const activeDates = useMemo(() => new Set(slots.map((s) => s.date)), [slots]);
@@ -109,7 +120,9 @@ export default function TeacherSchedulePage() {
     const dayBookings = bookings.filter(
       (b) =>
         b.date === selectedDate &&
-        (b.status === "approved" || b.status === "pending")
+        (b.status === "approved" ||
+          b.status === "pending" ||
+          b.status === "cancel_requested")
     );
     return groupConsecutiveBookings(dayBookings);
   }, [bookings, selectedDate]);
@@ -311,9 +324,9 @@ export default function TeacherSchedulePage() {
           <h2 className="text-lg font-semibold text-gray-800">
             {t("teacher.upcomingLessons")}
           </h2>
-          {upcomingApproved.length > 0 && (
+          {upcomingActive.length > 0 && (
             <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
-              {upcomingApproved.length}
+              {upcomingActive.length}
             </span>
           )}
         </div>
@@ -324,10 +337,16 @@ export default function TeacherSchedulePage() {
           </p>
         ) : (
           <div className="space-y-2">
-            {upcomingGroups.map((g) => (
+            {upcomingGroups.map((g) => {
+              const isCancelRequest = g.status === "cancel_requested";
+              return (
               <div
                 key={g.key}
-                className="flex items-start justify-between gap-3 border border-gray-100 rounded-lg p-3 hover:border-brand-200 transition-colors"
+                className={
+                  isCancelRequest
+                    ? "flex items-start justify-between gap-3 border border-red-200 bg-red-50 rounded-lg p-3 transition-colors"
+                    : "flex items-start justify-between gap-3 border border-gray-100 rounded-lg p-3 hover:border-brand-200 transition-colors"
+                }
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-3 flex-wrap">
@@ -343,6 +362,11 @@ export default function TeacherSchedulePage() {
                     {g.hours > 1 && (
                       <span className="text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">
                         {t("approvals.hoursCount", { count: g.hours })}
+                      </span>
+                    )}
+                    {isCancelRequest && (
+                      <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
+                        {t("teacher.cancelPending")}
                       </span>
                     )}
                   </div>
@@ -367,7 +391,8 @@ export default function TeacherSchedulePage() {
                   {t("teacher.cancelLesson")}
                 </button>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>
