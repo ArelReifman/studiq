@@ -11,6 +11,7 @@ import {
 } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { generateLesson } from "../services/ai/generate-lesson.js";
+import { updateStudentProfile } from "../services/ai/update-profile.js";
 import { createAdminSupabase } from "../lib/supabase.js";
 
 export const lessonRoutes = new Hono()
@@ -335,6 +336,16 @@ export const lessonRoutes = new Hono()
         .returning();
 
       if (!updated) return c.json({ error: "Lesson not found" }, 404);
+
+      // Fire-and-forget: when a lesson is completed, ask Claude to refresh the
+      // student's AI profile (strong/weak topics, learning style, ai_summary)
+      // so the next lesson generation reflects what just happened.
+      if (status === "completed") {
+        updateStudentProfile(updated.student_id, updated.id, updated.title).catch(
+          (err) => console.error("[student-profile] update failed:", err)
+        );
+      }
+
       return c.json(updated);
     }
   );
