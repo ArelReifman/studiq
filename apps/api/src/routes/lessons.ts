@@ -13,15 +13,16 @@ import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { generateLesson } from "../services/ai/generate-lesson.js";
 import { updateStudentProfile } from "../services/ai/update-profile.js";
 import { createAdminSupabase } from "../lib/supabase.js";
+import { studentIdQuerySchema, uuidParamSchema } from "../lib/validators.js";
 
 export const lessonRoutes = new Hono()
   .use(authMiddleware)
 
   // GET /lessons — student: own; teacher: filter by student_id
-  .get("/", async (c) => {
+  .get("/", zValidator("query", studentIdQuerySchema), async (c) => {
     const userId = c.get("userId");
     const role = c.get("userRole");
-    const studentIdParam = c.req.query("student_id");
+    const studentIdParam = c.req.valid("query").student_id;
 
     let rows;
     if (role === "student") {
@@ -49,10 +50,10 @@ export const lessonRoutes = new Hono()
   })
 
   // GET /lessons/:id — lesson detail with homework + todos
-  .get("/:id", async (c) => {
+  .get("/:id", zValidator("param", uuidParamSchema), async (c) => {
     const userId = c.get("userId");
     const role = c.get("userRole");
-    const lessonId = c.req.param("id");
+    const lessonId = c.req.valid("param").id;
 
     const [lesson] = await db
       .select()
@@ -232,9 +233,9 @@ export const lessonRoutes = new Hono()
   )
 
   // DELETE /lessons/:id — teacher deletes a lesson (cascades to homework/todos)
-  .delete("/:id", requireRole("teacher"), async (c) => {
+  .delete("/:id", requireRole("teacher"), zValidator("param", uuidParamSchema), async (c) => {
     const teacherId = c.get("userId");
-    const lessonId = c.req.param("id")!;
+    const lessonId = c.req.valid("param").id;
 
     // Verify ownership and read material path before delete
     const [lesson] = await db
@@ -278,13 +279,14 @@ export const lessonRoutes = new Hono()
   .patch(
     "/:id/reflection",
     requireRole("student"),
+    zValidator("param", uuidParamSchema),
     zValidator(
       "json",
       z.object({ reflection: z.string().max(2000) })
     ),
     async (c) => {
       const studentId = c.get("userId");
-      const lessonId = c.req.param("id")!;
+      const lessonId = c.req.valid("param").id;
       const { reflection } = c.req.valid("json");
 
       const trimmed = reflection.trim();
@@ -312,13 +314,14 @@ export const lessonRoutes = new Hono()
   .patch(
     "/:id/status",
     requireRole("teacher"),
+    zValidator("param", uuidParamSchema),
     zValidator(
       "json",
       z.object({ status: z.enum(["completed", "archived"]) })
     ),
     async (c) => {
       const teacherId = c.get("userId");
-      const lessonId = c.req.param("id");
+      const lessonId = c.req.valid("param").id;
       const { status } = c.req.valid("json");
 
       const [updated] = await db

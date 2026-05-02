@@ -5,15 +5,16 @@ import { eq, and, desc } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { difficultyReports, students, profiles } from "../db/schema.js";
 import { authMiddleware } from "../middleware/auth.js";
+import { studentIdQuerySchema, uuidParamSchema } from "../lib/validators.js";
 
 export const difficultyRoutes = new Hono()
   .use(authMiddleware)
 
   // GET /difficulties — teacher: all for their students; student: their own
-  .get("/", async (c) => {
+  .get("/", zValidator("query", studentIdQuerySchema), async (c) => {
     const userId = c.get("userId");
     const role = c.get("userRole");
-    const studentIdParam = c.req.query("student_id");
+    const studentIdParam = c.req.valid("query").student_id;
 
     let rows;
     if (role === "student") {
@@ -54,10 +55,10 @@ export const difficultyRoutes = new Hono()
   })
 
   // GET /difficulties/:id
-  .get("/:id", async (c) => {
+  .get("/:id", zValidator("param", uuidParamSchema), async (c) => {
     const userId = c.get("userId");
     const role = c.get("userRole");
-    const reportId = c.req.param("id");
+    const reportId = c.req.valid("param").id;
 
     const [report] = await db
       .select()
@@ -80,6 +81,7 @@ export const difficultyRoutes = new Hono()
   // PATCH /difficulties/:id — teacher adds note, marks reviewed
   .patch(
     "/:id",
+    zValidator("param", uuidParamSchema),
     zValidator(
       "json",
       z.object({
@@ -90,7 +92,7 @@ export const difficultyRoutes = new Hono()
     async (c) => {
       const userId = c.get("userId");
       const role = c.get("userRole");
-      const reportId = c.req.param("id");
+      const reportId = c.req.valid("param").id;
       const body = c.req.valid("json");
 
       if (role !== "teacher") return c.json({ error: "Forbidden" }, 403);

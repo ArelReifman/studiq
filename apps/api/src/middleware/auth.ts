@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { eq } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { profiles } from "../db/schema.js";
+import { audit } from "../lib/audit.js";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -92,6 +93,10 @@ export async function authMiddleware(c: Context, next: Next) {
 export function requireRole(role: "teacher" | "student") {
   return async (c: Context, next: Next) => {
     if (c.get("userRole") !== role) {
+      await audit(c, {
+        event: "authz.forbidden",
+        detail: { required_role: role, actual_role: c.get("userRole") },
+      });
       return c.json({ error: "Forbidden: insufficient role" }, 403);
     }
     await next();

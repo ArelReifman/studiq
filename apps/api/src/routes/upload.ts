@@ -6,6 +6,7 @@ import { db } from "../db/client.js";
 import { homeworkItems, lessonSessions } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { createAdminSupabase } from "../lib/supabase.js";
+import { uuidParamSchema } from "../lib/validators.js";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB (client-side limit; Supabase bucket is the actual gate)
 const ALLOWED_TYPES = [
@@ -39,9 +40,10 @@ export const uploadRoutes = new Hono()
   .post(
     "/homework/:id",
     requireRole("student"),
+    zValidator("param", uuidParamSchema),
     async (c) => {
       const studentId = c.get("userId");
-      const itemId = c.req.param("id")!;
+      const itemId = c.req.valid("param").id;
 
       // Verify ownership
       const [item] = await db
@@ -125,9 +127,10 @@ export const uploadRoutes = new Hono()
   .post(
     "/lesson/:id",
     requireRole("teacher"),
+    zValidator("param", uuidParamSchema),
     async (c) => {
       const teacherId = c.get("userId");
-      const lessonId = c.req.param("id")!;
+      const lessonId = c.req.valid("param").id;
 
       // Verify ownership
       const [lesson] = await db
@@ -205,9 +208,10 @@ export const uploadRoutes = new Hono()
   .delete(
     "/lesson/:id",
     requireRole("teacher"),
+    zValidator("param", uuidParamSchema),
     async (c) => {
       const teacherId = c.get("userId");
-      const lessonId = c.req.param("id")!;
+      const lessonId = c.req.valid("param").id;
 
       const [lesson] = await db
         .select()
@@ -242,10 +246,11 @@ export const uploadRoutes = new Hono()
   .post(
     "/lesson/:id/sign",
     requireRole("teacher"),
+    zValidator("param", uuidParamSchema),
     zValidator("json", signSchema),
     async (c) => {
       const teacherId = c.get("userId");
-      const lessonId = c.req.param("id")!;
+      const lessonId = c.req.valid("param").id;
       const { content_type } = c.req.valid("json");
 
       if (!ALLOWED_TYPES.includes(content_type)) {
@@ -289,10 +294,11 @@ export const uploadRoutes = new Hono()
   .post(
     "/lesson/:id/confirm",
     requireRole("teacher"),
+    zValidator("param", uuidParamSchema),
     zValidator("json", confirmSchema),
     async (c) => {
       const teacherId = c.get("userId");
-      const lessonId = c.req.param("id")!;
+      const lessonId = c.req.valid("param").id;
       const { file_name, path } = c.req.valid("json");
 
       const [lesson] = await db
@@ -339,10 +345,11 @@ export const uploadRoutes = new Hono()
   .post(
     "/homework/:id/sign",
     requireRole("student"),
+    zValidator("param", uuidParamSchema),
     zValidator("json", signSchema),
     async (c) => {
       const studentId = c.get("userId");
-      const itemId = c.req.param("id")!;
+      const itemId = c.req.valid("param").id;
       const { content_type } = c.req.valid("json");
 
       if (!ALLOWED_TYPES.includes(content_type)) {
@@ -386,10 +393,11 @@ export const uploadRoutes = new Hono()
   .post(
     "/homework/:id/confirm",
     requireRole("student"),
+    zValidator("param", uuidParamSchema),
     zValidator("json", confirmSchema),
     async (c) => {
       const studentId = c.get("userId");
-      const itemId = c.req.param("id")!;
+      const itemId = c.req.valid("param").id;
       const { file_name, path } = c.req.valid("json");
 
       const [item] = await db
@@ -435,9 +443,10 @@ export const uploadRoutes = new Hono()
   .delete(
     "/homework/:id",
     requireRole("student"),
+    zValidator("param", uuidParamSchema),
     async (c) => {
       const studentId = c.get("userId");
-      const itemId = c.req.param("id")!;
+      const itemId = c.req.valid("param").id;
 
       const [item] = await db
         .select()

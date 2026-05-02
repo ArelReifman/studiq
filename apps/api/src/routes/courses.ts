@@ -5,6 +5,7 @@ import { eq, and, asc } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { courses, courseTopics } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
+import { uuidParamSchema, courseTopicParamSchema } from "../lib/validators.js";
 
 const courseSchema = z.object({
   name: z.string().min(1).max(120),
@@ -66,9 +67,9 @@ export const coursesRoutes = new Hono()
   })
 
   // ─── Get one course + flat topics ────────────────────────────────────────
-  .get("/:id", async (c) => {
+  .get("/:id", zValidator("param", uuidParamSchema), async (c) => {
     const teacherId = c.get("userId")!;
-    const courseId = c.req.param("id")!;
+    const courseId = c.req.valid("param").id;
     const [course] = await db
       .select()
       .from(courses)
@@ -86,9 +87,9 @@ export const coursesRoutes = new Hono()
   })
 
   // ─── Get one course as a 2-level tree ─────────────────────────────────────
-  .get("/:id/tree", async (c) => {
+  .get("/:id/tree", zValidator("param", uuidParamSchema), async (c) => {
     const teacherId = c.get("userId")!;
-    const courseId = c.req.param("id")!;
+    const courseId = c.req.valid("param").id;
     const [course] = await db
       .select()
       .from(courses)
@@ -106,9 +107,9 @@ export const coursesRoutes = new Hono()
   })
 
   // ─── Update a course ──────────────────────────────────────────────────────
-  .patch("/:id", zValidator("json", courseSchema.partial()), async (c) => {
+  .patch("/:id", zValidator("param", uuidParamSchema), zValidator("json", courseSchema.partial()), async (c) => {
     const teacherId = c.get("userId")!;
-    const courseId = c.req.param("id")!;
+    const courseId = c.req.valid("param").id;
     const body = c.req.valid("json");
     const [updated] = await db
       .update(courses)
@@ -126,9 +127,9 @@ export const coursesRoutes = new Hono()
   })
 
   // ─── Delete a course ──────────────────────────────────────────────────────
-  .delete("/:id", async (c) => {
+  .delete("/:id", zValidator("param", uuidParamSchema), async (c) => {
     const teacherId = c.get("userId")!;
-    const courseId = c.req.param("id")!;
+    const courseId = c.req.valid("param").id;
     const [deleted] = await db
       .delete(courses)
       .where(and(eq(courses.id, courseId), eq(courses.teacher_id, teacherId)))
@@ -140,10 +141,11 @@ export const coursesRoutes = new Hono()
   // ─── Topics ────────────────────────────────────────────────────────────────
   .post(
     "/:id/topics",
+    zValidator("param", uuidParamSchema),
     zValidator("json", topicSchema),
     async (c) => {
       const teacherId = c.get("userId")!;
-      const courseId = c.req.param("id")!;
+      const courseId = c.req.valid("param").id;
       // Verify ownership
       const [course] = await db
         .select({ id: courses.id })
@@ -171,11 +173,11 @@ export const coursesRoutes = new Hono()
 
   .patch(
     "/:courseId/topics/:topicId",
+    zValidator("param", courseTopicParamSchema),
     zValidator("json", topicUpdateSchema),
     async (c) => {
       const teacherId = c.get("userId")!;
-      const courseId = c.req.param("courseId")!;
-      const topicId = c.req.param("topicId")!;
+      const { courseId, topicId } = c.req.valid("param");
       // Verify ownership
       const [course] = await db
         .select({ id: courses.id })
@@ -212,10 +214,9 @@ export const coursesRoutes = new Hono()
     }
   )
 
-  .delete("/:courseId/topics/:topicId", async (c) => {
+  .delete("/:courseId/topics/:topicId", zValidator("param", courseTopicParamSchema), async (c) => {
     const teacherId = c.get("userId")!;
-    const courseId = c.req.param("courseId")!;
-    const topicId = c.req.param("topicId")!;
+    const { courseId, topicId } = c.req.valid("param");
     const [course] = await db
       .select({ id: courses.id })
       .from(courses)

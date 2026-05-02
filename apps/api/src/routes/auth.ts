@@ -14,6 +14,7 @@ import {
 } from "../db/schema.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { notifyTelegram, escapeTelegramHtml } from "../lib/notify.js";
+import { audit } from "../lib/audit.js";
 import type { Context } from "hono";
 
 /** Set HttpOnly auth cookie + non-HttpOnly user-info cookie */
@@ -121,7 +122,12 @@ export const authRoutes = new Hono()
 
     if (authError || !authData.user) {
       console.warn(`[AUTH] Failed registration for ${body.email} — ${authError?.message ?? "unknown"}`);
-      return c.json({ error: authError?.message ?? "Registration failed" }, 400);
+      await audit(c, {
+        event: "auth.register_failed",
+        actor_email: body.email,
+        detail: { reason: authError?.message ?? "unknown" },
+      });
+      return c.json({ error: "Registration failed" }, 400);
     }
 
     const userId = authData.user.id;
@@ -200,10 +206,7 @@ export const authRoutes = new Hono()
       // Roll back the auth user if DB insert fails
       await supabase.auth.admin.deleteUser(userId);
       console.warn(`[AUTH] Registration rollback for ${body.email} — ${(err as Error).message}`);
-      return c.json(
-        { error: (err as Error).message ?? "Failed to register" },
-        500
-      );
+      return c.json({ error: "Failed to register" }, 500);
     }
 
     if (pendingApproval) {
@@ -257,6 +260,11 @@ export const authRoutes = new Hono()
 
     if (error || !data.session) {
       console.warn(`[AUTH] Failed login attempt for ${email} — ${error?.message ?? "no session"}`);
+      await audit(c, {
+        event: "auth.login_failed",
+        actor_email: email,
+        detail: { reason: error?.message ?? "no session" },
+      });
       return c.json({ error: "Invalid credentials" }, 401);
     }
 
@@ -313,6 +321,12 @@ export const authRoutes = new Hono()
           `[AUTH] Password reset request failed for ${email} — ${error.message}`
         );
       }
+
+      await audit(c, {
+        event: "auth.password_reset_requested",
+        actor_email: email,
+        detail: error ? { error: error.message } : { ok: true },
+      });
 
       // Always return success to prevent email enumeration
       return c.json({ message: "If the email exists, a reset link has been sent." });

@@ -11,16 +11,17 @@ import {
 } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { tagDifficulty } from "../services/ai/tag-difficulty.js";
+import { uuidParamSchema } from "../lib/validators.js";
+
+const lessonIdRequiredQuery = z.object({ lesson_id: z.string().uuid() });
 
 export const todoRoutes = new Hono()
   .use(authMiddleware)
 
-  .get("/", async (c) => {
+  .get("/", zValidator("query", lessonIdRequiredQuery), async (c) => {
     const userId = c.get("userId");
     const role = c.get("userRole");
-    const lessonId = c.req.query("lesson_id");
-
-    if (!lessonId) return c.json({ error: "lesson_id is required" }, 400);
+    const lessonId = c.req.valid("query").lesson_id;
 
     const whereClause =
       role === "student"
@@ -42,10 +43,11 @@ export const todoRoutes = new Hono()
   .patch(
     "/:id/mark",
     requireRole("student"),
+    zValidator("param", uuidParamSchema),
     zValidator("json", z.object({ status: z.enum(["completed", "failed"]) })),
     async (c) => {
       const studentId = c.get("userId");
-      const itemId = c.req.param("id");
+      const itemId = c.req.valid("param").id;
       const { status } = c.req.valid("json");
       const now = new Date();
 

@@ -10,6 +10,8 @@ import {
   todoItems,
 } from "../db/schema.js";
 import { authMiddleware } from "../middleware/auth.js";
+import { zValidator } from "@hono/zod-validator";
+import { learningMapQuerySchema } from "../lib/validators.js";
 import type {
   LearningMap,
   LearningMapTopic,
@@ -36,11 +38,12 @@ export const learningMapRoutes = new Hono()
   // GET /learning-map?course_id=X&student_id=Y
   // - student: student_id ignored, uses own id
   // - teacher: requires student_id; must own student
-  .get("/", async (c) => {
+  .get("/", zValidator("query", learningMapQuerySchema), async (c) => {
     const userId = c.get("userId");
     const role = c.get("userRole");
-    let courseId = c.req.query("course_id");
-    const studentIdParam = c.req.query("student_id");
+    const q = c.req.valid("query");
+    let courseId = q.course_id;
+    const studentIdParam = q.student_id;
 
     let studentId: string;
     if (role === "student") {

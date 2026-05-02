@@ -58,8 +58,20 @@ export function createApp(basePath = "") {
     await next();
   });
 
-  // Rate limit auth routes: 20 requests per minute per IP
+  // Global per-user/IP cap to absorb floods on any endpoint.
+  app.use("*", rateLimit(200, 60 * 1000));
+
+  // Tighter limits on sensitive surfaces.
+  // Auth: brute-force protection (login, register, password reset).
   app.use("/auth/*", rateLimit(20, 60 * 1000));
+  // AI generation is expensive — both compute and $/token.
+  app.use("/ai-feedback/*", rateLimit(30, 60 * 1000));
+  app.use("/reports/generate", rateLimit(10, 60 * 1000));
+  // Uploads burn storage and bandwidth.
+  app.use("/upload/*", rateLimit(30, 60 * 1000));
+  // Booking churn (cap-of-3 already enforces business rule, this caps abuse).
+  app.use("/bookings/*", rateLimit(60, 60 * 1000));
+
   app.route("/auth", authRoutes);
   app.route("/onboarding", onboardingRoutes);
   app.route("/lessons", lessonRoutes);

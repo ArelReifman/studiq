@@ -14,6 +14,7 @@ import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { notifyTelegram, escapeTelegramHtml } from "../lib/notify.js";
 import { ensureDefaultSlots } from "../services/scheduling/ensure-default-slots.js";
 import { getIsraelToday, isSlotInPastIsrael } from "../lib/time.js";
+import { uuidParamSchema } from "../lib/validators.js";
 
 const bookSchema = z.object({
   availability_id: z.string().uuid(),
@@ -243,10 +244,11 @@ export const bookingRoutes = new Hono()
   .patch(
     "/:id",
     requireRole("teacher"),
+    zValidator("param", uuidParamSchema),
     zValidator("json", respondSchema),
     async (c) => {
       const teacherId = c.get("userId");
-      const bookingId = c.req.param("id")!;
+      const bookingId = c.req.valid("param").id;
       const body = c.req.valid("json");
 
       // Status transition matrix:
@@ -311,9 +313,9 @@ export const bookingRoutes = new Hono()
   // Pending  → cancelled outright (it was never approved, no harm)
   // Approved → cancel_requested (teacher must confirm before the slot frees)
   // cancel_requested → no-op (already pending teacher review)
-  .delete("/:id", requireRole("student"), async (c) => {
+  .delete("/:id", requireRole("student"), zValidator("param", uuidParamSchema), async (c) => {
     const studentId = c.get("userId");
-    const bookingId = c.req.param("id")!;
+    const bookingId = c.req.valid("param").id;
 
     // Read current status so we can pick the right next state.
     const [current] = await db

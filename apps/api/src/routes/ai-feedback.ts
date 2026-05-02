@@ -13,6 +13,7 @@ import {
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { callClaude } from "../services/ai/claude.js";
 import { buildTeacherStyleUpdatePrompt } from "../services/ai/prompts.js";
+import { studentIdQuerySchema } from "../lib/validators.js";
 
 // Update teacher style every N feedback submissions
 const STYLE_UPDATE_INTERVAL = 3;
@@ -65,9 +66,9 @@ export const aiFeedbackRoutes = new Hono()
     return c.json(feedback, 201);
   })
 
-  .get("/", async (c) => {
+  .get("/", zValidator("query", studentIdQuerySchema), async (c) => {
     const teacherId = c.get("userId");
-    const studentId = c.req.query("student_id");
+    const studentId = c.req.valid("query").student_id;
 
     const whereClause = studentId
       ? and(

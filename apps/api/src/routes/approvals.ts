@@ -18,6 +18,8 @@ import { eq, and, desc } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { profiles, students, studentAiProfiles } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
+import { userIdParamSchema } from "../lib/validators.js";
+import { audit } from "../lib/audit.js";
 
 const approveSchema = z.object({
   grade_level: z.string().max(20).optional(),
@@ -57,9 +59,10 @@ export const approvalsRoutes = new Hono()
   // POST /approvals/:userId/approve — assign student to this teacher
   .post(
     "/:userId/approve",
+    zValidator("param", userIdParamSchema),
     zValidator("json", approveSchema),
     async (c) => {
-      const userId = c.req.param("userId");
+      const userId = c.req.valid("param").userId;
       const teacherId = c.get("userId");
       const body = c.req.valid("json");
       const now = new Date();
@@ -121,13 +124,19 @@ export const approvalsRoutes = new Hono()
         return c.json({ error: "Failed to approve" }, 500);
       }
 
+      await audit(c, {
+        event: "approvals.student_approved",
+        target_id: userId,
+        detail: { grade_level: body.grade_level, has_notes: !!body.notes },
+      });
+
       return c.json({ message: "Approved", userId });
     }
   )
 
   // POST /approvals/:userId/reject — mark account as rejected
-  .post("/:userId/reject", async (c) => {
-    const userId = c.req.param("userId");
+  .post("/:userId/reject", zValidator("param", userIdParamSchema), async (c) => {
+    const userId = c.req.valid("param").userId;
     const now = new Date();
 
     const updated = await db
@@ -139,6 +148,11 @@ export const approvalsRoutes = new Hono()
     if (updated.length === 0) {
       return c.json({ error: "User not found" }, 404);
     }
+
+    await audit(c, {
+      event: "approvals.student_rejected",
+      target_id: userId,
+    });
 
     return c.json({ message: "Rejected", userId });
   });

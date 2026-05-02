@@ -25,6 +25,7 @@
     "@hono/zod-validator": "^0.7.6",
     "@studiq/types": "workspace:*",
     "@supabase/supabase-js": "^2.49.1",
+    "@upstash/redis": "^1.37.0",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.41.0",
     "hono": "^4.7.7",

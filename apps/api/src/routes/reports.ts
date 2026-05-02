@@ -6,14 +6,15 @@ import { db } from "../db/client.js";
 import { studentReports, students } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { generateReport } from "../services/ai/generate-report.js";
+import { studentIdQuerySchema } from "../lib/validators.js";
 
 export const reportRoutes = new Hono()
   .use(authMiddleware)
 
-  .get("/", async (c) => {
+  .get("/", zValidator("query", studentIdQuerySchema), async (c) => {
     const userId = c.get("userId");
     const role = c.get("userRole");
-    const studentId = c.req.query("student_id");
+    const studentId = c.req.valid("query").student_id;
 
     let rows;
     if (role === "student") {

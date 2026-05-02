@@ -83,6 +83,16 @@ export const dayOfWeekEnum = pgEnum("day_of_week", [
   "friday",
   "saturday",
 ]);
+export const auditEventEnum = pgEnum("audit_event", [
+  "auth.login_failed",
+  "auth.register_failed",
+  "auth.password_reset_requested",
+  "authz.forbidden",
+  "approvals.student_approved",
+  "approvals.student_rejected",
+  "rate_limit.blocked",
+]);
+
 export const lessonLevelEnum = pgEnum("lesson_level", [
   "base", // foundational exercises — build understanding
   "medium", // applied exercises — deepen concept
@@ -529,6 +539,33 @@ export const lessonBookings = pgTable(
     index("idx_lesson_bookings_teacher_id").on(t.teacher_id),
     index("idx_lesson_bookings_status").on(t.status),
     index("idx_lesson_bookings_date").on(t.date),
+  ]
+);
+
+// ─── Audit log ────────────────────────────────────────────────────────────────
+// Append-only security event log. Captures who did what, when, and from where.
+// Writes are best-effort: a failed insert must NEVER block the underlying request.
+
+export const auditLogs = pgTable(
+  "audit_logs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    event: auditEventEnum("event").notNull(),
+    actor_id: uuid("actor_id"), // user performing the action (nullable for unauth events)
+    target_id: uuid("target_id"), // user/resource affected
+    actor_email: text("actor_email"), // captured at time of event for traceability
+    ip: text("ip"),
+    path: text("path"),
+    method: text("method"),
+    detail: jsonb("detail"),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("idx_audit_logs_event").on(t.event),
+    index("idx_audit_logs_actor_id").on(t.actor_id),
+    index("idx_audit_logs_created_at").on(t.created_at),
   ]
 );
 

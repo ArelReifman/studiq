@@ -7,6 +7,7 @@ import { teacherAvailability, lessonBookings } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { ensureDefaultSlots } from "../services/scheduling/ensure-default-slots.js";
 import { getIsraelToday } from "../lib/time.js";
+import { uuidParamSchema } from "../lib/validators.js";
 
 const slotSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD"),
@@ -95,9 +96,9 @@ export const availabilityRoutes = new Hono()
   })
 
   // Delete (deactivate) a slot — refuses if slot has an approved booking.
-  .delete("/:id", async (c) => {
+  .delete("/:id", zValidator("param", uuidParamSchema), async (c) => {
     const teacherId = c.get("userId");
-    const slotId = c.req.param("id");
+    const slotId = c.req.valid("param").id;
 
     // Block delete if there's an approved booking on this slot
     const [approved] = await db

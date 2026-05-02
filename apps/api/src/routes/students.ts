@@ -16,6 +16,7 @@ import {
   difficultyReports,
 } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
+import { uuidParamSchema } from "../lib/validators.js";
 
 const inviteSchema = z.object({
   full_name: z.string().min(1),
@@ -67,9 +68,9 @@ export const studentRoutes = new Hono()
   })
 
   // GET /students/:id — student detail
-  .get("/:id", async (c) => {
+  .get("/:id", zValidator("param", uuidParamSchema), async (c) => {
     const teacherId = c.get("userId");
-    const studentId = c.req.param("id");
+    const studentId = c.req.valid("param").id;
 
     const [student] = await db
       .select({
@@ -94,9 +95,9 @@ export const studentRoutes = new Hono()
   })
 
   // GET /students/:id/profile — AI profile + stats
-  .get("/:id/profile", async (c) => {
+  .get("/:id/profile", zValidator("param", uuidParamSchema), async (c) => {
     const teacherId = c.get("userId");
-    const studentId = c.req.param("id");
+    const studentId = c.req.valid("param").id;
 
     // Verify ownership
     const [owner] = await db
@@ -119,9 +120,9 @@ export const studentRoutes = new Hono()
   })
 
   // GET /students/:id/report — latest report
-  .get("/:id/report", async (c) => {
+  .get("/:id/report", zValidator("param", uuidParamSchema), async (c) => {
     const teacherId = c.get("userId");
-    const studentId = c.req.param("id");
+    const studentId = c.req.valid("param").id;
 
     const [owner] = await db
       .select({ id: students.id })
@@ -146,10 +147,11 @@ export const studentRoutes = new Hono()
   // PATCH /students/:id/notes
   .patch(
     "/:id/notes",
+    zValidator("param", uuidParamSchema),
     zValidator("json", z.object({ notes: z.string() })),
     async (c) => {
       const teacherId = c.get("userId");
-      const studentId = c.req.param("id");
+      const studentId = c.req.valid("param").id;
       const { notes } = c.req.valid("json");
 
       const [updated] = await db
@@ -166,9 +168,9 @@ export const studentRoutes = new Hono()
   )
 
   // DELETE /students/:id — remove a student entirely
-  .delete("/:id", async (c) => {
+  .delete("/:id", zValidator("param", uuidParamSchema), async (c) => {
     const teacherId = c.get("userId");
-    const studentId = c.req.param("id");
+    const studentId = c.req.valid("param").id;
 
     // Verify ownership
     const [student] = await db
