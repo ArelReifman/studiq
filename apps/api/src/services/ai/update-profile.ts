@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../../db/client.js";
 import {
@@ -9,6 +9,7 @@ import {
   profiles,
   students,
   lessonSessions,
+  studentInsights,
 } from "../../db/schema.js";
 import { callClaude } from "./claude.js";
 import { buildProfileUpdatePrompt } from "./prompts.js";
@@ -31,7 +32,7 @@ export async function updateStudentProfile(
   lessonId: string,
   lessonTitle: string
 ): Promise<void> {
-  const [hw, todos, profile, studentRow, lessonRow] = await Promise.all([
+  const [hw, todos, profile, studentRow, lessonRow, insights] = await Promise.all([
     db
       .select()
       .from(homeworkItems)
@@ -43,8 +44,12 @@ export async function updateStudentProfile(
       .where(eq(studentAiProfiles.student_id, studentId))
       .limit(1)
       .then((r) => r[0]),
+    // Pull background_note alongside the name — fed to Claude as static context
     db
-      .select({ full_name: profiles.full_name })
+      .select({
+        full_name: profiles.full_name,
+        background_note: students.background_note,
+      })
       .from(students)
       .innerJoin(profiles, eq(profiles.id, students.id))
       .where(eq(students.id, studentId))
@@ -61,6 +66,16 @@ export async function updateStudentProfile(
       .where(eq(lessonSessions.id, lessonId))
       .limit(1)
       .then((r) => r[0]),
+    // Recent teacher insights — newest first, weighted heavier in the prompt
+    db
+      .select({
+        content: studentInsights.content,
+        created_at: studentInsights.created_at,
+      })
+      .from(studentInsights)
+      .where(eq(studentInsights.student_id, studentId))
+      .orderBy(desc(studentInsights.created_at))
+      .limit(10),
   ]);
 
   if (!profile || !studentRow) return;
@@ -100,6 +115,11 @@ export async function updateStudentProfile(
     studentReflection: lessonRow?.student_reflection ?? null,
     teacherReviewNote: lessonRow?.teacher_review_note ?? null,
     teacherDecision: lessonRow?.teacher_decision ?? null,
+    backgroundNote: studentRow.background_note ?? null,
+    insights: insights.map((i) => ({
+      content: i.content,
+      created_at: i.created_at.toISOString(),
+    })),
   });
 
   try {

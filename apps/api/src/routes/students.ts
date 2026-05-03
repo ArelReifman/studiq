@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, desc } from "drizzle-orm";
 import { createClient } from "@supabase/supabase-js";
 import { db } from "../db/client.js";
 import {
@@ -14,6 +14,7 @@ import {
   homeworkItems,
   todoItems,
   difficultyReports,
+  studentInsights,
 } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { uuidParamSchema } from "../lib/validators.js";
@@ -79,6 +80,7 @@ export const studentRoutes = new Hono()
         onboarded_at: students.onboarded_at,
         grade_level: students.grade_level,
         notes: students.notes,
+        background_note: students.background_note,
         full_name: profiles.full_name,
         email: profiles.email,
       })
@@ -93,6 +95,120 @@ export const studentRoutes = new Hono()
 
     return c.json(student);
   })
+
+  // ── Background note (long-form static context, rarely changes) ────────────
+  .patch(
+    "/:id/background",
+    zValidator("param", uuidParamSchema),
+    zValidator("json", z.object({ background_note: z.string().max(4000) })),
+    async (c) => {
+      const teacherId = c.get("userId");
+      const studentId = c.req.valid("param").id;
+      const { background_note } = c.req.valid("json");
+
+      const trimmed = background_note.trim();
+
+      const [updated] = await db
+        .update(students)
+        .set({ background_note: trimmed === "" ? null : trimmed })
+        .where(
+          and(eq(students.id, studentId), eq(students.teacher_id, teacherId))
+        )
+        .returning({ id: students.id, background_note: students.background_note });
+
+      if (!updated) return c.json({ error: "Student not found" }, 404);
+      return c.json(updated);
+    }
+  )
+
+  // ── Insights (append-only log of "what helps this student") ───────────────
+  // GET — newest first; the UI shows them in reverse chronological order
+  .get("/:id/insights", zValidator("param", uuidParamSchema), async (c) => {
+    const teacherId = c.get("userId");
+    const studentId = c.req.valid("param").id;
+
+    // Verify ownership
+    const [owner] = await db
+      .select({ id: students.id })
+      .from(students)
+      .where(
+        and(eq(students.id, studentId), eq(students.teacher_id, teacherId))
+      )
+      .limit(1);
+    if (!owner) return c.json({ error: "Student not found" }, 404);
+
+    const rows = await db
+      .select()
+      .from(studentInsights)
+      .where(eq(studentInsights.student_id, studentId))
+      .orderBy(desc(studentInsights.created_at));
+
+    return c.json(rows);
+  })
+
+  // POST — add a new insight (append-only; old ones never edited)
+  .post(
+    "/:id/insights",
+    zValidator("param", uuidParamSchema),
+    zValidator("json", z.object({ content: z.string().min(1).max(500) })),
+    async (c) => {
+      const teacherId = c.get("userId");
+      const studentId = c.req.valid("param").id;
+      const { content } = c.req.valid("json");
+
+      // Verify ownership
+      const [owner] = await db
+        .select({ id: students.id })
+        .from(students)
+        .where(
+          and(eq(students.id, studentId), eq(students.teacher_id, teacherId))
+        )
+        .limit(1);
+      if (!owner) return c.json({ error: "Student not found" }, 404);
+
+      const [inserted] = await db
+        .insert(studentInsights)
+        .values({
+          student_id: studentId,
+          teacher_id: teacherId,
+          content: content.trim(),
+        })
+        .returning();
+
+      return c.json(inserted, 201);
+    }
+  )
+
+  // DELETE — remove an outdated insight (e.g. you got it wrong, or it's no
+  // longer true). Path includes student_id so we can verify ownership cheaply.
+  .delete(
+    "/:id/insights/:insightId",
+    zValidator(
+      "param",
+      z.object({
+        id: z.string().uuid(),
+        insightId: z.string().uuid(),
+      })
+    ),
+    async (c) => {
+      const teacherId = c.get("userId");
+      const { id: studentId, insightId } = c.req.valid("param");
+
+      const [deleted] = await db
+        .delete(studentInsights)
+        .where(
+          and(
+            eq(studentInsights.id, insightId),
+            eq(studentInsights.student_id, studentId),
+            eq(studentInsights.teacher_id, teacherId)
+          )
+        )
+        .returning({ id: studentInsights.id });
+
+      if (!deleted) return c.json({ error: "Insight not found" }, 404);
+      return c.json({ message: "Insight removed" });
+    }
+  )
 
   // GET /students/:id/profile — AI profile + stats
   .get("/:id/profile", zValidator("param", uuidParamSchema), async (c) => {

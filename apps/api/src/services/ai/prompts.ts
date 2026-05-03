@@ -125,6 +125,8 @@ export function buildProfileUpdatePrompt(params: {
   studentReflection: string | null;
   teacherReviewNote: string | null;
   teacherDecision: string | null;
+  backgroundNote: string | null;
+  insights: Array<{ content: string; created_at: string }>;
 }): string {
   const {
     studentName,
@@ -136,6 +138,8 @@ export function buildProfileUpdatePrompt(params: {
     studentReflection,
     teacherReviewNote,
     teacherDecision,
+    backgroundNote,
+    insights,
   } = params;
 
   const reflectionSection = studentReflection?.trim()
@@ -144,6 +148,16 @@ export function buildProfileUpdatePrompt(params: {
 
   const teacherSection = (teacherDecision || teacherReviewNote?.trim())
     ? `\n## Teacher's Verdict (most authoritative signal)\nDecision: ${teacherDecision ? DECISION_LABEL[teacherDecision] : "not set"}${teacherReviewNote?.trim() ? `\nNote: "${teacherReviewNote.trim()}"` : ""}\n\nThis is the teacher's direct assessment after reviewing the student's submitted solution. It overrides self-reported data. Use it to calibrate what "mastery" means for this teacher.`
+    : "";
+
+  const backgroundSection = backgroundNote?.trim()
+    ? `\n## Student Background (static context written by teacher)\n${backgroundNote.trim()}`
+    : "";
+
+  const insightsSection = insights.length > 0
+    ? `\n## What Helps This Student (${insights.length} teacher insights, newest first)\n${insights
+        .map((i) => `• ${i.content}  (${new Date(i.created_at).toISOString().slice(0, 10)})`)
+        .join("\n")}\n\nThese are observations the teacher discovered over time. Recent ones weigh more. They describe HOW this student learns best — the AI summary should reflect them.`
     : "";
 
   return `Update the AI learning profile summary for a student based on their latest lesson performance.
@@ -156,7 +170,7 @@ ${currentSummary ?? "No existing summary — create a new one."}
 ## Latest Lesson: "${lessonTitle}"
 - Tasks completed: ${completedCount}
 - Tasks failed: ${failedCount}
-- Topics in failed tasks: ${failedTopics.join(", ") || "none"}${reflectionSection}${teacherSection}
+- Topics in failed tasks: ${failedTopics.join(", ") || "none"}${reflectionSection}${teacherSection}${backgroundSection}${insightsSection}
 
 Write an updated 2–4 sentence summary capturing:
 1. What the student is good at

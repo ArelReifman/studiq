@@ -446,5 +446,19 @@
   "lessonReview.notePlaceholder": "לדוגמה: 'ענה נכון אבל לא הראה דרך מסודרת בשאלה 3'",
   "lessonReview.save": "שמור החלטה",
   "lessonReview.saving": "שומר...",
-  "lessonReview.saveFailed": "השמירה נכשלה — נסה שוב"
+  "lessonReview.saveFailed": "השמירה נכשלה — נסה שוב",
+
+  "studentContext.backgroundTitle": "רקע התלמיד",
+  "studentContext.backgroundHint": "הקשר קבוע — צרכים מיוחדים, רקע משפחתי, אופי. נכתב פעם אחת ומשתנה רק בנסיבות חיים.",
+  "studentContext.backgroundPlaceholder": "לדוגמה: 'תלמיד עם דיסלקציה — קושי בקריאה ארוכה. המשפחה תומכת מאוד, יש לחץ להצליח. נלחץ במבחנים.'",
+  "studentContext.saveBackground": "שמור רקע",
+  "studentContext.saving": "שומר...",
+  "studentContext.saved": "נשמר",
+  "studentContext.insightsTitle": "מה עוזר לו",
+  "studentContext.insightsHint": "תובנות שמתגלות תוך כדי הוראה. כל תובנה נשמרת עם תאריך — המערכת לומדת לאורך זמן.",
+  "studentContext.insightPlaceholder": "תובנה אחת קצרה — למשל 'דיאגרמות עוזרות במושגים מופשטים'",
+  "studentContext.addInsight": "הוסף",
+  "studentContext.insightsEmpty": "אין עדיין תובנות. הוסף את הראשונה כשתגלה משהו שעוזר לתלמיד.",
+  "studentContext.removeInsight": "הסר תובנה",
+  "studentContext.confirmDelete": "להסיר את התובנה הזו?"
 }

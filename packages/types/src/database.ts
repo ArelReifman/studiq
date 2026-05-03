@@ -24,6 +24,17 @@ export interface Student {
   onboarded_at: string | null;
   grade_level: string | null;
   notes: string | null;
+  /** Long-form static background written by the teacher (e.g. learning needs, family context). */
+  background_note: string | null;
+}
+
+/** One observation the teacher recorded about a student — append-only log. */
+export interface StudentInsight {
+  id: string;
+  student_id: string;
+  teacher_id: string;
+  content: string;
+  created_at: string;
 }
 
 // ─── Topics ──────────────────────────────────────────────────────────────────

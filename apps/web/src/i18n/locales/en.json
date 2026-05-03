@@ -446,5 +446,19 @@
   "lessonReview.notePlaceholder": "e.g. 'Answer was right but reasoning was unclear on Q3'",
   "lessonReview.save": "Save verdict",
   "lessonReview.saving": "Saving...",
-  "lessonReview.saveFailed": "Save failed — try again"
+  "lessonReview.saveFailed": "Save failed — try again",
+
+  "studentContext.backgroundTitle": "Student background",
+  "studentContext.backgroundHint": "Static context — special needs, family background, personality. Written once, edited only when life circumstances change.",
+  "studentContext.backgroundPlaceholder": "e.g. 'Student has dyslexia — struggles with long reading. Family is very supportive, pressure to succeed. Anxious in exams.'",
+  "studentContext.saveBackground": "Save background",
+  "studentContext.saving": "Saving...",
+  "studentContext.saved": "Saved",
+  "studentContext.insightsTitle": "What helps them",
+  "studentContext.insightsHint": "Insights you discover while teaching. Each insight is saved with a date — the system learns over time.",
+  "studentContext.insightPlaceholder": "One short insight — e.g. 'Diagrams help with abstract concepts'",
+  "studentContext.addInsight": "Add",
+  "studentContext.insightsEmpty": "No insights yet. Add your first one when you discover something that helps this student.",
+  "studentContext.removeInsight": "Remove insight",
+  "studentContext.confirmDelete": "Remove this insight?"
 }

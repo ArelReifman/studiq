@@ -14,12 +14,14 @@ import { ArrowLeft, AlertTriangle, Sparkles, Trash2, MessageSquare, Map, Clipboa
 import { useT } from "@/i18n";
 import { CreateLessonModal } from "@/components/teacher/create-lesson-modal";
 import { LessonReviewModal } from "@/components/teacher/lesson-review-modal";
+import { StudentContextCard } from "@/components/teacher/student-context-card";
 
 interface StudentDetail {
   id: string;
   full_name: string;
   grade_level: string | null;
   email: string;
+  background_note: string | null;
 }
 
 export default function StudentDetailPage() {
@@ -28,10 +30,6 @@ export default function StudentDetailPage() {
   const qc = useQueryClient();
   const [showCreateLesson, setShowCreateLesson] = useState(false);
   const [reviewLesson, setReviewLesson] = useState<LessonSession | null>(null);
-  const [feedbackText, setFeedbackText] = useState("");
-  const [feedbackType, setFeedbackType] = useState<
-    "lesson_quality" | "difficulty_level" | "topic_relevance" | "general"
-  >("general");
 
   const { data: student } = useQuery<StudentDetail>({
     queryKey: ["students", id],
@@ -69,19 +67,6 @@ export default function StudentDetailPage() {
       alert(err instanceof Error ? err.message : t("studentDetail.deleteFailed"));
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ["lessons"] }),
-  });
-
-  const submitFeedback = useMutation({
-    mutationFn: () =>
-      api.post("/ai-feedback", {
-        student_id: id,
-        feedback_type: feedbackType,
-        content: feedbackText,
-        sentiment: "general",
-      }),
-    onSuccess: () => {
-      setFeedbackText("");
-    },
   });
 
   return (
@@ -169,42 +154,15 @@ export default function StudentDetailPage() {
             )}
           </Card>
 
-          {/* AI Feedback */}
-          <Card className="mt-4">
-            <h2 className="font-semibold mb-3 text-sm text-gray-600">
-              {t("studentDetail.giveFeedback")}
-            </h2>
-            <select
-              value={feedbackType}
-              onChange={(e) => setFeedbackType(e.target.value as any)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
-            >
-              <option value="general">{t("studentDetail.general")}</option>
-              <option value="lesson_quality">{t("studentDetail.lessonQuality")}</option>
-              <option value="difficulty_level">{t("studentDetail.difficultyLevel")}</option>
-              <option value="topic_relevance">{t("studentDetail.topicRelevance")}</option>
-            </select>
-            <textarea
-              value={feedbackText}
-              onChange={(e) => setFeedbackText(e.target.value)}
-              placeholder={t("studentDetail.feedbackPlaceholder")}
-              rows={3}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2 resize-none focus:outline-none focus:ring-2 focus:ring-brand-500"
+          {/* Student Background + Insights — replaces the old free-form
+              "feedback to digital teacher" form. Two structured fields the
+              AI uses for personalization. */}
+          <div className="mt-4">
+            <StudentContextCard
+              studentId={id}
+              initialBackground={student?.background_note ?? null}
             />
-            <Button
-              size="sm"
-              className="w-full"
-              disabled={!feedbackText.trim() || submitFeedback.isPending}
-              onClick={() => submitFeedback.mutate()}
-            >
-              {submitFeedback.isPending ? t("studentDetail.sending") : t("studentDetail.sendFeedback")}
-            </Button>
-            {submitFeedback.isSuccess && (
-              <p className="text-green-600 text-xs mt-2 text-center">
-                {t("studentDetail.feedbackNote")}
-              </p>
-            )}
-          </Card>
+          </div>
         </div>
 
         {/* Lessons + Difficulties */}

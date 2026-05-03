@@ -161,8 +161,42 @@ export const students = pgTable(
     grade_level: text("grade_level"),
     notes: text("notes"),
     invite_token: text("invite_token").unique(), // used for registration link
+    // ── Teacher-curated long-form context (fed to AI) ──────────────────────
+    // background_note: static context the teacher captures at onboarding —
+    //   "has dyslexia", "anxious in exams", "supportive family". Rarely changes.
+    // (What evolves over time — insights — lives in studentInsights table
+    //  so each insight has its own timestamp and can be added/removed.)
+    background_note: text("background_note"),
   },
   (t) => [index("idx_students_teacher_id").on(t.teacher_id)]
+);
+
+// ─── Student Insights (append-only learning notes from the teacher) ──────────
+//
+// Each row captures one observation the teacher discovered while teaching
+// this student — e.g. "responds well to visual diagrams", "20-min sessions
+// work better than 45". Append-only so the AI sees how understanding of the
+// student evolved over time. Recent insights weigh more heavily in prompts.
+
+export const studentInsights = pgTable(
+  "student_insights",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    student_id: uuid("student_id")
+      .notNull()
+      .references(() => students.id, { onDelete: "cascade" }),
+    teacher_id: uuid("teacher_id")
+      .notNull()
+      .references(() => teachers.id, { onDelete: "cascade" }),
+    content: text("content").notNull(),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("idx_student_insights_student_id").on(t.student_id),
+    index("idx_student_insights_created_at").on(t.created_at),
+  ]
 );
 
 // ─── Student Invites (pending — student not yet registered) ───────────────────
