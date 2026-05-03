@@ -1,23 +1,22 @@
+/**
+ * Legacy AI feedback routes — the freeform "feedback to digital teacher"
+ * form has been replaced by structured background + insights on each
+ * student page. These endpoints remain so older entries can still be
+ * read (GET) and so any external/programmatic callers don't break (POST).
+ *
+ * The teacher-style learner is now triggered from PATCH /lessons/:id/review
+ * as well, so the system keeps learning even though the UI no longer posts
+ * to /ai-feedback.
+ */
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "../db/client.js";
-import {
-  teacherAiFeedback,
-  students,
-  teachers,
-  difficultyReports,
-  lessonSessions,
-} from "../db/schema.js";
-import { isNotNull } from "drizzle-orm";
+import { teacherAiFeedback, students } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
-import { callClaude } from "../services/ai/claude.js";
-import { buildTeacherStyleUpdatePrompt } from "../services/ai/prompts.js";
+import { updateTeacherStyleIfDue } from "../services/ai/update-teacher-style.js";
 import { studentIdQuerySchema } from "../lib/validators.js";
-
-// Update teacher style every N feedback submissions
-const STYLE_UPDATE_INTERVAL = 3;
 
 const createFeedbackSchema = z.object({
   student_id: z.string().uuid(),
@@ -59,7 +58,7 @@ export const aiFeedbackRoutes = new Hono()
       .values({ ...body, teacher_id: teacherId })
       .returning();
 
-    // Fire-and-forget: update teacher style profile every N feedbacks
+    // Fire-and-forget: refresh teacher style profile every Nth signal.
     updateTeacherStyleIfDue(teacherId).catch((err) =>
       console.error("[teacher-style] update failed:", err)
     );
@@ -86,151 +85,3 @@ export const aiFeedbackRoutes = new Hono()
 
     return c.json(rows);
   });
-
-// ─── Background: update teacher teaching style profile ────────────────────────
-
-async function updateTeacherStyleIfDue(teacherId: string): Promise<void> {
-  // Fetch teacher row
-  const [teacher] = await db
-    .select({
-      teaching_style_summary: teachers.teaching_style_summary,
-      teaching_feedback_count: teachers.teaching_feedback_count,
-    })
-    .from(teachers)
-    .where(eq(teachers.id, teacherId))
-    .limit(1);
-
-  if (!teacher) return;
-
-  const newCount = teacher.teaching_feedback_count + 1;
-
-  // Update count first
-  await db
-    .update(teachers)
-    .set({ teaching_feedback_count: newCount })
-    .where(eq(teachers.id, teacherId));
-
-  // Only run Claude every N submissions
-  if (newCount % STYLE_UPDATE_INTERVAL !== 0) return;
-
-  // Collect all writing sources in parallel
-  const [recentFeedbacks, difficultyNotes, manualLessons, recentDecisions] = await Promise.all([
-    // Explicit feedback submissions
-    db
-      .select({
-        feedback_type: teacherAiFeedback.feedback_type,
-        content: teacherAiFeedback.content,
-        sentiment: teacherAiFeedback.sentiment,
-        created_at: teacherAiFeedback.created_at,
-      })
-      .from(teacherAiFeedback)
-      .where(eq(teacherAiFeedback.teacher_id, teacherId))
-      .orderBy(desc(teacherAiFeedback.created_at))
-      .limit(15),
-
-    // Notes added to difficulty reports
-    db
-      .select({
-        teacher_note: difficultyReports.teacher_note,
-        topic_tags: difficultyReports.topic_tags,
-        created_at: difficultyReports.created_at,
-      })
-      .from(difficultyReports)
-      .where(
-        and(
-          eq(difficultyReports.teacher_id, teacherId),
-          // Only notes that have actual text
-          // Using raw sql would be cleaner but this works:
-          eq(difficultyReports.reviewed, true)
-        )
-      )
-      .orderBy(desc(difficultyReports.created_at))
-      .limit(10),
-
-    // Manually created lessons (title + description = teacher's own voice)
-    db
-      .select({
-        title: lessonSessions.title,
-        description: lessonSessions.description,
-        created_at: lessonSessions.generated_at,
-      })
-      .from(lessonSessions)
-      .where(
-        and(
-          eq(lessonSessions.teacher_id, teacherId),
-          eq(lessonSessions.ai_generated, false)
-        )
-      )
-      .orderBy(desc(lessonSessions.generated_at))
-      .limit(10),
-
-    // Teacher review decisions — the strongest signal for learning grading style
-    db
-      .select({
-        title: lessonSessions.title,
-        teacher_decision: lessonSessions.teacher_decision,
-        teacher_review_note: lessonSessions.teacher_review_note,
-        teacher_reviewed_at: lessonSessions.teacher_reviewed_at,
-      })
-      .from(lessonSessions)
-      .where(
-        and(
-          eq(lessonSessions.teacher_id, teacherId),
-          isNotNull(lessonSessions.teacher_decision)
-        )
-      )
-      .orderBy(desc(lessonSessions.teacher_reviewed_at))
-      .limit(15),
-  ]);
-
-  if (recentFeedbacks.length === 0 && difficultyNotes.length === 0 && recentDecisions.length === 0) return;
-
-  const prompt = buildTeacherStyleUpdatePrompt({
-    currentSummary: teacher.teaching_style_summary,
-    feedbacks: recentFeedbacks.map((f) => ({
-      ...f,
-      created_at: f.created_at.toISOString(),
-    })),
-    difficultyNotes: difficultyNotes
-      .filter((d) => d.teacher_note)
-      .map((d) => ({
-        note: d.teacher_note!,
-        topics: d.topic_tags,
-        created_at: d.created_at.toISOString(),
-      })),
-    manualLessons: manualLessons.map((l) => ({
-      title: l.title,
-      description: l.description ?? "",
-    })),
-    recentDecisions: recentDecisions
-      .filter((d) => d.teacher_decision)
-      .map((d) => ({
-        lessonTitle: d.title,
-        decision: d.teacher_decision!,
-        note: d.teacher_review_note ?? null,
-        reviewed_at: d.teacher_reviewed_at?.toISOString() ?? "",
-      })),
-    totalFeedbackCount: newCount,
-  });
-
-  const parsed = await callClaude(prompt, (text) => {
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("no JSON in response");
-    return JSON.parse(jsonMatch[0]) as {
-      teaching_style_summary: string;
-      key_patterns: string[];
-    };
-  }).catch((err) => {
-    console.error("[teacher-style] Claude parse failed:", err);
-    return null;
-  });
-
-  if (!parsed) return;
-
-  await db
-    .update(teachers)
-    .set({ teaching_style_summary: parsed.teaching_style_summary })
-    .where(eq(teachers.id, teacherId));
-
-  console.log(`[teacher-style] updated profile for teacher ${teacherId} after ${newCount} feedbacks`);
-}

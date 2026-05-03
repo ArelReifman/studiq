@@ -12,6 +12,7 @@ import {
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { generateLesson } from "../services/ai/generate-lesson.js";
 import { updateStudentProfile } from "../services/ai/update-profile.js";
+import { updateTeacherStyleIfDue } from "../services/ai/update-teacher-style.js";
 import { createAdminSupabase } from "../lib/supabase.js";
 import { studentIdQuerySchema, uuidParamSchema } from "../lib/validators.js";
 
@@ -351,6 +352,13 @@ export const lessonRoutes = new Hono()
       // is immediately incorporated before the next lesson is planned.
       updateStudentProfile(updated.student_id, updated.id, updated.title).catch(
         (err) => console.error("[student-profile] review update failed:", err)
+      );
+
+      // Also feed this decision into the teacher's style profile — without
+      // this, no teacher style updates would happen now that the freeform
+      // feedback form is gone. Throttled internally to every Nth signal.
+      updateTeacherStyleIfDue(teacherId).catch((err) =>
+        console.error("[teacher-style] review update failed:", err)
       );
 
       return c.json(updated);
