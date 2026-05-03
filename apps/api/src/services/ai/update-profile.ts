@@ -8,6 +8,7 @@ import {
   studentAiProfiles,
   profiles,
   students,
+  lessonSessions,
 } from "../../db/schema.js";
 import { callClaude } from "./claude.js";
 import { buildProfileUpdatePrompt } from "./prompts.js";
@@ -30,7 +31,7 @@ export async function updateStudentProfile(
   lessonId: string,
   lessonTitle: string
 ): Promise<void> {
-  const [hw, todos, profile, studentRow] = await Promise.all([
+  const [hw, todos, profile, studentRow, lessonRow] = await Promise.all([
     db
       .select()
       .from(homeworkItems)
@@ -47,6 +48,13 @@ export async function updateStudentProfile(
       .from(students)
       .innerJoin(profiles, eq(profiles.id, students.id))
       .where(eq(students.id, studentId))
+      .limit(1)
+      .then((r) => r[0]),
+    // Fetch the student's written reflection so Claude can learn from it
+    db
+      .select({ student_reflection: lessonSessions.student_reflection })
+      .from(lessonSessions)
+      .where(eq(lessonSessions.id, lessonId))
       .limit(1)
       .then((r) => r[0]),
   ]);
@@ -85,6 +93,7 @@ export async function updateStudentProfile(
     completedCount,
     failedCount,
     failedTopics,
+    studentReflection: lessonRow?.student_reflection ?? null,
   });
 
   try {
@@ -110,6 +119,9 @@ export async function updateStudentProfile(
         learning_style: updated.learning_style,
         avg_completion_rate: newAvg.toFixed(2),
         total_homework: profile.total_homework + allItems.length,
+        // Increment lesson count here so manually-created lessons are counted
+        // too (AI-generated lessons already increment this in generate-lesson.ts).
+        total_lessons: profile.total_lessons + 1,
         updated_at: new Date(),
       })
       .where(eq(studentAiProfiles.student_id, studentId));

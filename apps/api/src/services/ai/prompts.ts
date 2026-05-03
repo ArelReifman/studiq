@@ -116,6 +116,7 @@ export function buildProfileUpdatePrompt(params: {
   completedCount: number;
   failedCount: number;
   failedTopics: string[];
+  studentReflection: string | null;
 }): string {
   const {
     studentName,
@@ -124,7 +125,12 @@ export function buildProfileUpdatePrompt(params: {
     completedCount,
     failedCount,
     failedTopics,
+    studentReflection,
   } = params;
+
+  const reflectionSection = studentReflection?.trim()
+    ? `\n## Student's Own Words (written after the lesson)\n"${studentReflection.trim()}"\n\nThis is the student's direct self-assessment — pay close attention to what they say was hard or easy. It often reveals learning style and emotional state more accurately than completion rates alone.`
+    : "";
 
   return `Update the AI learning profile summary for a student based on their latest lesson performance.
 
@@ -136,12 +142,12 @@ ${currentSummary ?? "No existing summary — create a new one."}
 ## Latest Lesson: "${lessonTitle}"
 - Tasks completed: ${completedCount}
 - Tasks failed: ${failedCount}
-- Topics in failed tasks: ${failedTopics.join(", ") || "none"}
+- Topics in failed tasks: ${failedTopics.join(", ") || "none"}${reflectionSection}
 
 Write an updated 2–4 sentence summary capturing:
 1. What the student is good at
 2. What they struggle with
-3. Any notable patterns or learning style observations
+3. Any notable patterns or learning style observations (weight the student's own reflection heavily if present)
 
 Respond ONLY with valid JSON:
 {
