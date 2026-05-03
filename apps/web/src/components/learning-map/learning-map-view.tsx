@@ -363,11 +363,12 @@ function TopicCard({
   const t = useT();
   const status = tp.stats.status;
   const pct = tp.stats.pct;
-  // Show the big CTA only for students on a clickable, currently-selected card.
-  // Teachers already get a "צור שיעור" button in the recommendation panel.
-  const showStudentCta = role === "student" && active && !tp.locked;
+  // Big CTA on the currently-selected, unlocked card — both roles get one,
+  // with the label switched: teachers see "create lesson", students see
+  // "start/continue learning". Removes the need to hunt for a small button.
+  const showCta = active && !tp.locked;
   // Slightly taller card when CTA is showing so the button has room.
-  const cardHeight = showStudentCta ? "h-[200px]" : "h-[172px]";
+  const cardHeight = showCta ? "h-[200px]" : "h-[172px]";
 
   // ── Locked state ── render a clearly-disabled card with a prominent
   // lock badge instead of just dimming opacity. Communicates "blocked" at
@@ -500,10 +501,9 @@ function TopicCard({
         )}
       </div>
 
-      {/* Big CTA for the student on the active card — a clear next-step
-          button so they don't have to scan for what to do. Hidden for
-          teachers (who use the "lesson" pill above). */}
-      {showStudentCta && (
+      {/* Big CTA on the active card — clear next-step button for both roles.
+          Teacher: "create lesson" · Student: "start" or "continue". */}
+      {showCta && (
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -511,7 +511,9 @@ function TopicCard({
           }}
           className="mt-2 w-full h-8 rounded-md bg-brand-500 hover:bg-brand-600 text-white text-[12px] font-semibold transition-colors shadow-sm"
         >
-          {status === "not_started"
+          {role === "teacher"
+            ? t("map.createLesson")
+            : status === "not_started"
             ? t("map.startLearning")
             : t("map.continueLearning")}
         </button>
