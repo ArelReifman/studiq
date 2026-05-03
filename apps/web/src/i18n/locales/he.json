@@ -354,10 +354,6 @@
   "student.tasks": "משימות",
   "createLesson.course": "קורס",
   "createLesson.topic": "נושא",
-  "createLesson.level": "רמה",
-  "createLesson.levelBase": "בסיס",
-  "createLesson.levelMedium": "ביניים",
-  "createLesson.levelExam": "מבחן",
 
   "map.title": "מפת למידה",
   "map.myTitle": "מפת הלמידה שלי",

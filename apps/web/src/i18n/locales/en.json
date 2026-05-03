@@ -354,10 +354,6 @@
   "student.tasks": "Tasks",
   "createLesson.course": "Course",
   "createLesson.topic": "Topic",
-  "createLesson.level": "Level",
-  "createLesson.levelBase": "Base",
-  "createLesson.levelMedium": "Medium",
-  "createLesson.levelExam": "Exam",
 
   "map.title": "Learning Map",
   "map.myTitle": "My Learning Map",

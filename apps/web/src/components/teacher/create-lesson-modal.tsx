@@ -6,7 +6,7 @@ import { X, Plus, Trash2, Upload, FileText } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/i18n";
-import type { Course, CourseWithTopics, LessonLevel } from "@studiq/types";
+import type { Course, CourseWithTopics } from "@studiq/types";
 
 interface CreateLessonModalProps {
   studentId: string;
@@ -32,8 +32,6 @@ export function CreateLessonModal({ studentId, onClose }: CreateLessonModalProps
   const [file, setFile] = useState<File | null>(null);
   const [courseId, setCourseId] = useState<string>("");
   const [topicId, setTopicId] = useState<string>("");
-  const [lessonLevel, setLessonLevel] = useState<LessonLevel | "">("");
-
   const { data: courses = [] } = useQuery<Course[]>({
     queryKey: ["courses"],
     queryFn: () => api.get("/courses"),
@@ -74,7 +72,6 @@ export function CreateLessonModal({ studentId, onClose }: CreateLessonModalProps
         })),
         course_id: courseId || null,
         topic_id: topicId || null,
-        lesson_level: lessonLevel || null,
       });
 
       // Upload material PDF if provided — direct to Supabase, bypassing Vercel's body limit.
@@ -131,9 +128,9 @@ export function CreateLessonModal({ studentId, onClose }: CreateLessonModalProps
         </div>
 
         <div className="px-6 py-5 space-y-5">
-          {/* Course + topic + level (optional) */}
+          {/* Course + topic (optional) */}
           {courses.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   {t("createLesson.course")} {t("common.optional")}
@@ -168,21 +165,6 @@ export function CreateLessonModal({ studentId, onClose }: CreateLessonModalProps
                       {tp.is_shared ? " ★" : ""}
                     </option>
                   ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {t("createLesson.level")}
-                </label>
-                <select
-                  value={lessonLevel}
-                  onChange={(e) => setLessonLevel(e.target.value as LessonLevel | "")}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                >
-                  <option value="">—</option>
-                  <option value="base">{t("createLesson.levelBase")}</option>
-                  <option value="medium">{t("createLesson.levelMedium")}</option>
-                  <option value="exam">{t("createLesson.levelExam")}</option>
                 </select>
               </div>
             </div>

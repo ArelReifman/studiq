@@ -13,6 +13,7 @@ import {
 } from "../../db/schema.js";
 import { callClaude } from "./claude.js";
 import { buildProfileUpdatePrompt } from "./prompts.js";
+import { generateNextSessionBriefing } from "./generate-briefing.js";
 
 const ProfileUpdateSchema = z.object({
   ai_summary: z.string(),
@@ -151,6 +152,12 @@ export async function updateStudentProfile(
         updated_at: new Date(),
       })
       .where(eq(studentAiProfiles.student_id, studentId));
+
+    // Fire-and-forget: refresh the pre-session briefing so the teacher sees
+    // the latest "where we stopped / what to focus on" before the next lesson.
+    generateNextSessionBriefing(studentId).catch((err) =>
+      console.error("[briefing] generation failed:", err)
+    );
   } catch (err) {
     console.error("Failed to update student AI profile:", err);
   }

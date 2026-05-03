@@ -345,3 +345,58 @@ Respond ONLY with valid JSON:
   "key_patterns": ["string", "string"]
 }`;
 }
+
+// ─── Pre-session briefing ─────────────────────────────────────────────────────
+// Short Hebrew briefing the teacher reads BEFORE the next session — answers
+// "where did we stop, what was hard, what should I focus on today".
+// Generated after each lesson review so it's always fresh by next session.
+export function buildBriefingPrompt(params: {
+  studentName: string;
+  lastLessonTitle: string;
+  lastDecision: string | null;
+  lastReviewNote: string | null;
+  studentReflection: string | null;
+  weakTopics: string[];
+  strongTopics: string[];
+  aiSummary: string | null;
+  backgroundNote: string | null;
+  recentInsights: { content: string }[];
+}): string {
+  return `אתה עוזר למורה פרטי להתכונן לשיעור הבא עם תלמיד.
+
+תלמיד: ${params.studentName}
+
+שיעור אחרון: "${params.lastLessonTitle}"
+${params.lastDecision ? `החלטת המורה: ${params.lastDecision}` : ""}
+${params.lastReviewNote ? `הערות המורה: ${params.lastReviewNote}` : ""}
+${params.studentReflection ? `איך התלמיד הרגיש: ${params.studentReflection}` : ""}
+
+נושאים חזקים: ${params.strongTopics.join(", ") || "—"}
+נושאים חלשים: ${params.weakTopics.join(", ") || "—"}
+
+${params.aiSummary ? `סיכום AI: ${params.aiSummary}` : ""}
+${params.backgroundNote ? `רקע התלמיד: ${params.backgroundNote}` : ""}
+
+${
+  params.recentInsights.length > 0
+    ? `מה עוזר לתלמיד הזה:\n${params.recentInsights
+        .map((i) => `- ${i.content}`)
+        .join("\n")}`
+    : ""
+}
+
+המשימה שלך:
+כתוב כרטיס הכנה קצר למורה — 3-4 שורות בעברית, בולטים. ענה על:
+1. איפה עצרנו (נושא + החלטה)
+2. מה היה קשה לתלמיד
+3. על מה להתמקד היום
+4. טיפ אישי אחד מהרקע/תובנות (אם רלוונטי)
+
+אל תכתוב מבוא או סיכום. רק 3-4 בולטים קצרים, בלשון פנייה למורה ("התלמיד התקשה...", "מומלץ להתחיל ב...").
+
+Respond ONLY with valid JSON:
+{
+  "briefing": "string (Hebrew, 3-4 short bullets separated by \\n)"
+}`;
+}
+

@@ -25,7 +25,7 @@ import { buildTeacherStyleUpdatePrompt } from "./prompts.js";
 
 // Run Claude every Nth signal — keeps token usage bounded while still
 // reacting to recent decisions within a few reviews.
-const STYLE_UPDATE_INTERVAL = 3;
+const STYLE_UPDATE_INTERVAL = 1;
 
 export async function updateTeacherStyleIfDue(teacherId: string): Promise<void> {
   const [teacher] = await db

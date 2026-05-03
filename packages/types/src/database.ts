@@ -184,6 +184,7 @@ export interface StudentAiProfile {
   total_failures: number;
   ai_summary: string | null;
   teacher_feedback_summary: string | null;
+  next_session_briefing: string | null;
   updated_at: string;
 }
 

@@ -116,7 +116,6 @@ export const lessonRoutes = new Hono()
           .default([]),
         course_id: z.string().uuid().nullable().optional(),
         topic_id: z.string().uuid().nullable().optional(),
-        lesson_level: z.enum(["base", "medium", "exam"]).nullable().optional(),
       })
     ),
     async (c) => {
@@ -129,7 +128,6 @@ export const lessonRoutes = new Hono()
         todos,
         course_id,
         topic_id,
-        lesson_level,
       } = c.req.valid("json");
 
       // Verify student belongs to teacher
@@ -155,7 +153,6 @@ export const lessonRoutes = new Hono()
           status: "active",
           course_id: course_id ?? null,
           topic_id: topic_id ?? null,
-          lesson_level: lesson_level ?? null,
         })
         .returning();
 
