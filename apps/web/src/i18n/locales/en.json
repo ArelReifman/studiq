@@ -427,5 +427,24 @@
   "profile.passwordMismatch": "Passwords do not match",
   "profile.nothingChanged": "No changes to save",
   "profile.navLabel": "Profile",
-  "profile.openLink": "Edit profile"
+  "profile.openLink": "Edit profile",
+
+  "common.close": "Close",
+
+  "lessonReview.openButton": "Review solution",
+  "lessonReview.title": "Review student's solution",
+  "lessonReview.studentSaid": "What the student wrote",
+  "lessonReview.decisionLabel": "What's next?",
+  "lessonReview.repeat": "Repeat same level",
+  "lessonReview.repeatHint": "Student isn't ready yet — more practice at this level",
+  "lessonReview.nextLevel": "Next level, same topic",
+  "lessonReview.nextLevelHint": "Move from base to medium, or medium to exam",
+  "lessonReview.nextTopic": "Next topic",
+  "lessonReview.nextTopicHint": "Student mastered this — advance in the syllabus",
+  "lessonReview.noteLabel": "Note (optional)",
+  "lessonReview.noteHint": "What did you see in the solution? The system learns your standards over time.",
+  "lessonReview.notePlaceholder": "e.g. 'Answer was right but reasoning was unclear on Q3'",
+  "lessonReview.save": "Save verdict",
+  "lessonReview.saving": "Saving...",
+  "lessonReview.saveFailed": "Save failed — try again"
 }

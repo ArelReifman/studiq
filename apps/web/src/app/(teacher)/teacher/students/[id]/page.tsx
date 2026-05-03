@@ -10,9 +10,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate, formatPercent } from "@/lib/utils";
 import type { LessonSession, DifficultyReport, StudentAiProfile } from "@studiq/types";
-import { ArrowLeft, AlertTriangle, Sparkles, Trash2, MessageSquare, Map } from "lucide-react";
+import { ArrowLeft, AlertTriangle, Sparkles, Trash2, MessageSquare, Map, ClipboardCheck, RotateCw, ArrowUp, CheckCircle2 } from "lucide-react";
 import { useT } from "@/i18n";
 import { CreateLessonModal } from "@/components/teacher/create-lesson-modal";
+import { LessonReviewModal } from "@/components/teacher/lesson-review-modal";
 
 interface StudentDetail {
   id: string;
@@ -26,6 +27,7 @@ export default function StudentDetailPage() {
   const t = useT();
   const qc = useQueryClient();
   const [showCreateLesson, setShowCreateLesson] = useState(false);
+  const [reviewLesson, setReviewLesson] = useState<LessonSession | null>(null);
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackType, setFeedbackType] = useState<
     "lesson_quality" | "difficulty_level" | "topic_relevance" | "general"
@@ -266,6 +268,15 @@ export default function StudentDetailPage() {
                       </Badge>
                       <button
                         type="button"
+                        onClick={() => setReviewLesson(l)}
+                        className="text-gray-400 hover:text-brand-600 transition-colors p-1"
+                        aria-label={t("lessonReview.openButton")}
+                        title={t("lessonReview.openButton")}
+                      >
+                        <ClipboardCheck size={14} />
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => {
                           if (confirm(t("studentDetail.confirmDeleteLesson"))) {
                             deleteLesson.mutate(l.id);
@@ -287,6 +298,32 @@ export default function StudentDetailPage() {
                       </p>
                     </div>
                   )}
+                  {l.teacher_decision && (
+                    <div className="mt-2 pt-2 border-t border-gray-50 flex items-start gap-2">
+                      {l.teacher_decision === "repeat" && (
+                        <RotateCw size={12} className="text-orange-500 flex-shrink-0 mt-0.5" />
+                      )}
+                      {l.teacher_decision === "next_level" && (
+                        <ArrowUp size={12} className="text-brand-500 flex-shrink-0 mt-0.5" />
+                      )}
+                      {l.teacher_decision === "next_topic" && (
+                        <CheckCircle2 size={12} className="text-green-500 flex-shrink-0 mt-0.5" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-700">
+                          {t(`lessonReview.${
+                            l.teacher_decision === "repeat" ? "repeat" :
+                            l.teacher_decision === "next_level" ? "nextLevel" : "nextTopic"
+                          }`)}
+                        </p>
+                        {l.teacher_review_note && (
+                          <p className="text-xs text-gray-500 whitespace-pre-wrap break-words mt-0.5">
+                            {l.teacher_review_note}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </Card>
               ))}
               {lessons.length === 0 && (
@@ -301,6 +338,13 @@ export default function StudentDetailPage() {
         <CreateLessonModal
           studentId={id}
           onClose={() => setShowCreateLesson(false)}
+        />
+      )}
+
+      {reviewLesson && (
+        <LessonReviewModal
+          lesson={reviewLesson}
+          onClose={() => setReviewLesson(null)}
         />
       )}
     </div>

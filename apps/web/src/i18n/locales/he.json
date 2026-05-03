@@ -427,5 +427,24 @@
   "profile.passwordMismatch": "הסיסמאות לא תואמות",
   "profile.nothingChanged": "אין שינויים לשמירה",
   "profile.navLabel": "פרטים אישיים",
-  "profile.openLink": "ערוך פרטים אישיים"
+  "profile.openLink": "ערוך פרטים אישיים",
+
+  "common.close": "סגור",
+
+  "lessonReview.openButton": "סקירת הפתרון",
+  "lessonReview.title": "סקירת פתרון התלמיד",
+  "lessonReview.studentSaid": "מה התלמיד כתב",
+  "lessonReview.decisionLabel": "מה ההחלטה?",
+  "lessonReview.repeat": "חזרה על אותה רמה",
+  "lessonReview.repeatHint": "התלמיד עוד לא מוכן — עוד תרגול באותה רמה",
+  "lessonReview.nextLevel": "רמה הבאה באותו נושא",
+  "lessonReview.nextLevelHint": "מעבר מ-בסיסי למתקדם או מתקדם למבחן",
+  "lessonReview.nextTopic": "נושא הבא",
+  "lessonReview.nextTopicHint": "התלמיד שלט בחומר — ממשיכים לפי הסילבוס",
+  "lessonReview.noteLabel": "הערה (לא חובה)",
+  "lessonReview.noteHint": "מה ראית בפתרון? המערכת לומדת מהקריטריונים שלך לאורך זמן.",
+  "lessonReview.notePlaceholder": "לדוגמה: 'ענה נכון אבל לא הראה דרך מסודרת בשאלה 3'",
+  "lessonReview.save": "שמור החלטה",
+  "lessonReview.saving": "שומר...",
+  "lessonReview.saveFailed": "השמירה נכשלה — נסה שוב"
 }

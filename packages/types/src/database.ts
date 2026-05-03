@@ -93,10 +93,17 @@ export interface LessonSession {
   material_url: string | null;
   material_name: string | null;
   student_reflection: string | null;
+  // Teacher review (optional — null until teacher has reviewed the submission)
+  teacher_review_note: string | null;
+  teacher_decision: TeacherDecision | null;
+  teacher_reviewed_at: string | null;
   course_id: string | null;
   topic_id: string | null;
   lesson_level: LessonLevel | null;
 }
+
+/** Teacher's verdict after inspecting a student's submitted solution. */
+export type TeacherDecision = "repeat" | "next_level" | "next_topic";
 
 // ─── Homework & Todos ─────────────────────────────────────────────────────────
 
