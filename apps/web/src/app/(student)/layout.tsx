@@ -123,8 +123,19 @@ export default function StudentLayout({
         {sidebarContent}
       </aside>
 
-      <main className="flex-1 overflow-auto">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 md:py-8">{children}</div>
+      <main className="flex-1 overflow-auto md:flex md:flex-col">
+        {/* Map page gets a wider, taller stage so its grid fills the viewport.
+            Other student pages stay at the default reading width. */}
+        <div
+          className={cn(
+            "mx-auto px-4 sm:px-6 py-6 md:py-8 w-full",
+            pathname.includes("/map")
+              ? "max-w-[100rem] flex-1 flex flex-col min-h-0"
+              : "max-w-4xl"
+          )}
+        >
+          {children}
+        </div>
       </main>
     </div>
   );

@@ -407,6 +407,10 @@
   "map.recReason.default": "המשך כאן",
   "map.continue": "המשך",
   "map.notStartedShort": "טרם",
+  "map.startLearning": "התחל ללמוד",
+  "map.continueLearning": "המשך ללמוד",
+  "map.lockedHint": "השלם את הנושא הקודם כדי לפתוח",
+  "map.heroBadge": "מסע הלמידה שלך",
 
   "profile.title": "פרטים אישיים",
   "profile.subtitle": "עדכן שם, אימייל או סיסמה",

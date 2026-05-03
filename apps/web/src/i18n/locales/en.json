@@ -407,6 +407,10 @@
   "map.recReason.default": "Continue here",
   "map.continue": "Continue",
   "map.notStartedShort": "—",
+  "map.startLearning": "Start learning",
+  "map.continueLearning": "Continue learning",
+  "map.lockedHint": "Complete the previous topic to unlock",
+  "map.heroBadge": "Your learning journey",
 
   "profile.title": "Profile settings",
   "profile.subtitle": "Update your name, email, or password",

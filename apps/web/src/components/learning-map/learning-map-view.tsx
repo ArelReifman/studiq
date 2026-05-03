@@ -363,15 +363,64 @@ function TopicCard({
   const t = useT();
   const status = tp.stats.status;
   const pct = tp.stats.pct;
+  // Show the big CTA only for students on a clickable, currently-selected card.
+  // Teachers already get a "צור שיעור" button in the recommendation panel.
+  const showStudentCta = role === "student" && active && !tp.locked;
+  // Slightly taller card when CTA is showing so the button has room.
+  const cardHeight = showStudentCta ? "h-[200px]" : "h-[172px]";
+
+  // ── Locked state ── render a clearly-disabled card with a prominent
+  // lock badge instead of just dimming opacity. Communicates "blocked" at
+  // a glance (matches the reference design).
+  if (tp.locked) {
+    return (
+      <div
+        className={`relative w-[196px] h-[172px] flex-shrink-0 bg-gray-50 rounded-lg border border-gray-200 p-4 flex flex-col cursor-not-allowed select-none`}
+      >
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[9px] font-bold tracking-wider uppercase text-gray-400">
+            {statusLabel(t, status, role)}
+          </span>
+          <span className="text-[9px] text-gray-400">
+            {t("map.lessonsCount", { count: tp.stats.lessons_total })}
+          </span>
+        </div>
+
+        <div className="flex flex-col items-center justify-center flex-1 text-center gap-2">
+          <div className="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center shadow-sm">
+            <Lock size={16} className="text-gray-400" />
+          </div>
+          <div className="text-sm font-semibold text-gray-500 leading-tight line-clamp-2 px-1">
+            {tp.name}
+          </div>
+          <div className="text-[10px] text-gray-400 leading-snug px-1">
+            {t("map.lockedHint")}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between mt-1 pt-2 border-t border-gray-200/70">
+          <span className="text-[10px] text-gray-400 tabular-nums">
+            {t("map.tasksFraction", {
+              done: tp.stats.tasks_completed,
+              total: tp.stats.tasks_total,
+            })}
+          </span>
+          <span className="text-[10px] font-semibold text-gray-400">
+            {t("map.notStartedShort")}
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
       onClick={onClick}
-      className={`relative w-[196px] h-[172px] flex-shrink-0 bg-white rounded-lg border p-4 flex flex-col cursor-pointer transition-all ${
+      className={`relative w-[196px] ${cardHeight} flex-shrink-0 bg-white rounded-lg border p-4 flex flex-col cursor-pointer transition-all ${
         active
           ? "border-brand-300 shadow-md ring-1 ring-brand-100"
           : "border-gray-100 hover:border-gray-200 hover:shadow-sm"
-      } ${tp.locked ? "opacity-50 cursor-not-allowed" : ""}`}
+      }`}
     >
       {/* stripe */}
       <div
@@ -388,13 +437,9 @@ function TopicCard({
         >
           {statusLabel(t, status, role)}
         </span>
-        {tp.locked ? (
-          <Lock size={11} className="text-gray-300" />
-        ) : (
-          <span className="text-[9px] text-gray-400">
-            {t("map.lessonsCount", { count: tp.stats.lessons_total })}
-          </span>
-        )}
+        <span className="text-[9px] text-gray-400">
+          {t("map.lessonsCount", { count: tp.stats.lessons_total })}
+        </span>
       </div>
 
       <div className="flex items-center gap-2 flex-1 min-h-0">
@@ -432,7 +477,7 @@ function TopicCard({
             })}
           </span>
         )}
-        {role === "teacher" && !tp.locked ? (
+        {role === "teacher" ? (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -454,6 +499,23 @@ function TopicCard({
           </span>
         )}
       </div>
+
+      {/* Big CTA for the student on the active card — a clear next-step
+          button so they don't have to scan for what to do. Hidden for
+          teachers (who use the "lesson" pill above). */}
+      {showStudentCta && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onCreateLesson?.(tp.id);
+          }}
+          className="mt-2 w-full h-8 rounded-md bg-brand-500 hover:bg-brand-600 text-white text-[12px] font-semibold transition-colors shadow-sm"
+        >
+          {status === "not_started"
+            ? t("map.startLearning")
+            : t("map.continueLearning")}
+        </button>
+      )}
     </div>
   );
 }
@@ -605,7 +667,9 @@ function stripeBg(s: TopicStatus): string {
     case "struggling":
       return "bg-red-500";
     default:
-      return "bg-transparent";
+      // Soft brand accent so not-started cards still feel inviting,
+      // matching the recolored progress ring.
+      return "bg-brand-200";
   }
 }
 
@@ -644,6 +708,8 @@ function ringStroke(s: TopicStatus): string {
     case "struggling":
       return "#DC2626";
     default:
-      return "#D1D5DB";
+      // Brand sky-blue instead of dead gray — signals "ready to start"
+      // rather than "disabled".
+      return "#0EA5E9";
   }
 }
