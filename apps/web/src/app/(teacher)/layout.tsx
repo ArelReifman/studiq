@@ -150,13 +150,16 @@ export default function TeacherLayout({
         {sidebarContent}
       </aside>
 
-      <main className="flex-1 overflow-auto">
-        {/* The learning map needs nearly full screen width to fit topic cards
-            comfortably side-by-side. Other pages keep the readable 5xl width. */}
+      <main className="flex-1 overflow-auto md:flex md:flex-col">
+        {/* The learning map needs nearly full screen width AND height — its
+            cards should sit side-by-side and the panel below fill what's
+            left. Other pages keep the readable 5xl width and natural flow. */}
         <div
           className={cn(
-            "mx-auto px-4 sm:px-6 py-6 md:py-8",
-            pathname.includes("/map") ? "max-w-[100rem]" : "max-w-5xl"
+            "mx-auto px-4 sm:px-6 py-6 md:py-8 w-full",
+            pathname.includes("/map")
+              ? "max-w-[100rem] flex-1 flex flex-col min-h-0"
+              : "max-w-5xl"
           )}
         >
           {children}

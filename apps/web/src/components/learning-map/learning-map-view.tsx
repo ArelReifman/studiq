@@ -58,7 +58,7 @@ export function LearningMapView({
   const counts = map.overall;
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
       {/* TOPBAR */}
       <div className="flex items-center flex-wrap gap-x-3 gap-y-2 min-h-14 py-2 px-4 sm:px-5 border-b border-gray-100 bg-gray-50/60">
         <span className="inline-flex items-center text-[10px] font-bold tracking-wider uppercase text-gray-500 border border-gray-200 rounded px-2 py-0.5">
@@ -96,7 +96,7 @@ export function LearningMapView({
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row">
+      <div className="flex flex-col lg:flex-row flex-1 min-h-0">
         {/* SIDE PANEL */}
         <aside className="w-full lg:w-56 lg:flex-shrink-0 order-2 lg:order-none border-t lg:border-t-0 lg:border-s border-gray-100 flex flex-col p-3 gap-3">
           {role === "teacher" && recommendation && (
@@ -229,7 +229,7 @@ export function LearningMapView({
 
           {/* Detail panel */}
           {active && (
-            <div className="mx-4 sm:mx-5 mb-5 border border-gray-100 rounded-lg bg-gray-50/40 overflow-hidden">
+            <div className="mx-4 sm:mx-5 mb-5 border border-gray-100 rounded-lg bg-gray-50/40 overflow-hidden flex-1 min-h-0 flex flex-col">
               <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-white">
                 <span className="text-sm font-semibold text-gray-900 flex-1 truncate">
                   {active.name}
@@ -281,13 +281,13 @@ export function LearningMapView({
               </div>
 
               {active.children.length > 0 ? (
-                <div>
+                <div className="flex-1 min-h-0 overflow-y-auto">
                   {active.children.map((c) => (
                     <SubtopicRow key={c.id} topic={c} role={role} />
                   ))}
                 </div>
               ) : (
-                <div className="px-4 py-5 text-[12px] text-gray-400 text-center">
+                <div className="flex-1 min-h-0 px-4 py-5 text-[12px] text-gray-400 text-center flex items-center justify-center">
                   {active.stats.lessons_total === 0
                     ? role === "teacher"
                       ? t("map.noLessonsTeacher")

@@ -53,7 +53,7 @@ export default function TeacherLearningMapPage() {
   });
 
   return (
-    <div>
+    <div className="flex flex-col flex-1 min-h-0">
       <Link
         href={`/teacher/students/${id}`}
         className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-4"
@@ -99,13 +99,15 @@ export default function TeacherLearningMapPage() {
       )}
 
       {map && (
-        <LearningMapView
-          role="teacher"
-          map={map}
-          onCreateLesson={(topicId) =>
-            setLessonModal({ open: true, topicId })
-          }
-        />
+        <div className="flex-1 min-h-0 flex flex-col">
+          <LearningMapView
+            role="teacher"
+            map={map}
+            onCreateLesson={(topicId) =>
+              setLessonModal({ open: true, topicId })
+            }
+          />
+        </div>
       )}
 
       {lessonModal.open && (
