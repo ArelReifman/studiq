@@ -99,6 +99,16 @@ export const lessonLevelEnum = pgEnum("lesson_level", [
   "exam", // exam-style exercises — full picture
 ]);
 
+// Teacher's verdict after reviewing the student's submitted solution.
+// repeat      → same topic, same level — student needs more practice
+// next_level  → same topic, harder level (base→medium→exam)
+// next_topic  → student mastered this topic, move to next in syllabus
+export const teacherDecisionEnum = pgEnum("teacher_decision", [
+  "repeat",
+  "next_level",
+  "next_topic",
+]);
+
 // ─── Profiles (extends Supabase auth.users) ───────────────────────────────────
 
 export const profiles = pgTable("profiles", {
@@ -271,6 +281,14 @@ export const lessonSessions = pgTable(
     material_url: text("material_url"),
     material_name: text("material_name"),
     student_reflection: text("student_reflection"),
+    // ── Teacher review ───────────────────────────────────────────────────────
+    // Filled in by the teacher after inspecting the student's submitted solution.
+    // teacher_review_note: what the teacher observed in the submission
+    // teacher_decision:    what happens next (repeat / next_level / next_topic)
+    // This data is fed into the AI so it learns the teacher's grading standards.
+    teacher_review_note: text("teacher_review_note"),
+    teacher_decision: teacherDecisionEnum("teacher_decision"),
+    teacher_reviewed_at: timestamp("teacher_reviewed_at", { withTimezone: true }),
     // Optional links — lessons without these still work exactly as before.
     course_id: uuid("course_id").references(() => courses.id, {
       onDelete: "set null",

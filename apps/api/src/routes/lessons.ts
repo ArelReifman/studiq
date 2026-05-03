@@ -310,6 +310,53 @@ export const lessonRoutes = new Hono()
     }
   )
 
+  // PATCH /lessons/:id/review — teacher records verdict after checking submission
+  // teacher_review_note: what the teacher observed in the student's solution
+  // teacher_decision:    repeat | next_level | next_topic
+  // This feeds the AI so it learns the teacher's grading standards over time.
+  .patch(
+    "/:id/review",
+    requireRole("teacher"),
+    zValidator("param", uuidParamSchema),
+    zValidator(
+      "json",
+      z.object({
+        teacher_review_note: z.string().max(2000).optional(),
+        teacher_decision: z.enum(["repeat", "next_level", "next_topic"]),
+      })
+    ),
+    async (c) => {
+      const teacherId = c.get("userId");
+      const lessonId = c.req.valid("param").id;
+      const { teacher_review_note, teacher_decision } = c.req.valid("json");
+
+      const [updated] = await db
+        .update(lessonSessions)
+        .set({
+          teacher_review_note: teacher_review_note?.trim() ?? null,
+          teacher_decision,
+          teacher_reviewed_at: new Date(),
+        })
+        .where(
+          and(
+            eq(lessonSessions.id, lessonId),
+            eq(lessonSessions.teacher_id, teacherId)
+          )
+        )
+        .returning();
+
+      if (!updated) return c.json({ error: "Lesson not found" }, 404);
+
+      // Fire-and-forget: refresh student AI profile so the teacher's verdict
+      // is immediately incorporated before the next lesson is planned.
+      updateStudentProfile(updated.student_id, updated.id, updated.title).catch(
+        (err) => console.error("[student-profile] review update failed:", err)
+      );
+
+      return c.json(updated);
+    }
+  )
+
   // PATCH /lessons/:id/status
   .patch(
     "/:id/status",

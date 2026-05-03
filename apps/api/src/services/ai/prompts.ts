@@ -109,6 +109,12 @@ Respond ONLY with valid JSON:
 }`;
 }
 
+const DECISION_LABEL: Record<string, string> = {
+  repeat:     "חזרה על אותה רמה — התלמיד עוד לא מוכן",
+  next_level: "מעבר לרמה הבאה באותו נושא",
+  next_topic: "מעבר לנושא הבא — התלמיד שלט בחומר",
+};
+
 export function buildProfileUpdatePrompt(params: {
   studentName: string;
   currentSummary: string | null;
@@ -117,6 +123,8 @@ export function buildProfileUpdatePrompt(params: {
   failedCount: number;
   failedTopics: string[];
   studentReflection: string | null;
+  teacherReviewNote: string | null;
+  teacherDecision: string | null;
 }): string {
   const {
     studentName,
@@ -126,10 +134,16 @@ export function buildProfileUpdatePrompt(params: {
     failedCount,
     failedTopics,
     studentReflection,
+    teacherReviewNote,
+    teacherDecision,
   } = params;
 
   const reflectionSection = studentReflection?.trim()
     ? `\n## Student's Own Words (written after the lesson)\n"${studentReflection.trim()}"\n\nThis is the student's direct self-assessment — pay close attention to what they say was hard or easy. It often reveals learning style and emotional state more accurately than completion rates alone.`
+    : "";
+
+  const teacherSection = (teacherDecision || teacherReviewNote?.trim())
+    ? `\n## Teacher's Verdict (most authoritative signal)\nDecision: ${teacherDecision ? DECISION_LABEL[teacherDecision] : "not set"}${teacherReviewNote?.trim() ? `\nNote: "${teacherReviewNote.trim()}"` : ""}\n\nThis is the teacher's direct assessment after reviewing the student's submitted solution. It overrides self-reported data. Use it to calibrate what "mastery" means for this teacher.`
     : "";
 
   return `Update the AI learning profile summary for a student based on their latest lesson performance.
@@ -142,7 +156,7 @@ ${currentSummary ?? "No existing summary — create a new one."}
 ## Latest Lesson: "${lessonTitle}"
 - Tasks completed: ${completedCount}
 - Tasks failed: ${failedCount}
-- Topics in failed tasks: ${failedTopics.join(", ") || "none"}${reflectionSection}
+- Topics in failed tasks: ${failedTopics.join(", ") || "none"}${reflectionSection}${teacherSection}
 
 Write an updated 2–4 sentence summary capturing:
 1. What the student is good at
@@ -223,6 +237,12 @@ export function buildTeacherStyleUpdatePrompt(params: {
     title: string;
     description: string;
   }>;
+  recentDecisions: Array<{
+    lessonTitle: string;
+    decision: string;
+    note: string | null;
+    reviewed_at: string;
+  }>;
   totalFeedbackCount: number;
 }): string {
   const {
@@ -230,6 +250,7 @@ export function buildTeacherStyleUpdatePrompt(params: {
     feedbacks,
     difficultyNotes,
     manualLessons,
+    recentDecisions,
     totalFeedbackCount,
   } = params;
 
@@ -260,6 +281,13 @@ export function buildTeacherStyleUpdatePrompt(params: {
           .join("\n")
       : "אין";
 
+  const decisionsSection = recentDecisions.length > 0
+    ? recentDecisions.map((d) => {
+        const label = { repeat: "חזרה", next_level: "רמה הבאה", next_topic: "נושא הבא" }[d.decision] ?? d.decision;
+        return `• "${d.lessonTitle}" → ${label}${d.note ? ` — "${d.note}"` : ""}`;
+      }).join("\n")
+    : "אין";
+
   return `אתה מנתח את כתיבתו של מורה פרטי כדי ללמוד את סגנון ההוראה שלו.
 המטרה: לבנות פרופיל שיאפשר ל-AI לייצר שיעורים שנשמעים כאילו המורה הזה עצמו כתב אותם.
 
@@ -275,6 +303,11 @@ ${notesSection}
 ## שיעורים שהמורה יצר ידנית (סגנון כותרות + תיאורים)
 ${lessonsSection}
 
+## החלטות המורה לאחר בדיקת פתרונות תלמידים (${recentDecisions.length} החלטות אחרונות)
+${decisionsSection}
+
+זה הסיגנל החזק ביותר לסטנדרט הדרישות של המורה — מתי הוא אומר "עוד פעם" ומתי "אפשר להמשיך".
+
 ## מה לחלץ מהנתונים האלה
 חפש דפוסים כמו:
 - האם מתחיל בתיאוריה או דוגמה?
@@ -284,6 +317,7 @@ ${lessonsSection}
 - האם יש מינוח ספציפי שחוזר?
 - מה הוא תמיד מתקן בשיעורי AI?
 - איך הוא מסביר למה תלמיד נכשל?
+- מה הקריטריון שלו למעבר נושא — רמת הצלחה? איכות הפתרון? משהו אחר?
 
 ## הנחיות
 - כתוב 4–7 משפטים בעברית

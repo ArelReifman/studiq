@@ -50,9 +50,13 @@ export async function updateStudentProfile(
       .where(eq(students.id, studentId))
       .limit(1)
       .then((r) => r[0]),
-    // Fetch the student's written reflection so Claude can learn from it
+    // Fetch reflection + teacher review so Claude learns from both sides
     db
-      .select({ student_reflection: lessonSessions.student_reflection })
+      .select({
+        student_reflection: lessonSessions.student_reflection,
+        teacher_review_note: lessonSessions.teacher_review_note,
+        teacher_decision: lessonSessions.teacher_decision,
+      })
       .from(lessonSessions)
       .where(eq(lessonSessions.id, lessonId))
       .limit(1)
@@ -94,6 +98,8 @@ export async function updateStudentProfile(
     failedCount,
     failedTopics,
     studentReflection: lessonRow?.student_reflection ?? null,
+    teacherReviewNote: lessonRow?.teacher_review_note ?? null,
+    teacherDecision: lessonRow?.teacher_decision ?? null,
   });
 
   try {

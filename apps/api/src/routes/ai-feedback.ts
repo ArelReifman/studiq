@@ -10,6 +10,7 @@ import {
   difficultyReports,
   lessonSessions,
 } from "../db/schema.js";
+import { isNotNull } from "drizzle-orm";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { callClaude } from "../services/ai/claude.js";
 import { buildTeacherStyleUpdatePrompt } from "../services/ai/prompts.js";
@@ -113,7 +114,7 @@ async function updateTeacherStyleIfDue(teacherId: string): Promise<void> {
   if (newCount % STYLE_UPDATE_INTERVAL !== 0) return;
 
   // Collect all writing sources in parallel
-  const [recentFeedbacks, difficultyNotes, manualLessons] = await Promise.all([
+  const [recentFeedbacks, difficultyNotes, manualLessons, recentDecisions] = await Promise.all([
     // Explicit feedback submissions
     db
       .select({
@@ -162,9 +163,27 @@ async function updateTeacherStyleIfDue(teacherId: string): Promise<void> {
       )
       .orderBy(desc(lessonSessions.generated_at))
       .limit(10),
+
+    // Teacher review decisions — the strongest signal for learning grading style
+    db
+      .select({
+        title: lessonSessions.title,
+        teacher_decision: lessonSessions.teacher_decision,
+        teacher_review_note: lessonSessions.teacher_review_note,
+        teacher_reviewed_at: lessonSessions.teacher_reviewed_at,
+      })
+      .from(lessonSessions)
+      .where(
+        and(
+          eq(lessonSessions.teacher_id, teacherId),
+          isNotNull(lessonSessions.teacher_decision)
+        )
+      )
+      .orderBy(desc(lessonSessions.teacher_reviewed_at))
+      .limit(15),
   ]);
 
-  if (recentFeedbacks.length === 0 && difficultyNotes.length === 0) return;
+  if (recentFeedbacks.length === 0 && difficultyNotes.length === 0 && recentDecisions.length === 0) return;
 
   const prompt = buildTeacherStyleUpdatePrompt({
     currentSummary: teacher.teaching_style_summary,
@@ -183,6 +202,14 @@ async function updateTeacherStyleIfDue(teacherId: string): Promise<void> {
       title: l.title,
       description: l.description ?? "",
     })),
+    recentDecisions: recentDecisions
+      .filter((d) => d.teacher_decision)
+      .map((d) => ({
+        lessonTitle: d.title,
+        decision: d.teacher_decision!,
+        note: d.teacher_review_note ?? null,
+        reviewed_at: d.teacher_reviewed_at?.toISOString() ?? "",
+      })),
     totalFeedbackCount: newCount,
   });
 
