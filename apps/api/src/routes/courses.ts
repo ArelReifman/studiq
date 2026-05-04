@@ -19,6 +19,8 @@ const topicSchema = z.object({
   prerequisite_topic_ids: z.array(z.string().uuid()).default([]),
   order_index: z.number().int().min(0).default(0),
   parent_topic_id: z.string().uuid().nullable().optional(),
+  // Manual gate the teacher can toggle from the learning map.
+  is_locked: z.boolean().default(false),
 });
 
 const topicUpdateSchema = topicSchema.partial();
@@ -200,6 +202,9 @@ export const coursesRoutes = new Hono()
             : {}),
           ...(body.order_index !== undefined
             ? { order_index: body.order_index }
+            : {}),
+          ...(body.is_locked !== undefined
+            ? { is_locked: body.is_locked }
             : {}),
         })
         .where(

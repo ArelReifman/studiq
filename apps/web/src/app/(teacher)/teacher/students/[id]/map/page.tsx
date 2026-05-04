@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -23,6 +23,7 @@ interface StudentDetail {
 
 export default function TeacherLearningMapPage() {
   const t = useT();
+  const qc = useQueryClient();
   const { id } = useParams<{ id: string }>();
   const [courseId, setCourseId] = useState<string>("");
   const [lessonModal, setLessonModal] = useState<{
@@ -50,6 +51,24 @@ export default function TeacherLearningMapPage() {
         `/learning-map?student_id=${id}&course_id=${effectiveCourseId}`
       ),
     enabled: !!effectiveCourseId,
+  });
+
+  // Manual lock toggle on a course topic. Optimistic update so the card
+  // flips state instantly; on error we re-fetch to recover.
+  const toggleLock = useMutation({
+    mutationFn: ({
+      topicId,
+      nextLocked,
+    }: {
+      topicId: string;
+      nextLocked: boolean;
+    }) =>
+      api.patch(
+        `/courses/${effectiveCourseId}/topics/${topicId}`,
+        { is_locked: nextLocked }
+      ),
+    onSettled: () =>
+      qc.invalidateQueries({ queryKey: ["learning-map"] }),
   });
 
   return (
@@ -105,6 +124,9 @@ export default function TeacherLearningMapPage() {
             map={map}
             onCreateLesson={(topicId) =>
               setLessonModal({ open: true, topicId })
+            }
+            onToggleLock={(topicId, nextLocked) =>
+              toggleLock.mutate({ topicId, nextLocked })
             }
           />
         </div>

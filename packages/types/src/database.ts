@@ -70,6 +70,7 @@ export interface CourseTopic {
   prerequisite_topic_ids: string[];
   order_index: number;
   parent_topic_id: string | null;
+  is_locked: boolean;
   created_at: string;
 }
 

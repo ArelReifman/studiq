@@ -281,6 +281,10 @@ export const courseTopics = pgTable(
       .default([]),
     order_index: integer("order_index").notNull().default(0),
     parent_topic_id: uuid("parent_topic_id"),  // NULL = top-level; FK wired via migration
+    // Teacher-controlled lock: students cannot enter the topic while true.
+    // Independent of `prerequisite_topic_ids` — both can lock; either one
+    // is enough to keep the topic gated.
+    is_locked: boolean("is_locked").notNull().default(false),
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

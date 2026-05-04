@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Flame, Sparkles, Lock } from "lucide-react";
+import { Flame, Sparkles, Lock, LockOpen } from "lucide-react";
 import type {
   LearningMap,
   LearningMapTopic,
@@ -22,10 +22,16 @@ export function LearningMapView({
   role,
   map,
   onCreateLesson,
+  onToggleLock,
 }: {
   role: "teacher" | "student";
   map: LearningMap;
   onCreateLesson?: (topicId: string) => void;
+  /**
+   * Teacher-only: toggle the manual lock flag on a topic. The server is
+   * source of truth; the parent page handles the mutation + invalidation.
+   */
+  onToggleLock?: (topicId: string, nextLocked: boolean) => void;
 }) {
   const t = useT();
   const topics = map.topics;
@@ -217,6 +223,7 @@ export function LearningMapView({
                   role={role}
                   onClick={() => !tp.locked && setActiveId(tp.id)}
                   onCreateLesson={onCreateLesson}
+                  onToggleLock={onToggleLock}
                 />
               ))}
               {topics.length === 0 && (
@@ -353,12 +360,14 @@ function TopicCard({
   role,
   onClick,
   onCreateLesson,
+  onToggleLock,
 }: {
   topic: LearningMapTopic;
   active: boolean;
   role: "teacher" | "student";
   onClick: () => void;
   onCreateLesson?: (id: string) => void;
+  onToggleLock?: (id: string, nextLocked: boolean) => void;
 }) {
   const t = useT();
   const status = tp.stats.status;
@@ -374,9 +383,14 @@ function TopicCard({
   // lock badge instead of just dimming opacity. Communicates "blocked" at
   // a glance (matches the reference design).
   if (tp.locked) {
+    // Teachers can unlock from inside the card; students see the same card
+    // without an unlock button.
+    const showUnlockButton = role === "teacher" && !!onToggleLock;
     return (
       <div
-        className={`relative w-[196px] h-[172px] flex-shrink-0 bg-gray-50 rounded-lg border border-gray-200 p-4 flex flex-col cursor-not-allowed select-none`}
+        className={`relative w-[196px] ${
+          showUnlockButton ? "h-[200px]" : "h-[172px]"
+        } flex-shrink-0 bg-gray-50 rounded-lg border border-gray-200 p-4 flex flex-col cursor-not-allowed select-none`}
       >
         <div className="flex items-center justify-between mb-2">
           <span className="text-[9px] font-bold tracking-wider uppercase text-gray-400">
@@ -410,6 +424,19 @@ function TopicCard({
             {t("map.notStartedShort")}
           </span>
         </div>
+
+        {showUnlockButton && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleLock?.(tp.id, false);
+            }}
+            className="mt-2 w-full h-8 rounded-md bg-white border border-gray-300 hover:border-brand-300 hover:bg-brand-50 text-gray-700 hover:text-brand-700 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <LockOpen size={13} />
+            {t("map.unlockTopic")}
+          </button>
+        )}
       </div>
     );
   }
@@ -438,9 +465,24 @@ function TopicCard({
         >
           {statusLabel(t, status, role)}
         </span>
-        <span className="text-[9px] text-gray-400">
-          {t("map.lessonsCount", { count: tp.stats.lessons_total })}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[9px] text-gray-400">
+            {t("map.lessonsCount", { count: tp.stats.lessons_total })}
+          </span>
+          {role === "teacher" && onToggleLock && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleLock(tp.id, true);
+              }}
+              title={t("map.lockTopic")}
+              aria-label={t("map.lockTopic")}
+              className="text-gray-300 hover:text-gray-600 transition-colors p-0.5 -m-0.5 cursor-pointer"
+            >
+              <LockOpen size={11} />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-2 flex-1 min-h-0">

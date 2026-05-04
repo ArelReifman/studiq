@@ -217,41 +217,17 @@ export const learningMapRoutes = new Hono()
 
     const topicById = new Map(topics.map((t) => [t.id, t]));
 
-    // Sibling map for auto-sequential locking. Within each parent group
-    // (or among root topics, when parent is null), every topic auto-locks
-    // until the previous one in order_index is mastered. This gives a
-    // natural "complete topic 1 to unlock topic 2" flow without requiring
-    // the teacher to fill in prerequisite_topic_ids manually.
-    const siblingsByParent = new Map<string | null, typeof topics>();
-    for (const t of topics) {
-      const key = t.parent_topic_id;
-      const arr = siblingsByParent.get(key) ?? [];
-      arr.push(t);
-      siblingsByParent.set(key, arr);
-    }
-    for (const arr of siblingsByParent.values()) {
-      arr.sort((a, b) => a.order_index - b.order_index);
-    }
-
-    const isAutoLocked = (t: typeof topics[number]): boolean => {
-      const sibs = siblingsByParent.get(t.parent_topic_id) ?? [];
-      const myIdx = sibs.findIndex((s) => s.id === t.id);
-      // First in its sibling group is never auto-locked.
-      for (let i = 0; i < myIdx; i++) {
-        const sib = sibs[i];
-        if (!sib) continue;
-        if (topicIdToStats(sib.id).status !== "mastered") return true;
-      }
-      return false;
-    };
-
     // 8. Build tree
     const asMapTopic = (t: typeof topics[number]): LearningMapTopic => {
       const stats = topicIdToStats(t.id);
+      // Locking rules: the teacher's manual switch (is_locked) takes priority,
+      // and any unmet explicit prerequisite also locks — either source is
+      // enough. Sequential auto-locking was removed in favour of the manual
+      // toggle so the teacher decides exactly when each topic opens.
       const explicitLocked = t.prerequisite_topic_ids.some(
         (pid) => topicIdToStats(pid).status !== "mastered"
       );
-      const locked = explicitLocked || isAutoLocked(t);
+      const locked = t.is_locked || explicitLocked;
       return {
         id: t.id,
         name: t.name,

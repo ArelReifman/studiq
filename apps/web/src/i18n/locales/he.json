@@ -411,6 +411,8 @@
   "map.continueLearning": "המשך ללמוד",
   "map.lockedHint": "השלם את הנושא הקודם כדי לפתוח",
   "map.heroBadge": "מסע הלמידה שלך",
+  "map.lockTopic": "נעל נושא",
+  "map.unlockTopic": "פתח נושא",
 
   "profile.title": "פרטים אישיים",
   "profile.subtitle": "עדכן שם, אימייל או סיסמה",
