@@ -45,15 +45,15 @@ export default function StudentLayout({
 
   const sidebarContent = (
     <>
-      <div className="px-6 py-5 border-b border-gray-100 flex flex-col items-start">
+      <div className="px-6 py-5 border-b border-gray-100 flex flex-col items-start text-start">
         <Link
           href="/student/map"
           aria-label="Studiq"
-          className="hover:opacity-90 transition-opacity"
+          className="self-start hover:opacity-90 transition-opacity"
         >
           <Logo size={28} withWordmark />
         </Link>
-        <p className="text-xs text-gray-500 mt-2">{user?.full_name}</p>
+        <p className="text-xs text-gray-500 mt-2 self-start">{user?.full_name}</p>
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">

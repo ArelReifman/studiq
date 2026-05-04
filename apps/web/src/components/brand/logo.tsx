@@ -21,8 +21,15 @@ export function Logo({
   wordmark = "Studiq",
   className = "",
 }: LogoProps) {
+  // dir="ltr" pins the internal order to [mark][gap][wordmark] regardless
+  // of the surrounding page direction, so the Studiq brand reads the same
+  // way in Hebrew (RTL) and English (LTR) layouts. The wrapper itself can
+  // still be aligned to the right by its parent's flex/text-align rules.
   return (
-    <span className={`inline-flex items-center gap-2 ${className}`}>
+    <span
+      dir="ltr"
+      className={`inline-flex items-center gap-2 ${className}`}
+    >
       <LogoMark width={size} height={size} />
       {withWordmark && (
         <span
