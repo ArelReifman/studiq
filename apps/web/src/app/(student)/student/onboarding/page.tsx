@@ -20,7 +20,7 @@ export default function OnboardingPage() {
   const { mutate, isPending, isError, error } = useMutation({
     mutationFn: (selectedTopics: string[]) =>
       api.post("/onboarding/complete", { topics: selectedTopics }),
-    onSuccess: () => router.push("/student/dashboard"),
+    onSuccess: () => router.push("/student/map"),
   });
 
   function toggle(topic: string) {

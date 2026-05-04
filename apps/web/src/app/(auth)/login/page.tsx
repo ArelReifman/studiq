@@ -89,7 +89,7 @@ export default function LoginPage() {
       router.push(
         data.user.role === "teacher"
           ? "/teacher/dashboard"
-          : "/student/dashboard"
+          : "/student/map"
       );
     } catch (err: any) {
       const msg = (err?.message ?? "").toString().toLowerCase();

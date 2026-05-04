@@ -79,7 +79,7 @@ export default function AuthCallbackPage() {
           router.replace(
             profileRes.role === "teacher"
               ? "/teacher/dashboard"
-              : "/student/dashboard"
+              : "/student/map"
           );
         }
       } catch (e: any) {

@@ -43,7 +43,7 @@ export default function SetPasswordPage() {
 
       // After password reset, redirect to the appropriate dashboard
       if (user?.role === "student") {
-        router.replace("/student/dashboard");
+        router.replace("/student/map");
       } else if (user?.role === "teacher") {
         router.replace("/teacher/dashboard");
       } else {

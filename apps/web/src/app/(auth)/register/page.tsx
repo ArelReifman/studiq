@@ -94,7 +94,7 @@ export default function RegisterPage() {
       router.push(
         loginData.user.role === "teacher"
           ? "/teacher/dashboard"
-          : "/student/dashboard"
+          : "/student/map"
       );
     } catch (err: any) {
       setError(err.message ?? t("error.registrationFailed"));

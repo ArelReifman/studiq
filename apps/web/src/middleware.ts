@@ -46,7 +46,7 @@ export function middleware(request: NextRequest) {
     if (status === "approved" && pathname.startsWith("/auth/pending")) {
       return NextResponse.redirect(
         new URL(
-          role === "teacher" ? "/teacher/dashboard" : "/student/dashboard",
+          role === "teacher" ? "/teacher/dashboard" : "/student/map",
           request.url
         )
       );
@@ -54,7 +54,7 @@ export function middleware(request: NextRequest) {
 
     // Redirect wrong-role users
     if (pathname.startsWith("/teacher") && role !== "teacher") {
-      return NextResponse.redirect(new URL("/student/dashboard", request.url));
+      return NextResponse.redirect(new URL("/student/map", request.url));
     }
     if (pathname.startsWith("/student") && role !== "student") {
       return NextResponse.redirect(new URL("/teacher/dashboard", request.url));
@@ -64,7 +64,7 @@ export function middleware(request: NextRequest) {
     if (pathname === "/") {
       return NextResponse.redirect(
         new URL(
-          role === "teacher" ? "/teacher/dashboard" : "/student/dashboard",
+          role === "teacher" ? "/teacher/dashboard" : "/student/map",
           request.url
         )
       );

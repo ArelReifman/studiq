@@ -61,8 +61,14 @@ export default function TeacherLayout({
 
   const sidebarContent = (
     <>
-      <div className="px-6 py-5 border-b border-gray-100">
-        <Logo size={28} withWordmark />
+      <div className="px-6 py-5 border-b border-gray-100 flex flex-col items-start">
+        <Link
+          href="/teacher/dashboard"
+          aria-label="Studiq"
+          className="hover:opacity-90 transition-opacity"
+        >
+          <Logo size={28} withWordmark />
+        </Link>
         <p className="text-xs text-gray-500 mt-2">{user?.full_name}</p>
         <span className="text-xs text-brand-500 font-medium">
           {t("teacher.role")}
@@ -116,7 +122,9 @@ export default function TeacherLayout({
         >
           <Menu size={22} />
         </button>
-        <Logo size={24} withWordmark />
+        <Link href="/teacher/dashboard" aria-label="Studiq">
+          <Logo size={24} withWordmark />
+        </Link>
         <div className="w-9" />
       </header>
 

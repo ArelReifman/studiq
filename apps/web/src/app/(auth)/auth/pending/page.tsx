@@ -36,7 +36,7 @@ export default function PendingApprovalPage() {
       );
       if (me.status === "approved") {
         setAuth({ ...user, status: "approved" }, token);
-        router.push(user.role === "teacher" ? "/teacher/dashboard" : "/student/dashboard");
+        router.push(user.role === "teacher" ? "/teacher/dashboard" : "/student/map");
       } else if (me.status === "rejected") {
         // Rejected — sign them out cleanly.
         await api.post("/auth/logout", {}).catch(() => {});
