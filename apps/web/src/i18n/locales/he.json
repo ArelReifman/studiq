@@ -421,6 +421,9 @@
   "student.undoMark": "ביטול",
   "student.undoMarkAria": "ביטול סימון המשימה",
   "map.overallProgress": "התקדמות כוללת",
+  "studentDetail.backToStudent": "חזרה לתלמיד",
+  "studentDetail.reflectionEmpty": "התלמיד עדיין לא רשם איך הלך לו.",
+  "studentDetail.openLesson": "פתח שיעור",
 
   "profile.title": "פרטים אישיים",
   "profile.subtitle": "עדכן שם, אימייל או סיסמה",

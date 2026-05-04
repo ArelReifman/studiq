@@ -421,6 +421,9 @@
   "student.undoMark": "Undo",
   "student.undoMarkAria": "Undo task mark",
   "map.overallProgress": "Overall progress",
+  "studentDetail.backToStudent": "Back to student",
+  "studentDetail.reflectionEmpty": "The student hasn't written any reflection yet.",
+  "studentDetail.openLesson": "Open lesson",
 
   "profile.title": "Profile settings",
   "profile.subtitle": "Update your name, email, or password",

@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate, formatPercent } from "@/lib/utils";
 import type { LessonSession, DifficultyReport, StudentAiProfile } from "@studiq/types";
-import { ArrowLeft, AlertTriangle, Sparkles, Trash2, MessageSquare, Map, ClipboardCheck, RotateCw, ArrowUp, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, AlertTriangle, Sparkles, Trash2, MessageSquare, Map, ClipboardCheck, RotateCw, ArrowUp, CheckCircle2, ExternalLink } from "lucide-react";
 import { useT } from "@/i18n";
 import { CreateLessonModal } from "@/components/teacher/create-lesson-modal";
 import { LessonReviewModal } from "@/components/teacher/lesson-review-modal";
@@ -218,10 +218,15 @@ export default function StudentDetailPage() {
               {lessons.map((l) => (
                 <Card key={l.id} className="p-3">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{l.title}</p>
+                    <Link
+                      href={`/teacher/students/${id}/lessons/${l.id}`}
+                      className="flex-1 min-w-0 group"
+                    >
+                      <p className="text-sm font-medium truncate group-hover:text-brand-600 transition-colors">
+                        {l.title}
+                      </p>
                       <p className="text-xs text-gray-400">{formatDate(l.generated_at)}</p>
-                    </div>
+                    </Link>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <Badge
                         variant={
@@ -234,6 +239,14 @@ export default function StudentDetailPage() {
                       >
                         {t(`status.${l.status}`)}
                       </Badge>
+                      <Link
+                        href={`/teacher/students/${id}/lessons/${l.id}`}
+                        className="text-gray-400 hover:text-brand-600 transition-colors p-1"
+                        aria-label={t("studentDetail.openLesson")}
+                        title={t("studentDetail.openLesson")}
+                      >
+                        <ExternalLink size={14} />
+                      </Link>
                       <button
                         type="button"
                         onClick={() => setReviewLesson(l)}
