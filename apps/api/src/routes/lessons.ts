@@ -1,13 +1,14 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray, or } from "drizzle-orm";
 import { db } from "../db/client.js";
 import {
   lessonSessions,
   homeworkItems,
   todoItems,
   students,
+  difficultyReports,
 } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { generateLesson } from "../services/ai/generate-lesson.js";
@@ -263,6 +264,31 @@ export const lessonRoutes = new Hono()
       } catch (err) {
         console.warn("[lessons] failed to remove storage object:", err);
       }
+    }
+
+    // difficulty_reports.source_id is a polymorphic reference to either a
+    // homework_item or todo_item — there's no FK so the FK cascade can't
+    // touch them. Wipe them explicitly before the cascade removes the
+    // items they were pointing at, otherwise the teacher keeps seeing
+    // stale "recent struggles" entries for a lesson that no longer exists.
+    const [hwOfLesson, tdOfLesson] = await Promise.all([
+      db
+        .select({ id: homeworkItems.id })
+        .from(homeworkItems)
+        .where(eq(homeworkItems.lesson_id, lessonId)),
+      db
+        .select({ id: todoItems.id })
+        .from(todoItems)
+        .where(eq(todoItems.lesson_id, lessonId)),
+    ]);
+    const sourceIds = [
+      ...hwOfLesson.map((h) => h.id),
+      ...tdOfLesson.map((t) => t.id),
+    ];
+    if (sourceIds.length > 0) {
+      await db
+        .delete(difficultyReports)
+        .where(inArray(difficultyReports.source_id, sourceIds));
     }
 
     // DB cascade will clean up homework_items and todo_items via FK ON DELETE CASCADE

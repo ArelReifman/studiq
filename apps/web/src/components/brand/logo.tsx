@@ -1,3 +1,6 @@
+"use client";
+
+import { useId } from "react";
 import type { SVGProps } from "react";
 
 type LogoProps = {
@@ -44,6 +47,13 @@ export function Logo({
 }
 
 export function LogoMark(props: SVGProps<SVGSVGElement>) {
+  // useId() gives every instance a unique gradient id. Without this, the
+  // mobile-header and desktop-sidebar Logos share id="studiq-logo-gradient",
+  // and browsers that bind the gradient by first match render the second
+  // copy with a transparent fill — making the icon invisible and the
+  // "Studiq" wordmark look unaligned (it's offset by the missing icon).
+  const reactId = useId();
+  const gradientId = `studiq-logo-gradient-${reactId}`;
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -54,7 +64,7 @@ export function LogoMark(props: SVGProps<SVGSVGElement>) {
     >
       <defs>
         <linearGradient
-          id="studiq-logo-gradient"
+          id={gradientId}
           x1="0"
           y1="0"
           x2="40"
@@ -66,7 +76,7 @@ export function LogoMark(props: SVGProps<SVGSVGElement>) {
         </linearGradient>
       </defs>
 
-      <rect width="40" height="40" rx="10" fill="url(#studiq-logo-gradient)" />
+      <rect width="40" height="40" rx="10" fill={`url(#${gradientId})`} />
 
       <circle cx="20" cy="20" r="2.5" fill="white" />
 

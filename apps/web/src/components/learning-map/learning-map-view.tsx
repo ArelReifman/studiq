@@ -452,16 +452,14 @@ function TopicCard({
   // lock badge instead of just dimming opacity. Communicates "blocked" at
   // a glance (matches the reference design).
   if (tp.locked) {
-    // Teachers can unlock from inside the card; students see the same card
-    // without an unlock button.
+    // Teachers see an unlock button at the foot of the card (replacing
+    // the stats line); students see only the stats line and no button.
+    // Card height stays at 172px in both cases — the contents are
+    // tightened so nothing overflows.
     const showUnlockButton = role === "teacher" && !!onToggleLock;
     return (
-      <div
-        className={`relative w-[196px] ${
-          showUnlockButton ? "h-[200px]" : "h-[172px]"
-        } flex-shrink-0 bg-gray-50 rounded-lg border border-gray-200 p-4 flex flex-col cursor-not-allowed select-none`}
-      >
-        <div className="flex items-center justify-between mb-2">
+      <div className="relative w-[196px] h-[172px] flex-shrink-0 bg-gray-50 rounded-lg border border-gray-200 p-3 flex flex-col cursor-not-allowed select-none overflow-hidden">
+        <div className="flex items-center justify-between mb-1.5">
           <span className="text-[9px] font-bold tracking-wider uppercase text-gray-400">
             {statusLabel(t, status, role)}
           </span>
@@ -470,41 +468,43 @@ function TopicCard({
           </span>
         </div>
 
-        <div className="flex flex-col items-center justify-center flex-1 text-center gap-2">
-          <div className="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center shadow-sm">
-            <Lock size={16} className="text-gray-400" />
+        <div className="flex flex-col items-center justify-center flex-1 text-center gap-1.5 min-h-0">
+          <div className="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center shadow-sm flex-shrink-0">
+            <Lock size={14} className="text-gray-400" />
           </div>
-          <div className="text-sm font-semibold text-gray-500 leading-tight line-clamp-2 px-1">
+          <div className="text-[12px] font-semibold text-gray-500 leading-tight line-clamp-2 px-0.5">
             {tp.name}
           </div>
-          <div className="text-[10px] text-gray-400 leading-snug px-1">
-            {t("map.lockedHint")}
-          </div>
+          {!showUnlockButton && (
+            <div className="text-[9px] text-gray-400 leading-snug px-0.5 line-clamp-2">
+              {t("map.lockedHint")}
+            </div>
+          )}
         </div>
 
-        <div className="flex items-center justify-between mt-1 pt-2 border-t border-gray-200/70">
-          <span className="text-[10px] text-gray-400 tabular-nums">
-            {t("map.tasksFraction", {
-              done: tp.stats.tasks_completed,
-              total: tp.stats.tasks_total,
-            })}
-          </span>
-          <span className="text-[10px] font-semibold text-gray-400">
-            {t("map.notStartedShort")}
-          </span>
-        </div>
-
-        {showUnlockButton && (
+        {showUnlockButton ? (
           <button
             onClick={(e) => {
               e.stopPropagation();
               onToggleLock?.(tp.id, false);
             }}
-            className="mt-2 w-full h-8 rounded-md bg-white border border-gray-300 hover:border-brand-300 hover:bg-brand-50 text-gray-700 hover:text-brand-700 text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+            className="mt-1.5 w-full h-7 rounded-md bg-white border border-gray-300 hover:border-brand-300 hover:bg-brand-50 text-gray-700 hover:text-brand-700 text-[11px] font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer flex-shrink-0"
           >
-            <LockOpen size={13} />
+            <LockOpen size={12} />
             {t("map.unlockTopic")}
           </button>
+        ) : (
+          <div className="flex items-center justify-between pt-1.5 border-t border-gray-200/70 flex-shrink-0">
+            <span className="text-[10px] text-gray-400 tabular-nums">
+              {t("map.tasksFraction", {
+                done: tp.stats.tasks_completed,
+                total: tp.stats.tasks_total,
+              })}
+            </span>
+            <span className="text-[10px] font-semibold text-gray-400">
+              {t("map.notStartedShort")}
+            </span>
+          </div>
         )}
       </div>
     );
