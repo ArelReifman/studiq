@@ -19,8 +19,9 @@ const topicSchema = z.object({
   prerequisite_topic_ids: z.array(z.string().uuid()).default([]),
   order_index: z.number().int().min(0).default(0),
   parent_topic_id: z.string().uuid().nullable().optional(),
-  // Manual gate the teacher can toggle from the learning map.
-  is_locked: z.boolean().default(false),
+  // Manual gate the teacher can toggle from the learning map. Defaults
+  // to locked so new topics stay hidden until the teacher unlocks them.
+  is_locked: z.boolean().default(true),
 });
 
 const topicUpdateSchema = topicSchema.partial();
