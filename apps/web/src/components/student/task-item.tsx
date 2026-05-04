@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, XCircle, Circle, Paperclip, FileText, X, Upload, Undo2 } from "lucide-react";
+import { CheckCircle2, XCircle, Paperclip, FileText, X, Upload, Undo2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useT } from "@/i18n";
@@ -91,12 +91,15 @@ export function TaskItem({ item, type, lessonId }: TaskItemProps) {
         isPending_ && "bg-white border-gray-100"
       )}
     >
-      {/* Status icon */}
-      <div className="mt-0.5 flex-shrink-0">
-        {isCompleted && <CheckCircle2 size={20} className="text-green-500" />}
-        {isFailed && <XCircle size={20} className="text-red-400" />}
-        {isPending_ && <Circle size={20} className="text-gray-300" />}
-      </div>
+      {/* Status icon — only render once the student has marked the task.
+          The empty circle on a pending task read like a checkbox the
+          student should click, which it isn't. */}
+      {(isCompleted || isFailed) && (
+        <div className="mt-0.5 flex-shrink-0">
+          {isCompleted && <CheckCircle2 size={20} className="text-green-500" />}
+          {isFailed && <XCircle size={20} className="text-red-400" />}
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 min-w-0">
