@@ -44,7 +44,11 @@ export const todoRoutes = new Hono()
     "/:id/mark",
     requireRole("student"),
     zValidator("param", uuidParamSchema),
-    zValidator("json", z.object({ status: z.enum(["completed", "failed"]) })),
+    // "pending" is the undo path — see homework.ts for the matching logic.
+    zValidator(
+      "json",
+      z.object({ status: z.enum(["completed", "failed", "pending"]) })
+    ),
     async (c) => {
       const studentId = c.get("userId");
       const itemId = c.req.valid("param").id;
@@ -53,13 +57,37 @@ export const todoRoutes = new Hono()
 
       const [updated] = await db
         .update(todoItems)
-        .set({ status, marked_at: now })
+        .set({
+          status,
+          marked_at: status === "pending" ? null : now,
+        })
         .where(
           and(eq(todoItems.id, itemId), eq(todoItems.student_id, studentId))
         )
         .returning();
 
       if (!updated) return c.json({ error: "Todo item not found" }, 404);
+
+      // Undo path — wipe any difficulty_report we created when the
+      // student first marked this as failed.
+      if (status === "pending") {
+        await db
+          .delete(difficultyReports)
+          .where(
+            and(
+              eq(difficultyReports.source_type, "todo"),
+              eq(difficultyReports.source_id, itemId)
+            )
+          );
+        return c.json({
+          item: {
+            id: updated.id,
+            status: updated.status,
+            marked_at: updated.marked_at,
+          },
+          difficulty_report: null,
+        });
+      }
 
       let difficultyReport = null;
 

@@ -13,8 +13,11 @@ import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { tagDifficulty } from "../services/ai/tag-difficulty.js";
 import { uuidParamSchema } from "../lib/validators.js";
 
+// "pending" is the undo path — student tapped completed/failed by mistake
+// and wants to revert. We then also clean up any difficulty_report we
+// created on a previous "failed" mark so the AI signals don't linger.
 const markSchema = z.object({
-  status: z.enum(["completed", "failed"]),
+  status: z.enum(["completed", "failed", "pending"]),
 });
 
 const lessonIdRequiredQuery = z.object({ lesson_id: z.string().uuid() });
@@ -57,10 +60,15 @@ export const homeworkRoutes = new Hono()
       const { status } = c.req.valid("json");
       const now = new Date();
 
-      // Update homework item (verify ownership via student_id)
+      // Update homework item (verify ownership via student_id). When
+      // reverting to pending we clear marked_at too so the timeline is
+      // truthful — the item is back to untouched.
       const [updated] = await db
         .update(homeworkItems)
-        .set({ status, marked_at: now })
+        .set({
+          status,
+          marked_at: status === "pending" ? null : now,
+        })
         .where(
           and(
             eq(homeworkItems.id, itemId),
@@ -70,6 +78,27 @@ export const homeworkRoutes = new Hono()
         .returning();
 
       if (!updated) return c.json({ error: "Homework item not found" }, 404);
+
+      // Undo path: drop any difficulty_reports tied to this item so the
+      // AI doesn't keep treating the failure as real signal.
+      if (status === "pending") {
+        await db
+          .delete(difficultyReports)
+          .where(
+            and(
+              eq(difficultyReports.source_type, "homework"),
+              eq(difficultyReports.source_id, itemId)
+            )
+          );
+        return c.json({
+          item: {
+            id: updated.id,
+            status: updated.status,
+            marked_at: updated.marked_at,
+          },
+          difficulty_report: null,
+        });
+      }
 
       let difficultyReport = null;
 

@@ -418,6 +418,8 @@
   "briefing.title": "Pre-session briefing",
   "briefing.subtitle": "What to know before the next session",
   "briefing.subtitleWithName": "What to know before the next session with {name}",
+  "student.undoMark": "Undo",
+  "student.undoMarkAria": "Undo task mark",
 
   "profile.title": "Profile settings",
   "profile.subtitle": "Update your name, email, or password",

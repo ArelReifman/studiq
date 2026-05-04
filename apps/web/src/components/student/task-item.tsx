@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, XCircle, Circle, Paperclip, FileText, X, Upload } from "lucide-react";
+import { CheckCircle2, XCircle, Circle, Paperclip, FileText, X, Upload, Undo2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useT } from "@/i18n";
@@ -22,7 +22,7 @@ export function TaskItem({ item, type, lessonId }: TaskItemProps) {
   const lessonQueryKey = ["lessons", lessonId];
 
   const { mutate, isPending } = useMutation({
-    mutationFn: (status: "completed" | "failed") =>
+    mutationFn: (status: "completed" | "failed" | "pending") =>
       api.patch(`/${type === "homework" ? "homework" : "todos"}/${item.id}/mark`, {
         status,
       }),
@@ -173,8 +173,9 @@ export function TaskItem({ item, type, lessonId }: TaskItemProps) {
         )}
       </div>
 
-      {/* Actions — only show for pending items */}
-      {isPending_ && (
+      {/* Actions — pending items get the two big buttons; already-marked
+          items get a small "undo" button so a misclick is recoverable. */}
+      {isPending_ ? (
         <div className="flex gap-2 flex-shrink-0">
           <button
             onClick={() => mutate("completed")}
@@ -193,6 +194,21 @@ export function TaskItem({ item, type, lessonId }: TaskItemProps) {
             {t("student.markStuck")}
           </button>
         </div>
+      ) : (
+        <button
+          onClick={() => mutate("pending")}
+          disabled={isPending}
+          aria-label={t("student.undoMarkAria")}
+          className={cn(
+            "flex items-center gap-1 text-xs px-2 py-1 rounded-md border bg-white transition-colors disabled:opacity-50 flex-shrink-0",
+            isCompleted &&
+              "border-green-200 text-green-700 hover:bg-green-100",
+            isFailed && "border-red-200 text-red-600 hover:bg-red-100"
+          )}
+        >
+          <Undo2 size={12} />
+          {t("student.undoMark")}
+        </button>
       )}
     </div>
   );

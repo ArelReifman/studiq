@@ -418,6 +418,8 @@
   "briefing.title": "כרטיס הכנה לשיעור",
   "briefing.subtitle": "מה כדאי לדעת לפני המפגש הבא",
   "briefing.subtitleWithName": "מה כדאי לדעת לפני המפגש הבא עם {name}",
+  "student.undoMark": "ביטול",
+  "student.undoMarkAria": "ביטול סימון המשימה",
 
   "profile.title": "פרטים אישיים",
   "profile.subtitle": "עדכן שם, אימייל או סיסמה",
