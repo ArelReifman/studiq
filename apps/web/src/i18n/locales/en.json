@@ -420,6 +420,7 @@
   "briefing.subtitleWithName": "What to know before the next session with {name}",
   "student.undoMark": "Undo",
   "student.undoMarkAria": "Undo task mark",
+  "map.overallProgress": "Overall progress",
 
   "profile.title": "Profile settings",
   "profile.subtitle": "Update your name, email, or password",

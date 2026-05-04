@@ -1,7 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Flame, Sparkles, Lock, LockOpen } from "lucide-react";
+import {
+  Sparkles,
+  Lock,
+  LockOpen,
+  BookOpen,
+  CheckCircle2,
+  Clock,
+  AlertTriangle,
+  TrendingUp,
+  ThumbsUp,
+} from "lucide-react";
 import type {
   LearningMap,
   LearningMapTopic,
@@ -65,8 +75,10 @@ export function LearningMapView({
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
-      {/* TOPBAR */}
-      <div className="flex items-center flex-wrap gap-x-3 gap-y-2 min-h-14 py-2 px-4 sm:px-5 border-b border-gray-100 bg-gray-50/60">
+      {/* TOPBAR — role/title + big stat cards in a single horizontally-flowing
+          band so the student gets the full picture at a glance instead of
+          tiny labels squeezed into the chrome. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-3 px-4 sm:px-5 py-3 border-b border-gray-100 bg-gray-50/60">
         <span className="inline-flex items-center text-[10px] font-bold tracking-wider uppercase text-gray-500 border border-gray-200 rounded px-2 py-0.5">
           {role === "teacher" ? t("map.roleTeacher") : t("map.roleStudent")}
         </span>
@@ -74,30 +86,50 @@ export function LearningMapView({
           {t("map.title")}
         </span>
         <span className="w-px h-4 bg-gray-200 hidden sm:inline-block" />
-        <span className="text-xs text-gray-500 font-medium truncate">
+        <span className="text-xs text-gray-500 font-medium truncate max-w-[16rem]">
           {map.course_name}
         </span>
         <div className="flex-1" />
-        <div className="flex items-center flex-wrap gap-x-3 sm:gap-x-4 gap-y-1 w-full sm:w-auto">
-          <Stat label={t("map.statTotal")} value={counts.total_topics} />
+        <div className="flex items-center flex-wrap gap-2 w-full sm:w-auto">
           <Stat
+            icon={BookOpen}
+            label={t("map.statTotal")}
+            value={counts.total_topics}
+            iconBg="bg-brand-50"
+            iconColor="text-brand-600"
+          />
+          <Stat
+            icon={CheckCircle2}
             label={t("map.statMastered")}
             value={counts.mastered}
-            tone="mastered"
+            iconBg="bg-green-50"
+            iconColor="text-green-600"
+            valueColor="text-green-600"
           />
           <Stat
+            icon={Clock}
             label={t("map.statInProgress")}
             value={counts.in_progress}
-            tone="in_progress"
+            iconBg="bg-amber-50"
+            iconColor="text-amber-600"
+            valueColor="text-amber-600"
           />
           <Stat
+            icon={AlertTriangle}
             label={t("map.statStruggling")}
             value={counts.struggling}
-            tone="struggling"
+            iconBg="bg-red-50"
+            iconColor="text-red-600"
+            valueColor={
+              counts.struggling > 0 ? "text-red-600" : "text-gray-900"
+            }
           />
           <Stat
+            icon={TrendingUp}
             label={t("map.statOverall")}
             value={`${counts.overall_pct}%`}
+            iconBg="bg-gray-100"
+            iconColor="text-gray-600"
           />
         </div>
       </div>
@@ -135,31 +167,50 @@ export function LearningMapView({
           )}
 
           {role === "student" && (
-            <div className="bg-gray-50 border border-gray-100 rounded-lg p-3 flex flex-col gap-2">
+            <div className="bg-white border border-gray-100 rounded-lg p-3.5 flex flex-col gap-3 shadow-sm">
               <div className="flex items-center gap-2">
-                <Flame size={16} className="text-amber-500" />
-                <div className="min-w-0">
-                  <div className="text-[13px] font-semibold text-gray-900 leading-tight">
-                    {t("map.routePct", { pct: counts.overall_pct })}
-                  </div>
-                  <div className="text-[10px] text-gray-500">
-                    {t("map.keepGoing")}
-                  </div>
+                <div className="w-7 h-7 rounded-full bg-amber-50 flex items-center justify-center flex-shrink-0">
+                  <ThumbsUp size={14} className="text-amber-500" />
+                </div>
+                <span className="text-[12px] font-semibold text-gray-900">
+                  {t("map.overallProgress")}
+                </span>
+              </div>
+
+              <div className="text-center">
+                <div className="text-2xl font-bold text-gray-900 tabular-nums leading-none">
+                  {counts.overall_pct}%
                 </div>
               </div>
-              <div className="h-1 bg-gray-200 rounded-full overflow-hidden relative">
+
+              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden relative">
                 <div
-                  className="absolute end-0 top-0 bottom-0 bg-green-500 rounded-full"
+                  className="absolute end-0 top-0 bottom-0 bg-gradient-to-l from-green-400 to-green-500 rounded-full transition-all"
                   style={{ width: `${counts.overall_pct}%` }}
                 />
               </div>
-              <div className="flex justify-between text-[10px] text-gray-400">
-                <span>
-                  {t("map.youMasteredCount", { count: counts.mastered })}
-                </span>
-                <span>
-                  {t("map.inProgressCount", { count: counts.in_progress })}
-                </span>
+
+              <div className="text-[10px] text-gray-400 text-end">
+                {t("map.keepGoing")}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100">
+                <div className="flex flex-col items-start">
+                  <span className="text-[10px] text-gray-500">
+                    {t("map.statMastered")}
+                  </span>
+                  <span className="text-base font-bold text-gray-900 tabular-nums">
+                    {counts.mastered}
+                  </span>
+                </div>
+                <div className="flex flex-col items-start">
+                  <span className="text-[10px] text-gray-500">
+                    {t("map.statInProgress")}
+                  </span>
+                  <span className="text-base font-bold text-amber-600 tabular-nums">
+                    {counts.in_progress}
+                  </span>
+                </div>
               </div>
             </div>
           )}
@@ -313,21 +364,39 @@ export function LearningMapView({
 // ─── Sub-components ────────────────────────────────────────────────────────
 
 function Stat({
+  icon: Icon,
   label,
   value,
-  tone,
+  iconBg,
+  iconColor,
+  valueColor,
 }: {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
   label: string;
   value: string | number;
-  tone?: TopicStatus;
+  iconBg: string;
+  iconColor: string;
+  valueColor?: string;
 }) {
-  const color = tone ? statusText(tone) : "text-gray-900";
   return (
-    <div className="flex items-baseline gap-1">
-      <span className={`text-sm font-bold tabular-nums ${color}`}>
-        {value}
-      </span>
-      <span className="text-[10px] text-gray-400">{label}</span>
+    <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-100 px-2.5 py-1.5">
+      <div className="flex flex-col items-end min-w-0">
+        <span
+          className={`text-base font-bold tabular-nums leading-tight ${
+            valueColor ?? "text-gray-900"
+          }`}
+        >
+          {value}
+        </span>
+        <span className="text-[10px] text-gray-500 leading-tight whitespace-nowrap">
+          {label}
+        </span>
+      </div>
+      <div
+        className={`flex items-center justify-center w-7 h-7 rounded-full ${iconBg}`}
+      >
+        <Icon size={14} className={iconColor} />
+      </div>
     </div>
   );
 }
