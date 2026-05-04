@@ -61,16 +61,16 @@ export default function TeacherLayout({
 
   const sidebarContent = (
     <>
-      <div className="px-6 py-5 border-b border-gray-100 flex flex-col items-start text-start">
+      <div className="px-6 py-5 border-b border-gray-100 text-start">
         <Link
           href="/teacher/dashboard"
           aria-label="Studiq"
-          className="self-start hover:opacity-90 transition-opacity"
+          className="block w-fit hover:opacity-90 transition-opacity"
         >
           <Logo size={28} withWordmark />
         </Link>
-        <p className="text-xs text-gray-500 mt-2 self-start">{user?.full_name}</p>
-        <span className="text-xs text-brand-500 font-medium self-start">
+        <p className="text-xs text-gray-500 mt-2">{user?.full_name}</p>
+        <span className="text-xs text-brand-500 font-medium block">
           {t("teacher.role")}
         </span>
       </div>
