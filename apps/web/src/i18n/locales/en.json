@@ -128,7 +128,7 @@
   "student.lessonMaterial": "Lesson material",
   "student.reflection": "How did it go?",
   "student.reflectionHint": "Your reflection is shared with your teacher — tell them what was easy, what was hard, and where you need more help.",
-  "student.reflectionPlaceholder": "E.g. 'The questions on set intersection were clear, but I got stuck on De Morgan's law. I'd love an explanation in the next lesson.'",
+  "student.reflectionPlaceholder": "",
   "student.saveReflection": "Save",
   "student.saving": "Saving...",
   "student.reflectionSaved": "Saved",
@@ -299,7 +299,7 @@
 
   "createLesson.title": "Create Lesson",
   "createLesson.lessonTitle": "Lesson Title",
-  "createLesson.titlePlaceholder": "E.g. Simple Fractions Practice",
+  "createLesson.titlePlaceholder": "",
   "createLesson.description": "Description",
   "createLesson.descPlaceholder": "Short description of the lesson...",
   "createLesson.material": "Study Material",

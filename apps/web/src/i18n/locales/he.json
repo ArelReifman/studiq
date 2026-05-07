@@ -128,7 +128,7 @@
   "student.lessonMaterial": "חומר לימוד",
   "student.reflection": "איך הלך לי?",
   "student.reflectionHint": "המשוב שלך יוצג למורה — תוכל/י לספר מה היה קל, מה היה קשה ואיפה הרגשת שצריך/ה עוד עזרה.",
-  "student.reflectionPlaceholder": "לדוגמה: 'השאלות על קבוצה חזקה היו ברורות, אבל נתקעתי בחוק דה מורגן. אשמח להסבר נוסף בשיעור הבא.'",
+  "student.reflectionPlaceholder": "",
   "student.saveReflection": "שמירה",
   "student.saving": "שומר...",
   "student.reflectionSaved": "נשמר",
@@ -299,7 +299,7 @@
 
   "createLesson.title": "יצירת שיעור ידני",
   "createLesson.lessonTitle": "כותרת השיעור",
-  "createLesson.titlePlaceholder": "לדוגמה: תרגול שברים פשוטים",
+  "createLesson.titlePlaceholder": "",
   "createLesson.description": "תיאור",
   "createLesson.descPlaceholder": "תיאור קצר של השיעור...",
   "createLesson.material": "חומר לימוד",
