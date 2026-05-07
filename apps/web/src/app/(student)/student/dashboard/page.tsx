@@ -8,6 +8,7 @@ import { useT } from "@/i18n";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TaskItem } from "@/components/student/task-item";
+import { LessonSolutionUpload } from "@/components/student/lesson-solution-upload";
 import { formatDate } from "@/lib/utils";
 import type { LessonSession, HomeworkItem, TodoItem } from "@studiq/types";
 import { BookOpen, FileText, ExternalLink, History } from "lucide-react";
@@ -134,6 +135,17 @@ export default function StudentDashboard() {
             </div>
           </div>
         </Card>
+      )}
+
+      {/* Lesson-level solution upload (PDF / image) — same component the
+          dedicated lesson page uses, so the student gets the upload box
+          on whichever surface they happen to be on. */}
+      {activeLesson && (
+        <LessonSolutionUpload
+          lessonId={activeLesson.id}
+          solutionUrl={activeLesson.student_solution_url}
+          solutionName={activeLesson.student_solution_name}
+        />
       )}
 
       {(homework.length > 0 || todos.length > 0) && (
