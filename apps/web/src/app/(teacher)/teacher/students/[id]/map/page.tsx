@@ -10,7 +10,7 @@ import { LearningMapView } from "@/components/learning-map/learning-map-view";
 import { LearningMapHero } from "@/components/learning-map/learning-map-hero";
 import { CreateLessonModal } from "@/components/teacher/create-lesson-modal";
 import { useT } from "@/i18n";
-import type { LearningMap } from "@studiq/types";
+import type { LearningMap, LessonSession } from "@studiq/types";
 
 interface Course {
   id: string;
@@ -37,10 +37,23 @@ export default function TeacherLearningMapPage() {
     queryFn: () => api.get(`/students/${id}`),
   });
 
-  const { data: courses = [] } = useQuery<Course[]>({
+  const { data: allCourses = [] } = useQuery<Course[]>({
     queryKey: ["courses"],
     queryFn: () => api.get(`/courses`),
   });
+
+  // Pull this student's lessons so we can show only the courses they're
+  // actually working on. Without this, the dropdown listed every course
+  // the teacher has, even ones the student has never touched.
+  const { data: lessons = [] } = useQuery<LessonSession[]>({
+    queryKey: ["lessons", { student_id: id }],
+    queryFn: () => api.get(`/lessons?student_id=${id}`),
+  });
+
+  const studentCourseIds = new Set(
+    lessons.map((l) => l.course_id).filter((id): id is string => !!id)
+  );
+  const courses = allCourses.filter((c) => studentCourseIds.has(c.id));
 
   // Default to first course if none selected
   const effectiveCourseId = courseId || courses[0]?.id || "";
