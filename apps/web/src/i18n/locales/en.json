@@ -425,6 +425,7 @@
   "studentDetail.backToStudent": "Back to student",
   "studentDetail.reflectionEmpty": "The student hasn't written any reflection yet.",
   "studentDetail.openLesson": "Open lesson",
+  "createLesson.jumpToNext": "Next in sequence",
 
   "profile.title": "Profile settings",
   "profile.subtitle": "Update your name, email, or password",

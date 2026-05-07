@@ -193,9 +193,55 @@ export function CreateLessonModal({
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {t("createLesson.topic")}
-                </label>
+                {/* "Next sub-topic" quick-pick — when the modal is on a
+                    leaf sub-topic, surface the next sibling so the teacher
+                    can advance with one click instead of hunting through
+                    the dropdown. */}
+                {(() => {
+                  const topics = courseDetail?.topics ?? [];
+                  const current = topics.find((tp) => tp.id === topicId);
+                  if (!current?.parent_topic_id) return null;
+                  const siblings = topics
+                    .filter((tp) => tp.parent_topic_id === current.parent_topic_id)
+                    .sort((a, b) => a.order_index - b.order_index);
+                  const idx = siblings.findIndex((s) => s.id === current.id);
+                  const next = idx >= 0 ? siblings[idx + 1] : undefined;
+                  if (!next) return null;
+                  return (
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-sm font-medium text-gray-700">
+                        {t("createLesson.topic")}
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setTopicId(next.id)}
+                        className="text-xs text-brand-600 hover:text-brand-700 hover:underline"
+                        title={next.name}
+                      >
+                        ← {t("createLesson.jumpToNext")}: {next.name.length > 20 ? next.name.slice(0, 20) + "…" : next.name}
+                      </button>
+                    </div>
+                  );
+                })()}
+                {/* Render the label only if the quick-pick block above
+                    didn't render its own (current && next exist). */}
+                {(() => {
+                  const topics = courseDetail?.topics ?? [];
+                  const current = topics.find((tp) => tp.id === topicId);
+                  const siblings = current?.parent_topic_id
+                    ? topics
+                        .filter((tp) => tp.parent_topic_id === current.parent_topic_id)
+                        .sort((a, b) => a.order_index - b.order_index)
+                    : [];
+                  const idx = current ? siblings.findIndex((s) => s.id === current.id) : -1;
+                  const hasNext = idx >= 0 && siblings[idx + 1];
+                  if (hasNext) return null;
+                  return (
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {t("createLesson.topic")}
+                    </label>
+                  );
+                })()}
                 <select
                   value={topicId}
                   onChange={(e) => setTopicId(e.target.value)}
