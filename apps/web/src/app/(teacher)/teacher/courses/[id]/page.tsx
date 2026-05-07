@@ -135,6 +135,17 @@ export default function CourseDetailPage() {
     patchTopic.mutate({ id: b.id, body: { order_index: a.order_index } });
   }
 
+  // ── reorder children inside a single parent ──────────────────────────────
+  // Same swap-by-order_index trick as moveParent — keeps the rest of the
+  // tree untouched and works for arbitrary sub-topic counts.
+  function moveChild(parent: TopicTree, idx: number, dir: -1 | 1) {
+    const target = idx + dir;
+    if (target < 0 || target >= parent.children.length) return;
+    const a = parent.children[idx]!, b = parent.children[target]!;
+    patchTopic.mutate({ id: a.id, body: { order_index: b.order_index } });
+    patchTopic.mutate({ id: b.id, body: { order_index: a.order_index } });
+  }
+
   if (isLoading) return <div className="text-gray-400">{t("common.loading")}</div>;
   if (!course)   return <div className="text-gray-500">{t("courses.notFound")}</div>;
 
@@ -271,8 +282,29 @@ export default function CourseDetailPage() {
 
             {/* Children */}
             <div className="divide-y divide-gray-50">
-              {parent.children.map((child) => (
+              {parent.children.map((child, ci) => (
                 <div key={child.id} className="flex items-center gap-2 px-4 py-2 group bg-white hover:bg-gray-50">
+                  {/* reorder — same chevron pattern as parents, just nested */}
+                  <div className="flex flex-col flex-shrink-0">
+                    <button
+                      onClick={() => moveChild(parent, ci, -1)}
+                      disabled={ci === 0}
+                      className="text-gray-300 hover:text-brand-500 disabled:opacity-20"
+                      aria-label={t("courses.moveUp")}
+                      title={t("courses.moveUp")}
+                    >
+                      <ChevronUp size={12} />
+                    </button>
+                    <button
+                      onClick={() => moveChild(parent, ci, 1)}
+                      disabled={ci === parent.children.length - 1}
+                      className="text-gray-300 hover:text-brand-500 disabled:opacity-20"
+                      aria-label={t("courses.moveDown")}
+                      title={t("courses.moveDown")}
+                    >
+                      <ChevronDown size={12} />
+                    </button>
+                  </div>
                   <span className="w-4 text-gray-200 text-xs flex-shrink-0">└</span>
 
                   {editingId === child.id ? (
