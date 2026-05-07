@@ -11,6 +11,15 @@ import type { Course, CourseWithTopics } from "@studiq/types";
 interface CreateLessonModalProps {
   studentId: string;
   onClose: () => void;
+  /**
+   * Pre-fill the topic when the modal is opened from a specific learning
+   * map card. Without this, the teacher has to re-pick the topic and a
+   * misclick creates a lesson on the wrong row in the map. The course is
+   * inferred from the topic on the server side; we still pre-fill it here
+   * so the dropdowns display the right selection.
+   */
+  initialTopicId?: string;
+  initialCourseId?: string;
 }
 
 function todayStr() {
@@ -18,7 +27,12 @@ function todayStr() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export function CreateLessonModal({ studentId, onClose }: CreateLessonModalProps) {
+export function CreateLessonModal({
+  studentId,
+  onClose,
+  initialTopicId,
+  initialCourseId,
+}: CreateLessonModalProps) {
   const t = useT();
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -30,8 +44,8 @@ export function CreateLessonModal({ studentId, onClose }: CreateLessonModalProps
     { title: "", description: "" },
   ]);
   const [file, setFile] = useState<File | null>(null);
-  const [courseId, setCourseId] = useState<string>("");
-  const [topicId, setTopicId] = useState<string>("");
+  const [courseId, setCourseId] = useState<string>(initialCourseId ?? "");
+  const [topicId, setTopicId] = useState<string>(initialTopicId ?? "");
   const { data: courses = [] } = useQuery<Course[]>({
     queryKey: ["courses"],
     queryFn: () => api.get("/courses"),
@@ -43,8 +57,16 @@ export function CreateLessonModal({ studentId, onClose }: CreateLessonModalProps
     enabled: !!courseId,
   });
 
-  // Reset topic when course changes
+  // Reset topic when the teacher actively switches courses, but skip the
+  // very first effect run so an initialTopicId passed in from the map
+  // survives mount. Without this, the pre-filled topic would be wiped
+  // before the user sees it.
+  const didMount = useRef(false);
   useEffect(() => {
+    if (!didMount.current) {
+      didMount.current = true;
+      return;
+    }
     setTopicId("");
   }, [courseId]);
 

@@ -137,6 +137,11 @@ export default function TeacherLearningMapPage() {
       {lessonModal.open && (
         <CreateLessonModal
           studentId={id}
+          /* Carry the topic + course we opened the modal from so the
+             dropdowns are pre-selected and the new lesson is filed on
+             the right row of the map. */
+          initialTopicId={lessonModal.topicId}
+          initialCourseId={effectiveCourseId}
           onClose={() => setLessonModal({ open: false })}
         />
       )}
