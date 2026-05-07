@@ -143,6 +143,7 @@
   "lessons.noLessons": "No lessons yet.",
   "lessons.notFound": "Lesson not found.",
   "lessons.backToLessons": "Back to lessons",
+  "lessons.back": "Back",
   "lessons.count": "Lessons ({count})",
 
   "reports.myProgress": "My Progress",

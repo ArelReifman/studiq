@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,11 +11,11 @@ import { TaskItem } from "@/components/student/task-item";
 import { formatDate } from "@/lib/utils";
 import type { LessonWithItems } from "@studiq/types";
 import { ArrowLeft, FileText, MessageSquare, Check } from "lucide-react";
-import Link from "next/link";
 import { useT } from "@/i18n";
 
 export default function LessonDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const t = useT();
   const qc = useQueryClient();
 
@@ -54,12 +54,19 @@ export default function LessonDetailPage() {
 
   return (
     <div>
-      <Link
-        href="/student/lessons"
+      {/* /student/lessons doesn't exist as a list page (lessons are reached
+          from the map or dashboard), so the back action uses router history
+          and falls back to /student/map if there's nothing to go back to. */}
+      <button
+        type="button"
+        onClick={() => {
+          if (window.history.length > 1) router.back();
+          else router.push("/student/map");
+        }}
         className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-6"
       >
-        <ArrowLeft size={14} className="rtl:rotate-180" /> {t("lessons.backToLessons")}
-      </Link>
+        <ArrowLeft size={14} className="rtl:rotate-180" /> {t("lessons.back")}
+      </button>
 
       <div className="flex items-start justify-between mb-6">
         <div>

@@ -143,6 +143,7 @@
   "lessons.noLessons": "אין שיעורים עדיין.",
   "lessons.notFound": "השיעור לא נמצא.",
   "lessons.backToLessons": "חזרה לשיעורים",
+  "lessons.back": "חזרה",
   "lessons.count": "שיעורים ({count})",
 
   "reports.myProgress": "ההתקדמות שלי",
