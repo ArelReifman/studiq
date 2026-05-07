@@ -426,6 +426,9 @@
   "studentDetail.reflectionEmpty": "The student hasn't written any reflection yet.",
   "studentDetail.openLesson": "Open lesson",
   "createLesson.jumpToNext": "Next in sequence",
+  "student.yourSolution": "My solution",
+  "student.solutionHint": "Upload a PDF or image with your solution. Your teacher will be able to see it.",
+  "student.uploadSolution": "Upload solution",
 
   "profile.title": "Profile settings",
   "profile.subtitle": "Update your name, email, or password",

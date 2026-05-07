@@ -108,6 +108,31 @@ export default function TeacherLessonDetailPage() {
         </Card>
       )}
 
+      {/* Student-uploaded solution — read-only on the teacher side. The
+          student is the only one who can upload or remove this file. */}
+      {lesson.student_solution_url && (
+        <Card className="mb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
+              <FileText size={18} className="text-green-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-gray-400 mb-0.5">
+                {t("student.yourSolution")}
+              </p>
+              <a
+                href={lesson.student_solution_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-medium text-green-700 hover:underline truncate block"
+              >
+                {lesson.student_solution_name || t("student.yourSolution")}
+              </a>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* Tasks — read-only for teacher */}
       {allItems.length > 0 && (
         <div className="mb-6">

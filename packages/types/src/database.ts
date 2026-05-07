@@ -104,6 +104,8 @@ export interface LessonSession {
   ai_generation_context: Record<string, unknown> | null;
   material_url: string | null;
   material_name: string | null;
+  student_solution_url: string | null;
+  student_solution_name: string | null;
   student_reflection: string | null;
   // Teacher review (optional — null until teacher has reviewed the submission)
   teacher_review_note: string | null;

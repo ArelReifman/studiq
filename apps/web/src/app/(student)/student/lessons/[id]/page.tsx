@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TaskItem } from "@/components/student/task-item";
+import { LessonSolutionUpload } from "@/components/student/lesson-solution-upload";
 import { formatDate } from "@/lib/utils";
 import type { LessonWithItems } from "@studiq/types";
 import { ArrowLeft, FileText, MessageSquare, Check } from "lucide-react";
@@ -106,6 +107,15 @@ export default function LessonDetailPage() {
           </div>
         </Card>
       )}
+
+      {/* Student's own solution upload — sits right under the teacher's
+          material so it's easy to "see the questions, then submit my
+          answers" in a single scroll. */}
+      <LessonSolutionUpload
+        lessonId={id}
+        solutionUrl={lesson.student_solution_url}
+        solutionName={lesson.student_solution_name}
+      />
 
       {(lesson.homework_items.length > 0 || lesson.todo_items.length > 0) && (
         <div className="mb-6">

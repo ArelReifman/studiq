@@ -478,4 +478,160 @@ export const uploadRoutes = new Hono()
 
       return c.json({ message: "File removed" });
     }
+  )
+
+  // ── Student: sign an upload URL for their lesson solution ──
+  // Mirrors the teacher's /lesson/:id/sign flow but writes to a
+  // student-scoped storage path and only the student themselves can use
+  // it.
+  .post(
+    "/lesson/:id/solution/sign",
+    requireRole("student"),
+    zValidator("param", uuidParamSchema),
+    zValidator("json", signSchema),
+    async (c) => {
+      const studentId = c.get("userId");
+      const lessonId = c.req.valid("param").id;
+      const { content_type } = c.req.valid("json");
+
+      if (!ALLOWED_TYPES.includes(content_type)) {
+        return c.json(
+          { error: "Invalid file type. Allowed: PDF, JPEG, PNG, WebP" },
+          400
+        );
+      }
+
+      const [lesson] = await db
+        .select({ id: lessonSessions.id })
+        .from(lessonSessions)
+        .where(
+          and(
+            eq(lessonSessions.id, lessonId),
+            eq(lessonSessions.student_id, studentId)
+          )
+        )
+        .limit(1);
+
+      if (!lesson) return c.json({ error: "Lesson not found" }, 404);
+
+      const supabase = createAdminSupabase();
+      const ext = sanitizeExt(c.req.valid("json").file_name);
+      const storagePath = `solutions/${studentId}/${lessonId}.${ext}`;
+
+      const { data, error } = await supabase.storage
+        .from("uploads")
+        .createSignedUploadUrl(storagePath, { upsert: true });
+
+      if (error || !data) {
+        console.error("[upload] solution signed URL error:", error);
+        return c.json(
+          {
+            error: `Failed to create upload URL: ${
+              error?.message ?? "unknown"
+            }`,
+          },
+          500
+        );
+      }
+
+      return c.json({
+        signedUrl: data.signedUrl,
+        token: data.token,
+        path: data.path,
+      });
+    }
+  )
+
+  // ── Student: confirm solution upload ──
+  .post(
+    "/lesson/:id/solution/confirm",
+    requireRole("student"),
+    zValidator("param", uuidParamSchema),
+    zValidator("json", confirmSchema),
+    async (c) => {
+      const studentId = c.get("userId");
+      const lessonId = c.req.valid("param").id;
+      const { file_name, path } = c.req.valid("json");
+
+      const [lesson] = await db
+        .select({ id: lessonSessions.id })
+        .from(lessonSessions)
+        .where(
+          and(
+            eq(lessonSessions.id, lessonId),
+            eq(lessonSessions.student_id, studentId)
+          )
+        )
+        .limit(1);
+
+      if (!lesson) return c.json({ error: "Lesson not found" }, 404);
+
+      // Path tampering guard: must belong to this student + lesson.
+      const expectedPrefix = `solutions/${studentId}/${lessonId}.`;
+      if (!path.startsWith(expectedPrefix)) {
+        return c.json({ error: "Invalid storage path" }, 400);
+      }
+
+      const supabase = createAdminSupabase();
+      const { data: urlData } = supabase.storage
+        .from("uploads")
+        .getPublicUrl(path);
+
+      const [updated] = await db
+        .update(lessonSessions)
+        .set({
+          student_solution_url: urlData.publicUrl,
+          student_solution_name: file_name,
+        })
+        .where(eq(lessonSessions.id, lessonId))
+        .returning();
+
+      if (!updated) return c.json({ error: "Failed to update lesson" }, 500);
+
+      return c.json({
+        student_solution_url: updated.student_solution_url,
+        student_solution_name: updated.student_solution_name,
+      });
+    }
+  )
+
+  // ── Student: remove their solution ──
+  .delete(
+    "/lesson/:id/solution",
+    requireRole("student"),
+    zValidator("param", uuidParamSchema),
+    async (c) => {
+      const studentId = c.get("userId");
+      const lessonId = c.req.valid("param").id;
+
+      const [lesson] = await db
+        .select()
+        .from(lessonSessions)
+        .where(
+          and(
+            eq(lessonSessions.id, lessonId),
+            eq(lessonSessions.student_id, studentId)
+          )
+        )
+        .limit(1);
+
+      if (!lesson) return c.json({ error: "Lesson not found" }, 404);
+      if (!lesson.student_solution_url) {
+        return c.json({ error: "No solution to remove" }, 400);
+      }
+
+      const supabase = createAdminSupabase();
+      const ext = (lesson.student_solution_name || "").split(".").pop() || "bin";
+      const storagePath = `solutions/${studentId}/${lessonId}.${ext}`;
+
+      // Best-effort: delete storage object, then clear DB references.
+      await supabase.storage.from("uploads").remove([storagePath]);
+
+      await db
+        .update(lessonSessions)
+        .set({ student_solution_url: null, student_solution_name: null })
+        .where(eq(lessonSessions.id, lessonId));
+
+      return c.json({ message: "Solution removed" });
+    }
   );

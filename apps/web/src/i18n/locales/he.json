@@ -426,6 +426,9 @@
   "studentDetail.reflectionEmpty": "התלמיד עדיין לא רשם איך הלך לו.",
   "studentDetail.openLesson": "פתח שיעור",
   "createLesson.jumpToNext": "מעבר לנושא הבא",
+  "student.yourSolution": "הפתרון שלי",
+  "student.solutionHint": "העלה/י קובץ PDF או תמונה עם הפתרון שלך. המורה יוכל לראות אותו.",
+  "student.uploadSolution": "העלאת פתרון",
 
   "profile.title": "פרטים אישיים",
   "profile.subtitle": "עדכן שם, אימייל או סיסמה",

@@ -319,6 +319,10 @@ export const lessonSessions = pgTable(
     ai_generation_context: jsonb("ai_generation_context"),
     material_url: text("material_url"),
     material_name: text("material_name"),
+    // Student's uploaded solution (PDF / image). Independent of the
+    // teacher's material above — same lesson, different file.
+    student_solution_url: text("student_solution_url"),
+    student_solution_name: text("student_solution_name"),
     student_reflection: text("student_reflection"),
     // ── Teacher review ───────────────────────────────────────────────────────
     // Filled in by the teacher after inspecting the student's submitted solution.
