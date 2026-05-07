@@ -6,7 +6,7 @@ import { X, Plus, Trash2, Upload, FileText } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/i18n";
-import type { Course, CourseWithTopics } from "@studiq/types";
+import type { Course, CourseWithTopics, LessonSession } from "@studiq/types";
 
 interface CreateLessonModalProps {
   studentId: string;
@@ -46,10 +46,37 @@ export function CreateLessonModal({
   const [file, setFile] = useState<File | null>(null);
   const [courseId, setCourseId] = useState<string>(initialCourseId ?? "");
   const [topicId, setTopicId] = useState<string>(initialTopicId ?? "");
-  const { data: courses = [] } = useQuery<Course[]>({
+  const { data: allCourses = [] } = useQuery<Course[]>({
     queryKey: ["courses"],
     queryFn: () => api.get("/courses"),
   });
+
+  // Pull the student's existing lessons so we can narrow the course
+  // dropdown to courses the student is actually learning. Mirrors the
+  // filter on the teacher map page so manual lesson creation matches the
+  // map-driven creation. If the student has no lessons yet, fall back to
+  // showing every course so the very first lesson is still createable.
+  const { data: studentLessons = [] } = useQuery<LessonSession[]>({
+    queryKey: ["lessons", { student_id: studentId }],
+    queryFn: () => api.get(`/lessons?student_id=${studentId}`),
+  });
+  const studentCourseIds = new Set(
+    studentLessons.map((l) => l.course_id).filter((id): id is string => !!id)
+  );
+  const filteredCourses =
+    studentCourseIds.size > 0
+      ? allCourses.filter((c) => studentCourseIds.has(c.id))
+      : allCourses;
+  // If a course is pre-selected (e.g. from the map) keep it visible even
+  // if the student has no lessons there yet — that's the whole point of
+  // creating the first one.
+  const courses =
+    initialCourseId && !filteredCourses.some((c) => c.id === initialCourseId)
+      ? [
+          ...filteredCourses,
+          ...allCourses.filter((c) => c.id === initialCourseId),
+        ]
+      : filteredCourses;
 
   const { data: courseDetail } = useQuery<CourseWithTopics>({
     queryKey: ["courses", courseId],
