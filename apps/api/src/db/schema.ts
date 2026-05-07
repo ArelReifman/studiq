@@ -303,6 +303,34 @@ export const courseTopics = pgTable(
   ]
 );
 
+// ─── Per-student exam date overrides ─────────────────────────────────────────
+// Override row keyed by (student_id, course_id). When present, takes priority
+// over courses.exam_date in the learning-map computation. This is what lets
+// the teacher set "Yuval has the exam on Aug 5, but Daniel on Aug 12" without
+// duplicating the course.
+export const studentCourseExamDates = pgTable(
+  "student_course_exam_dates",
+  {
+    student_id: uuid("student_id")
+      .notNull()
+      .references(() => students.id, { onDelete: "cascade" }),
+    course_id: uuid("course_id")
+      .notNull()
+      .references(() => courses.id, { onDelete: "cascade" }),
+    exam_date: timestamp("exam_date", { withTimezone: true }).notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // Composite primary key — drizzle expects this via a pgTable extra.
+    // Using a unique index on (student, course) is functionally equivalent
+    // and keeps the schema declaration simple.
+    uniqueIndex("scee_pkey").on(t.student_id, t.course_id),
+    index("idx_scee_course_id").on(t.course_id),
+  ]
+);
+
 // ─── Lesson Sessions ──────────────────────────────────────────────────────────
 
 export const lessonSessions = pgTable(

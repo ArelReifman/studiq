@@ -8,6 +8,7 @@ import {
   lessonSessions,
   homeworkItems,
   todoItems,
+  studentCourseExamDates,
 } from "../db/schema.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { zValidator } from "@hono/zod-validator";
@@ -96,8 +97,23 @@ export const learningMapRoutes = new Hono()
       .limit(1);
     if (!course) return c.json({ error: "Course not found" }, 404);
 
-    const examDateIso = course.exam_date
-      ? course.exam_date.toISOString()
+    // Per-student override (migration 020). When present, it wins over the
+    // course-level default — different students may take the same course at
+    // different universities or on different mo'eds.
+    const [override] = await db
+      .select({ exam_date: studentCourseExamDates.exam_date })
+      .from(studentCourseExamDates)
+      .where(
+        and(
+          eq(studentCourseExamDates.student_id, studentId),
+          eq(studentCourseExamDates.course_id, courseId)
+        )
+      )
+      .limit(1);
+
+    const effectiveExamDate = override?.exam_date ?? course.exam_date;
+    const examDateIso = effectiveExamDate
+      ? effectiveExamDate.toISOString()
       : null;
 
     // 2. Fetch all topics for this course (both levels)
@@ -242,8 +258,8 @@ export const learningMapRoutes = new Hono()
       // urgency on the student's UI. Course exam_date is a timestamptz —
       // strip to YYYY-MM-DD so the frontend gets a uniform date string.
       const effective_deadline =
-        t.target_date ?? (course.exam_date
-          ? course.exam_date.toISOString().slice(0, 10)
+        t.target_date ?? (effectiveExamDate
+          ? effectiveExamDate.toISOString().slice(0, 10)
           : null);
       return {
         id: t.id,
