@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CalendarDays, Check, X, Pencil } from "lucide-react";
 import { api } from "@/lib/api";
 import { LearningMapView } from "@/components/learning-map/learning-map-view";
 import { LearningMapHero } from "@/components/learning-map/learning-map-hero";
@@ -94,6 +94,18 @@ export default function TeacherLearningMapPage() {
         <ArrowLeft size={14} className="rtl:rotate-180" /> {t("map.backToStudent")}
       </Link>
 
+      {/* Inline exam-date editor for THIS student in THIS course. Sits above
+          the hero so when the teacher sets a date the countdown below
+          updates instantly. Real-world tutors have students at different
+          universities — each one needs their own deadline. */}
+      {effectiveCourseId && (
+        <StudentExamDateEditor
+          studentId={id}
+          courseId={effectiveCourseId}
+          studentName={student?.full_name ?? null}
+        />
+      )}
+
       {/* Same hero the student sees, named after the student so the teacher
           gets context at a glance and the visual language is consistent.
           Pass the full map (course name, exam date, topics) so the teacher
@@ -165,5 +177,145 @@ export default function TeacherLearningMapPage() {
         />
       )}
     </div>
+  );
+}
+
+/** Inline editor for the per-(student, course) exam date override.
+ *  Reads the current effective date (override > course default), shows it
+ *  as a pill, and expands to a date input on edit. */
+function StudentExamDateEditor({
+  studentId,
+  courseId,
+  studentName,
+}: {
+  studentId: string;
+  courseId: string;
+  studentName: string | null;
+}) {
+  const t = useT();
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<string>("");
+
+  const { data } = useQuery<{
+    override_exam_date: string | null;
+    course_exam_date: string | null;
+    effective_exam_date: string | null;
+  }>({
+    queryKey: ["exam-date", { student_id: studentId, course_id: courseId }],
+    queryFn: () =>
+      api.get(`/students/${studentId}/exam-date?course_id=${courseId}`),
+    enabled: !!courseId,
+  });
+
+  // Seed the draft when entering edit mode so the picker shows the current
+  // effective date instead of an empty input.
+  useEffect(() => {
+    if (editing) {
+      const seed =
+        data?.override_exam_date ?? data?.course_exam_date ?? null;
+      setDraft(seed ? seed.slice(0, 10) : "");
+    }
+  }, [editing, data]);
+
+  const save = useMutation({
+    mutationFn: (exam_date: string | null) =>
+      api.put(`/students/${studentId}/exam-date`, {
+        course_id: courseId,
+        exam_date,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["exam-date"] });
+      qc.invalidateQueries({ queryKey: ["learning-map"] });
+      setEditing(false);
+    },
+  });
+
+  const hasOverride = !!data?.override_exam_date;
+  const effective = data?.effective_exam_date;
+  const formatted = effective
+    ? new Date(effective).toLocaleDateString(undefined, {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : null;
+
+  if (editing) {
+    return (
+      <div className="mb-3 flex items-center gap-2 flex-wrap bg-white border border-brand-200 rounded-lg px-3 py-2">
+        <CalendarDays size={14} className="text-brand-600 flex-shrink-0" />
+        <span className="text-xs text-gray-600 whitespace-nowrap">
+          {studentName
+            ? t("studentMap.examFor", { name: studentName })
+            : t("studentMap.examLabel")}
+        </span>
+        <input
+          autoFocus
+          type="date"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          className="border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+        />
+        <button
+          onClick={() => save.mutate(draft || null)}
+          disabled={save.isPending}
+          className="inline-flex items-center gap-1 text-xs text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 rounded px-2.5 py-1.5"
+        >
+          <Check size={12} /> {t("common.save")}
+        </button>
+        {hasOverride && (
+          <button
+            onClick={() => save.mutate(null)}
+            disabled={save.isPending}
+            className="inline-flex items-center gap-1 text-xs text-gray-600 hover:text-red-600 hover:bg-red-50 rounded px-2 py-1.5"
+            title={t("studentMap.clearOverrideHint")}
+          >
+            <X size={12} /> {t("studentMap.clearOverride")}
+          </button>
+        )}
+        <button
+          onClick={() => setEditing(false)}
+          disabled={save.isPending}
+          className="text-xs text-gray-400 hover:text-gray-600 rounded px-2 py-1.5"
+        >
+          {t("common.cancel")}
+        </button>
+      </div>
+    );
+  }
+
+  // View mode — clickable pill that opens the editor. Two flavors: an
+  // override is set (blue) vs falling back to the course default (gray).
+  return (
+    <button
+      onClick={() => setEditing(true)}
+      className={`mb-3 group inline-flex items-center gap-2 text-xs rounded-lg px-3 py-1.5 transition-colors ${
+        formatted
+          ? hasOverride
+            ? "bg-brand-50 border border-brand-200 text-brand-800 hover:bg-brand-100"
+            : "bg-gray-50 border border-gray-200 text-gray-700 hover:bg-gray-100"
+          : "bg-white border border-dashed border-gray-300 text-gray-500 hover:border-brand-300 hover:text-brand-700"
+      }`}
+    >
+      <CalendarDays size={13} />
+      {formatted ? (
+        <>
+          <span className="font-medium">
+            {hasOverride
+              ? t("studentMap.studentExamDate")
+              : t("studentMap.courseExamDate")}
+            :
+          </span>
+          <span className="tabular-nums">{formatted}</span>
+        </>
+      ) : (
+        <span>{t("studentMap.setExamDate")}</span>
+      )}
+      <Pencil
+        size={11}
+        className="opacity-0 group-hover:opacity-100 transition-opacity"
+      />
+    </button>
   );
 }

@@ -15,6 +15,8 @@ import {
   todoItems,
   difficultyReports,
   studentInsights,
+  studentCourseExamDates,
+  courses,
 } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { uuidParamSchema } from "../lib/validators.js";
@@ -324,6 +326,144 @@ export const studentRoutes = new Hono()
 
     return c.json({ message: "Student deleted" });
   })
+
+  // PUT /students/:id/exam-date — set or clear the per-(student, course) exam
+  // date override. The learning-map endpoint reads this with priority over
+  // courses.exam_date, so each student can have their own deadline even when
+  // they're working through the same course as another student.
+  //
+  // Body: { course_id, exam_date }  — exam_date null/undefined clears the row.
+  .put(
+    "/:id/exam-date",
+    zValidator("param", uuidParamSchema),
+    zValidator(
+      "json",
+      z.object({
+        course_id: z.string().uuid(),
+        exam_date: z.string().nullable().optional(),
+      })
+    ),
+    async (c) => {
+      const teacherId = c.get("userId");
+      const studentId = c.req.valid("param").id;
+      const { course_id, exam_date } = c.req.valid("json");
+
+      // Ownership: verify the teacher owns both the student and the course.
+      // Without this either side could leak data via crafted IDs.
+      const [owner] = await db
+        .select({ id: students.id })
+        .from(students)
+        .where(
+          and(
+            eq(students.id, studentId),
+            eq(students.teacher_id, teacherId)
+          )
+        )
+        .limit(1);
+      if (!owner) return c.json({ error: "Student not found" }, 404);
+
+      const [courseOwner] = await db
+        .select({ id: courses.id })
+        .from(courses)
+        .where(
+          and(eq(courses.id, course_id), eq(courses.teacher_id, teacherId))
+        )
+        .limit(1);
+      if (!courseOwner) return c.json({ error: "Course not found" }, 404);
+
+      // null/empty clears the override. Any value sets/replaces it.
+      if (!exam_date) {
+        await db
+          .delete(studentCourseExamDates)
+          .where(
+            and(
+              eq(studentCourseExamDates.student_id, studentId),
+              eq(studentCourseExamDates.course_id, course_id)
+            )
+          );
+        return c.json({ exam_date: null });
+      }
+
+      const dt = new Date(exam_date);
+      if (isNaN(dt.getTime())) {
+        return c.json({ error: "Invalid exam_date" }, 400);
+      }
+
+      // Upsert. The (student_id, course_id) tuple is unique by index.
+      await db
+        .insert(studentCourseExamDates)
+        .values({
+          student_id: studentId,
+          course_id,
+          exam_date: dt,
+        })
+        .onConflictDoUpdate({
+          target: [
+            studentCourseExamDates.student_id,
+            studentCourseExamDates.course_id,
+          ],
+          set: { exam_date: dt, updated_at: new Date() },
+        });
+
+      return c.json({ exam_date: dt.toISOString() });
+    }
+  )
+
+  // GET /students/:id/exam-date?course_id=X — read the current effective exam
+  // date for this student in this course. Returns the override if set,
+  // otherwise the course default. Used by the teacher's student-map UI to
+  // pre-fill the date picker.
+  .get(
+    "/:id/exam-date",
+    zValidator("param", uuidParamSchema),
+    zValidator(
+      "query",
+      z.object({ course_id: z.string().uuid() })
+    ),
+    async (c) => {
+      const teacherId = c.get("userId");
+      const studentId = c.req.valid("param").id;
+      const { course_id } = c.req.valid("query");
+
+      const [owner] = await db
+        .select({ id: students.id })
+        .from(students)
+        .where(
+          and(
+            eq(students.id, studentId),
+            eq(students.teacher_id, teacherId)
+          )
+        )
+        .limit(1);
+      if (!owner) return c.json({ error: "Student not found" }, 404);
+
+      const [override] = await db
+        .select({ exam_date: studentCourseExamDates.exam_date })
+        .from(studentCourseExamDates)
+        .where(
+          and(
+            eq(studentCourseExamDates.student_id, studentId),
+            eq(studentCourseExamDates.course_id, course_id)
+          )
+        )
+        .limit(1);
+
+      const [course] = await db
+        .select({ exam_date: courses.exam_date })
+        .from(courses)
+        .where(eq(courses.id, course_id))
+        .limit(1);
+
+      return c.json({
+        override_exam_date: override?.exam_date?.toISOString() ?? null,
+        course_exam_date: course?.exam_date?.toISOString() ?? null,
+        effective_exam_date:
+          override?.exam_date?.toISOString() ??
+          course?.exam_date?.toISOString() ??
+          null,
+      });
+    }
+  )
 
   // POST /students/invite — create a pending invite token (no auth user yet)
   // The student will use the token to register with their own email+password.
