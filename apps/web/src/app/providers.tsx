@@ -36,15 +36,22 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            // Data stays fresh for 30s. Realtime subscriptions invalidate
-            // on actual changes, so a longer staleTime doesn't mean stale
-            // UI — it just avoids redundant fetches on every re-render.
-            staleTime: 30_000,
-            gcTime: 5 * 60_000, // keep unused data 5 min
+            // Realtime subscriptions invalidate the cache when data
+            // actually changes, so we can stay "fresh" for much longer
+            // than 30s without stale UI. The trade-off is that pages
+            // navigated within the staleTime window show cached data
+            // instantly — no loading spinner, no flash. That's the
+            // single biggest perceived-speed win on this app.
+            staleTime: 5 * 60_000, // 5 minutes
+            gcTime: 30 * 60_000, // keep unused data 30 min
             retry: 1,
-            // Refetch on tab focus + network recovery (safety net beyond Realtime)
-            refetchOnWindowFocus: true,
+            // Don't refetch every time the user tabs back in — Realtime
+            // is already telling us about changes, and the focus refetch
+            // was causing visible loading flashes for nothing.
+            refetchOnWindowFocus: false,
             refetchOnReconnect: true,
+            // Refetch on mount only if the query is actually stale.
+            refetchOnMount: false,
           },
           mutations: {
             retry: 0,

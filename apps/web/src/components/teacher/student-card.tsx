@@ -83,7 +83,27 @@ export function StudentCard({
         <Trash2 size={14} className="text-gray-300 hover:text-red-500" />
       </button>
 
-      <Link href={`/teacher/students/${id}`}>
+      <Link
+        href={`/teacher/students/${id}`}
+        prefetch
+        onMouseEnter={() => {
+          // Warm the cache for the destination page so the click feels
+          // instant. Cheap (one HTTP cache hit), idempotent — React
+          // Query dedupes if the data is already fresh.
+          qc.prefetchQuery({
+            queryKey: ["students", id],
+            queryFn: () => api.get(`/students/${id}`),
+          });
+          qc.prefetchQuery({
+            queryKey: ["students", id, "profile"],
+            queryFn: () => api.get(`/students/${id}/profile`),
+          });
+          qc.prefetchQuery({
+            queryKey: ["lessons", { student_id: id }],
+            queryFn: () => api.get(`/lessons?student_id=${id}`),
+          });
+        }}
+      >
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-2 min-w-0">
             <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center flex-shrink-0">
