@@ -7,6 +7,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { api } from "@/lib/api";
 import { LearningMapView } from "@/components/learning-map/learning-map-view";
+import { LearningMapHero } from "@/components/learning-map/learning-map-hero";
 import { CreateLessonModal } from "@/components/teacher/create-lesson-modal";
 import { useT } from "@/i18n";
 import type { LearningMap } from "@studiq/types";
@@ -80,14 +81,15 @@ export default function TeacherLearningMapPage() {
         <ArrowLeft size={14} className="rtl:rotate-180" /> {t("map.backToStudent")}
       </Link>
 
-      <div className="flex items-center justify-between mb-5 gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">{t("map.title")}</h1>
-          {student && (
-            <p className="text-sm text-gray-500 mt-1">{student.full_name}</p>
-          )}
-        </div>
-        {courses.length > 1 && (
+      {/* Same hero the student sees, named after the student so the teacher
+          gets context at a glance and the visual language is consistent. */}
+      <LearningMapHero
+        studentName={student?.full_name ?? null}
+        overallPct={map?.overall.overall_pct ?? 0}
+      />
+
+      {courses.length > 1 && (
+        <div className="flex justify-end mb-4">
           <select
             value={effectiveCourseId}
             onChange={(e) => setCourseId(e.target.value)}
@@ -99,8 +101,8 @@ export default function TeacherLearningMapPage() {
               </option>
             ))}
           </select>
-        )}
-      </div>
+        </div>
+      )}
 
       {isLoading && (
         <div className="text-gray-400 text-sm py-10 text-center">
