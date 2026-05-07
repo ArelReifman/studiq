@@ -38,8 +38,14 @@ export function TaskItem({ item, type, lessonId }: TaskItemProps) {
       qc.setQueryData(queryKey, ctx?.prev);
     },
     onSettled: () => {
+      // The mark drives task counts on the lesson page, the difficulty
+      // chip on the teacher's student page, and the percent / status of
+      // the topic on the learning map — invalidate all of them so every
+      // surface reflects the new state without a manual refresh.
       qc.invalidateQueries({ queryKey });
       qc.invalidateQueries({ queryKey: lessonQueryKey });
+      qc.invalidateQueries({ queryKey: ["difficulties"] });
+      qc.invalidateQueries({ queryKey: ["learning-map"] });
     },
   });
 

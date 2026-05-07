@@ -78,13 +78,13 @@ export function LessonReviewModal({ lesson, onClose }: LessonReviewModalProps) {
       }),
     onSuccess: () => {
       // Invalidate everything that the review can affect: lesson cards
-      // (verdict + flipped task statuses), student AI profile, and
-      // difficulties (which the API now auto-resolves on next_level /
-      // next_topic). Without the difficulties invalidation, the chip
-      // count stays stale until the next route change.
+      // (verdict + flipped task statuses), student AI profile,
+      // difficulties (auto-resolved on next_level / next_topic), and the
+      // learning map (topic progress rolls up from completed tasks).
       qc.invalidateQueries({ queryKey: ["lessons"] });
       qc.invalidateQueries({ queryKey: ["students", lesson.student_id, "profile"] });
       qc.invalidateQueries({ queryKey: ["difficulties"] });
+      qc.invalidateQueries({ queryKey: ["learning-map"] });
       onClose();
     },
   });

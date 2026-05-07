@@ -70,6 +70,28 @@ export function CreateLessonModal({
     setTopicId("");
   }, [courseId]);
 
+  // If the modal opened on a parent topic that has children, jump to
+  // the first child — lessons should attach to a leaf (sub-topic), not
+  // the umbrella, so the map's progress rolls up correctly. Runs once
+  // courseDetail loads so we can see the children.
+  const didResolveParent = useRef(false);
+  useEffect(() => {
+    if (didResolveParent.current) return;
+    if (!courseDetail || !topicId) return;
+    const isParent = courseDetail.topics.some(
+      (tp) => tp.parent_topic_id === topicId
+    );
+    if (isParent) {
+      const firstChild = courseDetail.topics
+        .filter((tp) => tp.parent_topic_id === topicId)
+        .sort((a, b) => a.order_index - b.order_index)[0];
+      if (firstChild) {
+        setTopicId(firstChild.id);
+      }
+    }
+    didResolveParent.current = true;
+  }, [courseDetail, topicId]);
+
   // Auto-fill the title from the selected topic (only if the teacher hasn't typed one manually)
   useEffect(() => {
     if (!titleAutoFilled) return;
@@ -181,12 +203,40 @@ export function CreateLessonModal({
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-gray-50 disabled:text-gray-400"
                 >
                   <option value="">—</option>
-                  {courseDetail?.topics.map((tp) => (
-                    <option key={tp.id} value={tp.id}>
-                      {tp.name}
-                      {tp.is_shared ? " ★" : ""}
-                    </option>
-                  ))}
+                  {/* Render parents and their sub-topics in groups so the
+                      teacher can see which sub-topic belongs to which
+                      parent and pick the leaf (sub-topic) directly — that
+                      matches how lessons should be tied: to the leaf, not
+                      the umbrella. Parents without children stay pickable. */}
+                  {(() => {
+                    const topics = courseDetail?.topics ?? [];
+                    const parents = topics
+                      .filter((tp) => !tp.parent_topic_id)
+                      .sort((a, b) => a.order_index - b.order_index);
+                    return parents.map((parent) => {
+                      const children = topics
+                        .filter((tp) => tp.parent_topic_id === parent.id)
+                        .sort((a, b) => a.order_index - b.order_index);
+                      if (children.length === 0) {
+                        return (
+                          <option key={parent.id} value={parent.id}>
+                            {parent.name}
+                            {parent.is_shared ? " ★" : ""}
+                          </option>
+                        );
+                      }
+                      return (
+                        <optgroup key={parent.id} label={parent.name}>
+                          {children.map((child) => (
+                            <option key={child.id} value={child.id}>
+                              {child.name}
+                              {child.is_shared ? " ★" : ""}
+                            </option>
+                          ))}
+                        </optgroup>
+                      );
+                    });
+                  })()}
                 </select>
               </div>
             </div>
