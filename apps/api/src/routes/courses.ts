@@ -3,7 +3,8 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq, and, asc } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { courses, courseTopics } from "../db/schema.js";
+import { courses, courseTopics, lessonSessions } from "../db/schema.js";
+import { sql } from "drizzle-orm";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { uuidParamSchema, courseTopicParamSchema } from "../lib/validators.js";
 
@@ -190,6 +191,21 @@ export const coursesRoutes = new Hono()
       if (!course) return c.json({ error: "Course not found" }, 404);
 
       const body = c.req.valid("json");
+      const newName = body.name?.trim();
+
+      // Capture the previous topic name before the update so we can
+      // rewrite auto-generated lesson titles that started with it. The
+      // create-lesson form sets titles as "TopicName — YYYY-MM-DD" by
+      // default, so renaming a topic should propagate to every lesson
+      // that still uses that prefix.
+      const [previous] = newName
+        ? await db
+            .select({ name: courseTopics.name })
+            .from(courseTopics)
+            .where(eq(courseTopics.id, topicId))
+            .limit(1)
+        : [undefined];
+
       const [updated] = await db
         .update(courseTopics)
         .set({
@@ -216,6 +232,27 @@ export const coursesRoutes = new Hono()
         )
         .returning();
       if (!updated) return c.json({ error: "Topic not found" }, 404);
+
+      // If the name actually changed, rewrite the prefix of any lesson
+      // title still using "<oldName> — ". Custom titles the teacher
+      // typed by hand are left untouched because they don't match the
+      // exact prefix.
+      if (newName && previous && previous.name !== newName) {
+        const oldPrefix = `${previous.name} — `;
+        const newPrefix = `${newName} — `;
+        await db
+          .update(lessonSessions)
+          .set({
+            title: sql`${newPrefix} || substring(${lessonSessions.title} from ${oldPrefix.length + 1})`,
+          })
+          .where(
+            and(
+              eq(lessonSessions.topic_id, topicId),
+              sql`${lessonSessions.title} LIKE ${oldPrefix + "%"}`
+            )
+          );
+      }
+
       return c.json(updated);
     }
   )

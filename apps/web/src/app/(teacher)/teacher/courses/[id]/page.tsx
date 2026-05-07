@@ -63,7 +63,15 @@ export default function CourseDetailPage() {
   const patchTopic = useMutation({
     mutationFn: (args: { id: string; body: Record<string, unknown> }) =>
       api.patch(`/courses/${courseId}/topics/${args.id}`, args.body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["courses", courseId] }),
+    onSuccess: () => {
+      // The course tree refreshes for sure. Lessons + learning maps
+      // also need to refresh because renaming a topic rewrites lesson
+      // titles on the server, and reordering / locking changes how the
+      // map renders.
+      qc.invalidateQueries({ queryKey: ["courses", courseId] });
+      qc.invalidateQueries({ queryKey: ["lessons"] });
+      qc.invalidateQueries({ queryKey: ["learning-map"] });
+    },
   });
 
   const deleteTopic = useMutation({
