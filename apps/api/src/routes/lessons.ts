@@ -371,6 +371,36 @@ export const lessonRoutes = new Hono()
 
       if (!updated) return c.json({ error: "Lesson not found" }, 404);
 
+      // When the teacher signs off on the student moving forward
+      // (next_level / next_topic), every difficulty_report tied to a
+      // homework or todo from this lesson is implicitly resolved — the
+      // teacher already saw the issue and decided it's not blocking.
+      // Mark them reviewed so they drop out of the "1 not reviewed"
+      // chip on the student page. "repeat" leaves them unreviewed since
+      // the work isn't done yet.
+      if (teacher_decision === "next_level" || teacher_decision === "next_topic") {
+        const [hwOfLesson, tdOfLesson] = await Promise.all([
+          db
+            .select({ id: homeworkItems.id })
+            .from(homeworkItems)
+            .where(eq(homeworkItems.lesson_id, lessonId)),
+          db
+            .select({ id: todoItems.id })
+            .from(todoItems)
+            .where(eq(todoItems.lesson_id, lessonId)),
+        ]);
+        const sourceIds = [
+          ...hwOfLesson.map((h) => h.id),
+          ...tdOfLesson.map((t) => t.id),
+        ];
+        if (sourceIds.length > 0) {
+          await db
+            .update(difficultyReports)
+            .set({ reviewed: true })
+            .where(inArray(difficultyReports.source_id, sourceIds));
+        }
+      }
+
       // Fire-and-forget: refresh student AI profile so the teacher's verdict
       // is immediately incorporated before the next lesson is planned.
       updateStudentProfile(updated.student_id, updated.id, updated.title).catch(
