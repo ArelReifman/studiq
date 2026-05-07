@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   TrendingUp,
   ThumbsUp,
+  CalendarClock,
 } from "lucide-react";
 import type {
   LearningMap,
@@ -56,19 +57,46 @@ export function LearningMapView({
   const [activeId, setActiveId] = useState<string | null>(initialId);
   const active = topics.find((tp) => tp.id === activeId) ?? null;
 
+  // Recommendation order — exam-aware. Topics with imminent deadlines and
+  // weak mastery jump the queue; only when the schedule is calm do we fall
+  // back to the original "weakest topic" heuristic.
   const recommendation = useMemo(() => {
-    const struggling = topics.find(
-      (tp) => tp.stats.status === "struggling" && !tp.locked
-    );
+    const open = topics.filter((tp) => !tp.locked);
+    const withUrgency = open.map((tp) => ({
+      tp,
+      days: deadlineDaysUntil(tp.effective_deadline),
+    }));
+
+    // 1. Critical: <= 7 days left and below 70% mastery — this is the topic
+    //    that will fail the exam.
+    const critical = withUrgency
+      .filter(
+        ({ tp, days }) => days !== null && days >= 0 && days <= 7 && tp.stats.pct < 70
+      )
+      .sort((a, b) => a.tp.stats.pct - b.tp.stats.pct);
+    if (critical[0]) return critical[0].tp;
+
+    // 2. Soon: <= 21 days and not mastered.
+    const soon = withUrgency
+      .filter(
+        ({ tp, days }) =>
+          days !== null && days >= 0 && days <= 21 && tp.stats.status !== "mastered"
+      )
+      .sort((a, b) => {
+        // Closer deadline wins; tie-broken by lower mastery.
+        if (a.days !== b.days) return (a.days ?? 0) - (b.days ?? 0);
+        return a.tp.stats.pct - b.tp.stats.pct;
+      });
+    if (soon[0]) return soon[0].tp;
+
+    // 3. Fallback: original heuristic — struggling > in_progress > anything.
+    const struggling = open.find((tp) => tp.stats.status === "struggling");
     if (struggling) return struggling;
-    const inProgress = topics
-      .filter((tp) => tp.stats.status === "in_progress" && !tp.locked)
+    const inProgress = open
+      .filter((tp) => tp.stats.status === "in_progress")
       .sort((a, b) => a.stats.pct - b.stats.pct)[0];
     if (inProgress) return inProgress;
-    const notStarted = topics.find(
-      (tp) => tp.stats.status === "not_started" && !tp.locked
-    );
-    return notStarted ?? topics.find((tp) => !tp.locked) ?? null;
+    return open.find((tp) => tp.stats.status === "not_started") ?? open[0] ?? null;
   }, [topics]);
 
   const counts = map.overall;
@@ -526,7 +554,7 @@ function TopicCard({
         )}`}
       />
 
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2 gap-1">
         <span
           className={`text-[9px] font-bold tracking-wider uppercase ${statusText(
             status
@@ -534,6 +562,7 @@ function TopicCard({
         >
           {statusLabel(t, status, role)}
         </span>
+        <DeadlineBadge deadline={tp.effective_deadline} pct={tp.stats.pct} />
         <div className="flex items-center gap-1.5">
           <span className="text-[9px] text-gray-400">
             {t("map.lessonsCount", { count: tp.stats.lessons_total })}
@@ -810,6 +839,64 @@ function barBg(s: TopicStatus): string {
     default:
       return "bg-gray-300";
   }
+}
+
+// ─── Deadline helpers ─────────────────────────────────────────────────────
+
+/** Days from today (00:00 local) to deadline. Negative = past. Null = no
+ *  deadline set on the topic or course. */
+function deadlineDaysUntil(deadline: string | null): number | null {
+  if (!deadline) return null;
+  const target = new Date(deadline + "T00:00:00");
+  if (isNaN(target.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil(
+    (target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+  );
+}
+
+/** Small pill on a topic card surfacing imminent deadlines. Quiet by
+ *  default — only renders inside the danger window or when overdue while
+ *  the topic isn't mastered yet. */
+function DeadlineBadge({
+  deadline,
+  pct,
+}: {
+  deadline: string | null;
+  pct: number;
+}) {
+  const t = useT();
+  const days = deadlineDaysUntil(deadline);
+  if (days === null) return null;
+  // Once the student is at 100% the topic is done — the deadline doesn't
+  // need to scream at them anymore.
+  if (pct >= 100) return null;
+  // Render only when within the meaningful window. Far-future deadlines
+  // would just clutter the cards.
+  if (days > 21 && days >= 0) return null;
+
+  const overdue = days < 0;
+  const tone = overdue
+    ? "bg-red-100 text-red-700 border-red-200"
+    : days <= 7
+      ? "bg-red-50 text-red-700 border-red-200"
+      : "bg-amber-50 text-amber-700 border-amber-200";
+
+  const label = overdue
+    ? t("map.deadlineOverdue")
+    : days === 0
+      ? t("map.deadlineToday")
+      : t("map.deadlineDays", { count: days });
+
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 text-[9px] font-bold tabular-nums border rounded px-1.5 py-0.5 ${tone}`}
+    >
+      <CalendarClock size={9} />
+      {label}
+    </span>
+  );
 }
 
 function ringStroke(s: TopicStatus): string {
