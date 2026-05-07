@@ -1,17 +1,175 @@
 "use client";
 
 /**
- * Hero strip for the student's "My learning map" page — sets a friendly
- * "you're on a journey" tone before they see the topic grid below.
+ * Hero strip for the student's "My learning map" page.
  *
- * The illustration is an inline SVG (mountain + path + flag) so we don't
- * pull in extra image assets and so it inherits brand colors via Tailwind.
+ * Has two faces:
+ *  1. With an exam date set on the course — countdown card with days remaining,
+ *     mastery percent, and a triage line ("3 topics in danger / 7 mastered").
+ *     This is the "real" student face — academic students live around exam dates.
+ *  2. Without an exam date — softer welcome with overall progress only. Falls
+ *     back here so the map keeps working for teachers who haven't filled the
+ *     course details yet.
  *
- * Teacher view skips this — they want data density, not motivation.
+ * Teacher view of the map skips this entirely (they want data density, not
+ * motivation).
  */
 import { useT } from "@/i18n";
+import { CalendarClock, Target, AlertTriangle, CheckCircle2 } from "lucide-react";
+import type { LearningMapTopic } from "@studiq/types";
 
 export function LearningMapHero({
+  studentName,
+  courseName,
+  overallPct,
+  examDate,
+  topics,
+}: {
+  studentName?: string | null;
+  courseName?: string | null;
+  overallPct: number;
+  /** ISO timestamp of the course exam, or null if not set. */
+  examDate?: string | null;
+  /** Top-level topics — used to count "in danger" without re-fetching. */
+  topics?: LearningMapTopic[];
+}) {
+  const t = useT();
+
+  // No exam date → fall back to the lightweight progress hero.
+  if (!examDate) {
+    return <SoftHero studentName={studentName} overallPct={overallPct} />;
+  }
+
+  const exam = new Date(examDate);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const daysUntil = Math.ceil((exam.getTime() - today.getTime()) / msPerDay);
+
+  // "In danger" = below 70% mastery AND the deadline is within the relevant
+  // window. The window scales with how close the exam is: when there's a
+  // month left, only topics with imminent deadlines count; when the exam is
+  // next week, every unmastered topic is in danger.
+  const dangerCutoff = daysUntil <= 14 ? Infinity : 14;
+  const inDanger = (topics ?? []).filter((t) => {
+    if (t.locked) return false;
+    if (t.stats.pct >= 70) return false;
+    const dl = effectiveDeadlineDays(t.effective_deadline);
+    return dl !== null && dl <= dangerCutoff;
+  }).length;
+  const mastered = (topics ?? []).filter(
+    (t) => t.stats.status === "mastered"
+  ).length;
+
+  const pastExam = daysUntil < 0;
+  const dateFormatted = exam.toLocaleDateString(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
+  // Tone of the countdown ribbon. Drives the band color so the urgency
+  // is felt before any text is read.
+  const tone =
+    pastExam
+      ? "from-gray-100 to-white border-gray-200"
+      : daysUntil <= 7
+        ? "from-red-50 to-white border-red-200"
+        : daysUntil <= 21
+          ? "from-amber-50 to-white border-amber-200"
+          : "from-brand-50 via-white to-white border-brand-100";
+
+  return (
+    <div
+      className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br ${tone} px-5 sm:px-7 py-5 sm:py-6 mb-5`}
+    >
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
+        {/* Countdown block — biggest piece of UI on the screen, intentional. */}
+        <div className="flex-shrink-0 flex flex-col items-start">
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold tracking-wider uppercase text-gray-500 bg-white/70 backdrop-blur rounded-full px-2 py-0.5 border border-gray-200">
+            <CalendarClock size={11} />
+            {t("map.heroExamLabel")}
+          </span>
+          <div className="mt-2 flex items-baseline gap-2 tabular-nums">
+            <span
+              className={`text-5xl sm:text-6xl font-extrabold leading-none ${
+                pastExam
+                  ? "text-gray-400"
+                  : daysUntil <= 7
+                    ? "text-red-600"
+                    : daysUntil <= 21
+                      ? "text-amber-700"
+                      : "text-brand-700"
+              }`}
+            >
+              {pastExam ? "—" : daysUntil}
+            </span>
+            <span className="text-sm font-semibold text-gray-600">
+              {pastExam
+                ? t("map.heroExamPassed")
+                : daysUntil === 0
+                  ? t("map.heroExamToday")
+                  : daysUntil === 1
+                    ? t("map.heroDay")
+                    : t("map.heroDays")}
+            </span>
+          </div>
+          <span className="text-xs text-gray-500 mt-1">{dateFormatted}</span>
+        </div>
+
+        {/* Right-hand block — title + course + mastery bar */}
+        <div className="flex-1 min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight truncate">
+            {courseName ?? t("map.myTitle")}
+            {studentName ? (
+              <span className="text-gray-400 font-normal">
+                {" · "}
+                {studentName}
+              </span>
+            ) : null}
+          </h1>
+
+          <div className="mt-3 flex items-center gap-3">
+            <div className="flex-1 h-2 bg-white rounded-full overflow-hidden border border-gray-100">
+              <div
+                className="h-full bg-gradient-to-r from-brand-400 to-brand-600 transition-all"
+                style={{ width: `${overallPct}%` }}
+              />
+            </div>
+            <span className="text-sm font-bold text-brand-700 tabular-nums whitespace-nowrap">
+              {overallPct}%
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 mt-1">{t("map.heroMasteryLabel")}</p>
+
+          {/* Triage line — only render if we have signal. Quiet success when
+              everything's mastered, loud warning when topics are in danger. */}
+          {(inDanger > 0 || mastered > 0) && (
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+              {inDanger > 0 && (
+                <span className="inline-flex items-center gap-1.5 text-red-700 font-medium">
+                  <AlertTriangle size={12} />
+                  {t("map.heroInDanger", { count: inDanger })}
+                </span>
+              )}
+              {mastered > 0 && (
+                <span className="inline-flex items-center gap-1.5 text-green-700">
+                  <CheckCircle2 size={12} />
+                  {t("map.heroMastered", { count: mastered })}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Lightweight hero for courses without an exam date set. Plain, professional,
+ *  no decorative illustration. */
+function SoftHero({
   studentName,
   overallPct,
 }: {
@@ -19,113 +177,44 @@ export function LearningMapHero({
   overallPct: number;
 }) {
   const t = useT();
-
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 via-white to-white px-5 sm:px-7 py-5 sm:py-6 mb-5">
-      {/* Decorative mountain illustration on the far end */}
-      <MountainArt />
-
-      <div className="relative z-10 max-w-[60%]">
-        <span className="inline-flex items-center gap-1.5 text-[10px] font-bold tracking-wider uppercase text-brand-700 bg-white/70 backdrop-blur rounded-full px-2.5 py-1 border border-brand-100">
-          <span className="w-1.5 h-1.5 rounded-full bg-brand-500" />
-          {t("map.heroBadge")}
-        </span>
-        <h1 className="mt-3 text-2xl sm:text-3xl font-bold text-gray-900 leading-tight">
-          {t("map.myTitle")}
-          {studentName ? <span className="text-brand-600"> · {studentName}</span> : null}
-        </h1>
-        <p className="text-sm text-gray-600 mt-1.5 max-w-md">
-          {t("map.mySubtitle")}
-        </p>
-
-        <div className="mt-4 flex items-center gap-3">
-          <div className="flex-1 max-w-[280px] h-2 bg-white rounded-full overflow-hidden border border-brand-100">
-            <div
-              className="h-full bg-gradient-to-r from-brand-400 to-brand-600 transition-all"
-              style={{ width: `${overallPct}%` }}
-            />
-          </div>
-          <span className="text-sm font-bold text-brand-700 tabular-nums">
-            {overallPct}%
-          </span>
+    <div className="rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 to-white px-5 sm:px-7 py-5 mb-5">
+      <span className="inline-flex items-center gap-1.5 text-[10px] font-bold tracking-wider uppercase text-brand-700 bg-white/70 backdrop-blur rounded-full px-2.5 py-1 border border-brand-100">
+        <Target size={11} />
+        {t("map.heroBadge")}
+      </span>
+      <h1 className="mt-3 text-2xl font-bold text-gray-900 leading-tight">
+        {t("map.myTitle")}
+        {studentName ? (
+          <span className="text-brand-600"> · {studentName}</span>
+        ) : null}
+      </h1>
+      <p className="text-sm text-gray-600 mt-1.5 max-w-md">
+        {t("map.mySubtitle")}
+      </p>
+      <div className="mt-4 flex items-center gap-3 max-w-md">
+        <div className="flex-1 h-2 bg-white rounded-full overflow-hidden border border-brand-100">
+          <div
+            className="h-full bg-gradient-to-r from-brand-400 to-brand-600 transition-all"
+            style={{ width: `${overallPct}%` }}
+          />
         </div>
+        <span className="text-sm font-bold text-brand-700 tabular-nums">
+          {overallPct}%
+        </span>
       </div>
     </div>
   );
 }
 
-function MountainArt() {
-  // Pure decorative — sits on the inline-end (right in RTL, left in LTR)
-  // and is partially clipped at small viewports. aria-hidden so screen
-  // readers skip it.
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 320 160"
-      className="absolute top-0 bottom-0 end-0 h-full w-[320px] opacity-90 pointer-events-none rtl:scale-x-[-1]"
-      preserveAspectRatio="xMaxYMid slice"
-    >
-      <defs>
-        <linearGradient id="hero-sky" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#E0F2FE" />
-          <stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
-        </linearGradient>
-        <linearGradient id="hero-mtn" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#7DD3FC" />
-          <stop offset="100%" stopColor="#0284C7" />
-        </linearGradient>
-        <linearGradient id="hero-mtn-back" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#BAE6FD" />
-          <stop offset="100%" stopColor="#38BDF8" />
-        </linearGradient>
-      </defs>
-
-      {/* Sky wash */}
-      <rect x="0" y="0" width="320" height="160" fill="url(#hero-sky)" />
-
-      {/* Back mountain */}
-      <path
-        d="M 0 130 L 90 60 L 160 110 L 220 75 L 320 130 L 320 160 L 0 160 Z"
-        fill="url(#hero-mtn-back)"
-        opacity="0.55"
-      />
-
-      {/* Front mountain */}
-      <path
-        d="M 40 145 L 140 50 L 200 100 L 260 70 L 320 120 L 320 160 L 40 160 Z"
-        fill="url(#hero-mtn)"
-      />
-
-      {/* Snow caps on the front peak */}
-      <path
-        d="M 140 50 L 158 67 L 145 70 L 132 64 Z"
-        fill="#FFFFFF"
-        opacity="0.85"
-      />
-      <path
-        d="M 260 70 L 270 80 L 258 82 L 252 78 Z"
-        fill="#FFFFFF"
-        opacity="0.7"
-      />
-
-      {/* Flag on the summit */}
-      <line x1="140" y1="50" x2="140" y2="32" stroke="#0F172A" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M 140 32 L 154 36 L 140 42 Z" fill="#F59E0B" />
-
-      {/* Dotted journey path */}
-      <path
-        d="M 30 145 Q 70 130 90 120 T 120 80 Q 132 62 140 50"
-        fill="none"
-        stroke="#0EA5E9"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeDasharray="2 5"
-        opacity="0.6"
-      />
-
-      {/* Pin at start */}
-      <circle cx="30" cy="145" r="4" fill="#0EA5E9" />
-      <circle cx="30" cy="145" r="9" fill="#0EA5E9" opacity="0.18" />
-    </svg>
+/** Days from today to the topic's effective deadline. Negative = past.
+ *  Returns null when no deadline is set. */
+function effectiveDeadlineDays(deadline: string | null): number | null {
+  if (!deadline) return null;
+  const target = new Date(deadline + "T00:00:00");
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil(
+    (target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
   );
 }

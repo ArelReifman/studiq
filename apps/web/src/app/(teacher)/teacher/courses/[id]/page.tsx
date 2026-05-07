@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Plus, Trash2, Share2, ChevronUp, ChevronDown,
-  Pencil, Check, X,
+  Pencil, Check, X, CalendarDays,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -45,17 +45,23 @@ export default function CourseDetailPage() {
   const [editingCourse, setEditingCourse] = useState(false);
   const [courseName, setCourseName] = useState("");
   const [courseDesc, setCourseDesc] = useState("");
+  // Date picker emits "" for empty, otherwise YYYY-MM-DD. We send null to
+  // the API to clear the column.
+  const [courseExamDate, setCourseExamDate] = useState("");
 
   const saveCourse = useMutation({
     mutationFn: () =>
       api.patch(`/courses/${courseId}`, {
         name: courseName.trim(),
         description: courseDesc.trim() || undefined,
+        exam_date: courseExamDate || null,
       }),
     onSuccess: () => {
       setEditingCourse(false);
       qc.invalidateQueries({ queryKey: ["courses", courseId] });
       qc.invalidateQueries({ queryKey: ["courses"] });
+      // The student-facing learning map reads exam_date — keep it in sync.
+      qc.invalidateQueries({ queryKey: ["learning-map"] });
     },
   });
 
@@ -184,6 +190,21 @@ export default function CourseDetailPage() {
               placeholder={t("courses.descriptionPlaceholder")}
               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
+            <div>
+              <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1">
+                <CalendarDays size={13} />
+                {t("courses.examDateLabel")}
+              </label>
+              <input
+                type="date"
+                value={courseExamDate}
+                onChange={(e) => setCourseExamDate(e.target.value)}
+                className="w-full sm:w-64 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                {t("courses.examDateHint")}
+              </p>
+            </div>
             <div className="flex gap-2">
               <Button size="sm" disabled={!courseName.trim() || saveCourse.isPending} onClick={() => saveCourse.mutate()}>
                 <Check size={14} className="me-1" /> {t("common.save")}
@@ -200,9 +221,19 @@ export default function CourseDetailPage() {
               {course.description && (
                 <p className="text-sm text-gray-500 mt-1">{course.description}</p>
               )}
+              <CourseExamBadge examDateIso={course.exam_date} />
             </div>
             <button
-              onClick={() => { setCourseName(course.name); setCourseDesc(course.description ?? ""); setEditingCourse(true); }}
+              onClick={() => {
+                setCourseName(course.name);
+                setCourseDesc(course.description ?? "");
+                // Convert "2026-08-05T00:00:00.000Z" → "2026-08-05" for the
+                // <input type="date">. Empty when not set.
+                setCourseExamDate(
+                  course.exam_date ? course.exam_date.slice(0, 10) : ""
+                );
+                setEditingCourse(true);
+              }}
               className="text-gray-300 hover:text-brand-500 opacity-0 group-hover:opacity-100 transition-opacity mt-1"
             >
               <Pencil size={16} />
@@ -379,5 +410,46 @@ export default function CourseDetailPage() {
         <p className="text-xs text-gray-400 pt-1">{t("courses.sharedHint")}</p>
       </div>
     </div>
+  );
+}
+
+/** Inline pill that surfaces the course exam date + days-until in the
+ *  course header. Hidden when no exam date has been set. */
+function CourseExamBadge({ examDateIso }: { examDateIso: string | null }) {
+  const t = useT();
+  if (!examDateIso) return null;
+  const exam = new Date(examDateIso);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.ceil(
+    (exam.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+  );
+  const formatted = exam.toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  // Past exam → muted. Future → brand. Today → amber.
+  const tone =
+    days < 0
+      ? "border-gray-200 text-gray-400 bg-gray-50"
+      : days <= 14
+        ? "border-amber-200 text-amber-700 bg-amber-50"
+        : "border-brand-200 text-brand-700 bg-brand-50";
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 mt-2 text-xs font-medium border rounded-full px-2.5 py-1 ${tone}`}
+    >
+      <CalendarDays size={12} />
+      {t("courses.examOn", { date: formatted })}
+      <span className="opacity-70">·</span>
+      <span className="tabular-nums">
+        {days < 0
+          ? t("courses.examPassed")
+          : days === 0
+            ? t("courses.examToday")
+            : t("courses.daysAway", { count: days })}
+      </span>
+    </span>
   );
 }

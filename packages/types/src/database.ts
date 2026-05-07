@@ -57,6 +57,8 @@ export interface Course {
   teacher_id: string;
   name: string;
   description: string | null;
+  /** ISO timestamp of the course exam, or null if not yet set. */
+  exam_date: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -71,6 +73,9 @@ export interface CourseTopic {
   order_index: number;
   parent_topic_id: string | null;
   is_locked: boolean;
+  /** ISO date (YYYY-MM-DD) by which this topic should be mastered, or null
+   *  to fall back to the course's exam_date. */
+  target_date: string | null;
   created_at: string;
 }
 
@@ -263,6 +268,9 @@ export interface LearningMapTopic {
   is_shared: boolean;
   prerequisite_topic_ids: string[];
   locked: boolean; // prerequisites not yet mastered
+  /** Effective deadline for this topic (topic.target_date ?? course.exam_date),
+   *  or null if neither is set. ISO YYYY-MM-DD. */
+  effective_deadline: string | null;
   stats: TopicStats;
   children: LearningMapTopic[];
 }
@@ -270,6 +278,8 @@ export interface LearningMapTopic {
 export interface LearningMap {
   course_id: string;
   course_name: string;
+  /** ISO timestamp of the course exam, or null if the teacher hasn't set one. */
+  exam_date: string | null;
   student_id: string;
   topics: LearningMapTopic[]; // top-level (parent_topic_id = null)
   overall: {

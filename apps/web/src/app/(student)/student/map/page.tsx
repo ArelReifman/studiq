@@ -44,7 +44,10 @@ export default function StudentLearningMapPage() {
     <div className="flex flex-col flex-1 min-h-0">
       <LearningMapHero
         studentName={user?.full_name ?? null}
+        courseName={map?.course_name ?? null}
         overallPct={map?.overall.overall_pct ?? 0}
+        examDate={map?.exam_date ?? null}
+        topics={map?.topics ?? []}
       />
 
       {isLoading && (

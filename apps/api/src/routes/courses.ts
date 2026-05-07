@@ -11,6 +11,10 @@ import { uuidParamSchema, courseTopicParamSchema } from "../lib/validators.js";
 const courseSchema = z.object({
   name: z.string().min(1).max(120),
   description: z.string().max(2000).optional(),
+  // ISO timestamp ("2026-08-05T09:00:00Z") or null to clear. Accepts either
+  // a full timestamp or a YYYY-MM-DD date — the client picker emits date
+  // strings; we let the DB parse them as UTC midnight.
+  exam_date: z.string().nullable().optional(),
 });
 
 const topicSchema = z.object({
@@ -23,6 +27,9 @@ const topicSchema = z.object({
   // Manual gate the teacher can toggle from the learning map. Defaults
   // to locked so new topics stay hidden until the teacher unlocks them.
   is_locked: z.boolean().default(true),
+  // Per-topic deadline (YYYY-MM-DD). When NULL the learning map falls back
+  // to the course's exam_date.
+  target_date: z.string().nullable().optional(),
 });
 
 const topicUpdateSchema = topicSchema.partial();
@@ -65,6 +72,7 @@ export const coursesRoutes = new Hono()
         teacher_id: teacherId,
         name: body.name.trim(),
         description: body.description?.trim() || null,
+        exam_date: body.exam_date ? new Date(body.exam_date) : null,
       })
       .returning();
     return c.json(row, 201);
@@ -122,6 +130,9 @@ export const coursesRoutes = new Hono()
         ...(body.description !== undefined
           ? { description: body.description?.trim() || null }
           : {}),
+        ...(body.exam_date !== undefined
+          ? { exam_date: body.exam_date ? new Date(body.exam_date) : null }
+          : {}),
         updated_at: new Date(),
       })
       .where(and(eq(courses.id, courseId), eq(courses.teacher_id, teacherId)))
@@ -169,6 +180,7 @@ export const coursesRoutes = new Hono()
           prerequisite_topic_ids: body.prerequisite_topic_ids,
           order_index: body.order_index,
           parent_topic_id: body.parent_topic_id ?? null,
+          target_date: body.target_date || null,
         })
         .returning();
       return c.json(topic, 201);
@@ -222,6 +234,9 @@ export const coursesRoutes = new Hono()
             : {}),
           ...(body.is_locked !== undefined
             ? { is_locked: body.is_locked }
+            : {}),
+          ...(body.target_date !== undefined
+            ? { target_date: body.target_date || null }
             : {}),
         })
         .where(

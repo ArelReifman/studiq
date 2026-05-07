@@ -95,10 +95,16 @@ export default function TeacherLearningMapPage() {
       </Link>
 
       {/* Same hero the student sees, named after the student so the teacher
-          gets context at a glance and the visual language is consistent. */}
+          gets context at a glance and the visual language is consistent.
+          Pass the full map (course name, exam date, topics) so the teacher
+          gets the same exam-aware countdown the student does — that's the
+          whole point of consistent triage signals. */}
       <LearningMapHero
         studentName={student?.full_name ?? null}
+        courseName={map?.course_name ?? null}
         overallPct={map?.overall.overall_pct ?? 0}
+        examDate={map?.exam_date ?? null}
+        topics={map?.topics ?? []}
       />
 
       {courses.length > 1 && (

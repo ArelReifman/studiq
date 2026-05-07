@@ -251,6 +251,9 @@ export const courses = pgTable(
       .references(() => teachers.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     description: text("description"),
+    // When the student takes the course exam. Drives the countdown hero
+    // and exam-aware recommendations on the learning map.
+    exam_date: timestamp("exam_date", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -286,6 +289,10 @@ export const courseTopics = pgTable(
     // is enough to keep the topic gated. Defaults to locked so new
     // topics stay hidden until the teacher actively unlocks them.
     is_locked: boolean("is_locked").notNull().default(true),
+    // Optional per-topic deadline. Falls back to the course's exam_date when
+    // NULL. Lets the teacher say "topic 1 should be solid by week 4 even
+    // though the exam is later" so urgency reflects mid-semester quizzes.
+    target_date: date("target_date"),
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

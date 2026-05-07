@@ -86,11 +86,19 @@ export const learningMapRoutes = new Hono()
 
     // 1. Fetch course
     const [course] = await db
-      .select({ id: courses.id, name: courses.name })
+      .select({
+        id: courses.id,
+        name: courses.name,
+        exam_date: courses.exam_date,
+      })
       .from(courses)
       .where(eq(courses.id, courseId))
       .limit(1);
     if (!course) return c.json({ error: "Course not found" }, 404);
+
+    const examDateIso = course.exam_date
+      ? course.exam_date.toISOString()
+      : null;
 
     // 2. Fetch all topics for this course (both levels)
     const topics = await db
@@ -102,6 +110,7 @@ export const learningMapRoutes = new Hono()
       return c.json({
         course_id: course.id,
         course_name: course.name,
+        exam_date: examDateIso,
         student_id: studentId,
         topics: [],
         overall: {
@@ -228,6 +237,14 @@ export const learningMapRoutes = new Hono()
         (pid) => topicIdToStats(pid).status !== "mastered"
       );
       const locked = t.is_locked || explicitLocked;
+      // Effective deadline: topic-specific date wins, falling back to the
+      // course exam date so a topic without its own date still drives
+      // urgency on the student's UI. Course exam_date is a timestamptz —
+      // strip to YYYY-MM-DD so the frontend gets a uniform date string.
+      const effective_deadline =
+        t.target_date ?? (course.exam_date
+          ? course.exam_date.toISOString().slice(0, 10)
+          : null);
       return {
         id: t.id,
         name: t.name,
@@ -237,6 +254,7 @@ export const learningMapRoutes = new Hono()
         is_shared: t.is_shared,
         prerequisite_topic_ids: t.prerequisite_topic_ids,
         locked,
+        effective_deadline,
         stats,
         children: [],
       };
@@ -282,6 +300,7 @@ export const learningMapRoutes = new Hono()
     const map: LearningMap = {
       course_id: course.id,
       course_name: course.name,
+      exam_date: examDateIso,
       student_id: studentId,
       topics: roots,
       overall,
