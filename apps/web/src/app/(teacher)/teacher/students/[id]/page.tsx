@@ -177,37 +177,42 @@ export default function StudentDetailPage() {
 
         {/* Lessons + Difficulties */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Recent Difficulties */}
-          {difficulties.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <AlertTriangle size={15} className="text-red-400" />
-                <h2 className="font-semibold text-sm text-gray-600">
-                  {t("studentDetail.recentDifficulties", { count: difficulties.filter((d) => !d.reviewed).length })}
-                </h2>
-              </div>
-              <div className="space-y-2">
-                {difficulties.slice(0, 5).map((d) => (
-                  <Card key={d.id} className="p-3">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="text-xs text-gray-700">{d.description}</p>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {d.topic_tags.map((tag) => (
-                            <Badge key={tag} variant="warning" className="text-xs">{tag}</Badge>
-                          ))}
+          {/* Recent Difficulties — only the unreviewed ones. Once a
+              difficulty is marked reviewed (either explicitly or via a
+              "next_level"/"next_topic" lesson decision) it falls out of
+              this section to keep the teacher focused on what's pending. */}
+          {(() => {
+            const openDifficulties = difficulties.filter((d) => !d.reviewed);
+            if (openDifficulties.length === 0) return null;
+            return (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertTriangle size={15} className="text-red-400" />
+                  <h2 className="font-semibold text-sm text-gray-600">
+                    {t("studentDetail.recentDifficulties", { count: openDifficulties.length })}
+                  </h2>
+                </div>
+                <div className="space-y-2">
+                  {openDifficulties.slice(0, 5).map((d) => (
+                    <Card key={d.id} className="p-3">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-xs text-gray-700">{d.description}</p>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {d.topic_tags.map((tag) => (
+                              <Badge key={tag} variant="warning" className="text-xs">{tag}</Badge>
+                            ))}
+                          </div>
+                          <p className="text-xs text-gray-300 mt-1">{formatDate(d.created_at)}</p>
                         </div>
-                        <p className="text-xs text-gray-300 mt-1">{formatDate(d.created_at)}</p>
-                      </div>
-                      {!d.reviewed && (
                         <Badge variant="danger" className="flex-shrink-0 ms-2">{t("studentDetail.new")}</Badge>
-                      )}
-                    </div>
-                  </Card>
-                ))}
+                      </div>
+                    </Card>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Lessons */}
           <div>

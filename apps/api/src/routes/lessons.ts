@@ -372,12 +372,20 @@ export const lessonRoutes = new Hono()
       if (!updated) return c.json({ error: "Lesson not found" }, 404);
 
       // When the teacher signs off on the student moving forward
-      // (next_level / next_topic), every difficulty_report tied to a
-      // homework or todo from this lesson is implicitly resolved — the
-      // teacher already saw the issue and decided it's not blocking.
-      // Mark them reviewed so they drop out of the "1 not reviewed"
-      // chip on the student page. "repeat" leaves them unreviewed since
-      // the work isn't done yet.
+      // (next_level / next_topic), the conversation between teacher and
+      // student already resolved any failed tasks — the teacher
+      // explained, the student got it. Three updates flow from that
+      // verdict:
+      //   1. Flip every "failed" homework / todo on this lesson to
+      //      "completed" so the lesson reads 100% in stats and the
+      //      student's profile reflects the post-explanation state.
+      //   2. Wipe the marked_at field on those flipped items so the
+      //      timeline doesn't claim the student "failed at 14:32 then
+      //      completed at 14:32" — the recovery happened offline.
+      //   3. Mark every difficulty_report tied to this lesson's items
+      //      as reviewed so the "X not reviewed" chip clears.
+      // "repeat" intentionally does none of this — the work isn't done
+      // yet, the student needs another pass.
       if (teacher_decision === "next_level" || teacher_decision === "next_topic") {
         const [hwOfLesson, tdOfLesson] = await Promise.all([
           db
@@ -393,6 +401,29 @@ export const lessonRoutes = new Hono()
           ...hwOfLesson.map((h) => h.id),
           ...tdOfLesson.map((t) => t.id),
         ];
+
+        // Promote failed → completed for tasks tied to this lesson.
+        await Promise.all([
+          db
+            .update(homeworkItems)
+            .set({ status: "completed" })
+            .where(
+              and(
+                eq(homeworkItems.lesson_id, lessonId),
+                eq(homeworkItems.status, "failed")
+              )
+            ),
+          db
+            .update(todoItems)
+            .set({ status: "completed" })
+            .where(
+              and(
+                eq(todoItems.lesson_id, lessonId),
+                eq(todoItems.status, "failed")
+              )
+            ),
+        ]);
+
         if (sourceIds.length > 0) {
           await db
             .update(difficultyReports)

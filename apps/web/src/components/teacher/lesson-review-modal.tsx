@@ -77,9 +77,14 @@ export function LessonReviewModal({ lesson, onClose }: LessonReviewModalProps) {
         teacher_review_note: note.trim() || undefined,
       }),
     onSuccess: () => {
-      // Invalidate all lesson queries so the card reflects the new verdict
+      // Invalidate everything that the review can affect: lesson cards
+      // (verdict + flipped task statuses), student AI profile, and
+      // difficulties (which the API now auto-resolves on next_level /
+      // next_topic). Without the difficulties invalidation, the chip
+      // count stays stale until the next route change.
       qc.invalidateQueries({ queryKey: ["lessons"] });
       qc.invalidateQueries({ queryKey: ["students", lesson.student_id, "profile"] });
+      qc.invalidateQueries({ queryKey: ["difficulties"] });
       onClose();
     },
   });
