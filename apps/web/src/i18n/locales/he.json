@@ -429,6 +429,7 @@
   "student.yourSolution": "הפתרון שלי",
   "student.solutionHint": "העלה/י קובץ PDF או תמונה עם הפתרון שלך. המורה יוכל לראות אותו.",
   "student.uploadSolution": "העלאת פתרון",
+  "studentDetail.solutionEmpty": "התלמיד עוד לא העלה פתרון.",
 
   "profile.title": "פרטים אישיים",
   "profile.subtitle": "עדכן שם, אימייל או סיסמה",

@@ -109,17 +109,30 @@ export default function TeacherLessonDetailPage() {
       )}
 
       {/* Student-uploaded solution — read-only on the teacher side. The
-          student is the only one who can upload or remove this file. */}
-      {lesson.student_solution_url && (
-        <Card className="mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
-              <FileText size={18} className="text-green-600" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-400 mb-0.5">
-                {t("student.yourSolution")}
-              </p>
+          student is the only one who can upload or remove. We always
+          render the slot so the teacher knows the feature exists; the
+          empty state explains who's expected to fill it. */}
+      <Card className="mb-6">
+        <div className="flex items-center gap-3">
+          <div
+            className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+              lesson.student_solution_url ? "bg-green-50" : "bg-gray-50"
+            }`}
+          >
+            <FileText
+              size={18}
+              className={
+                lesson.student_solution_url
+                  ? "text-green-600"
+                  : "text-gray-300"
+              }
+            />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-gray-400 mb-0.5">
+              {t("student.yourSolution")}
+            </p>
+            {lesson.student_solution_url ? (
               <a
                 href={lesson.student_solution_url}
                 target="_blank"
@@ -128,10 +141,14 @@ export default function TeacherLessonDetailPage() {
               >
                 {lesson.student_solution_name || t("student.yourSolution")}
               </a>
-            </div>
+            ) : (
+              <p className="text-sm text-gray-400">
+                {t("studentDetail.solutionEmpty")}
+              </p>
+            )}
           </div>
-        </Card>
-      )}
+        </div>
+      </Card>
 
       {/* Tasks — read-only for teacher */}
       {allItems.length > 0 && (
