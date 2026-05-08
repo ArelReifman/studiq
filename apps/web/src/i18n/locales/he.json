@@ -134,6 +134,10 @@
   "student.saveReflection": "שמירה",
   "student.saving": "שומר...",
   "student.reflectionSaved": "נשמר",
+  "student.reflectionSubmittedTitle": "הרפלקציה נשלחה",
+  "student.reflectionSubmittedBody": "המורה יקרא ויחזור אליך עם פידבק או שיעור הבא.",
+  "student.editReflection": "עריכה",
+  "student.backToMap": "חזרה למפת הלמידה",
 
   "onboarding.welcome": "ברוכים הבאים ל-Studiq!",
   "onboarding.subtitle": "בחר/י את הנושאים שברצונך ללמוד. המורה הדיגיטלי ישתמש בהם ליצירת שיעור מותאם אישית.",

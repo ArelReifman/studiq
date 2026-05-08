@@ -11,7 +11,8 @@ import { TaskItem } from "@/components/student/task-item";
 import { LessonSolutionUpload } from "@/components/student/lesson-solution-upload";
 import { formatDate } from "@/lib/utils";
 import type { LessonWithItems } from "@studiq/types";
-import { ArrowLeft, FileText, MessageSquare, Check } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, FileText, MessageSquare, Check, Map, Pencil, CheckCircle2 } from "lucide-react";
 import { useT } from "@/i18n";
 
 export default function LessonDetailPage() {
@@ -27,6 +28,10 @@ export default function LessonDetailPage() {
 
   const [reflection, setReflection] = useState("");
   const [justSaved, setJustSaved] = useState(false);
+  // When reflection has been saved, the card collapses into a "submitted"
+  // state. The student can re-open the editor to revise — but the default
+  // is closure, not "you can keep typing forever".
+  const [editing, setEditing] = useState(false);
 
   // Sync the textarea when server data arrives / changes
   useEffect(() => {
@@ -42,6 +47,7 @@ export default function LessonDetailPage() {
       qc.invalidateQueries({ queryKey: ["lessons", id] });
       qc.invalidateQueries({ queryKey: ["lessons"] });
       setJustSaved(true);
+      setEditing(false);
       setTimeout(() => setJustSaved(false), 2000);
     },
   });
@@ -133,49 +139,104 @@ export default function LessonDetailPage() {
       )}
 
       {/* Student reflection */}
-      <Card>
-        <div className="flex items-center gap-2 mb-3">
-          <MessageSquare size={16} className="text-brand-500" />
-          <h2 className="text-base font-semibold">{t("student.reflection")}</h2>
-        </div>
-        <p className="text-xs text-gray-400 mb-3">
-          {t("student.reflectionHint")}
-        </p>
-        <textarea
-          value={reflection}
-          onChange={(e) => setReflection(e.target.value)}
-          placeholder={t("student.reflectionPlaceholder")}
-          rows={4}
-          maxLength={2000}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500"
-        />
-        <div className="flex items-center justify-between mt-3">
-          <span className="text-xs text-gray-400">
-            {reflection.length}/2000
-          </span>
-          <div className="flex items-center gap-2">
-            {justSaved && (
-              <span className="inline-flex items-center gap-1 text-xs text-green-600">
-                <Check size={12} /> {t("student.reflectionSaved")}
-              </span>
-            )}
-            <Button
-              size="sm"
-              disabled={!isDirty || saveReflection.isPending}
-              onClick={() => saveReflection.mutate()}
-            >
-              {saveReflection.isPending
-                ? t("student.saving")
-                : t("student.saveReflection")}
-            </Button>
+      {/* Once a reflection has been saved, the card flips into a "submitted"
+          state with closure messaging + a CTA back to the map. Re-opens for
+          edit if the student wants to revise. Without this, the page just
+          left them stranded after they hit save — no signal that the loop
+          had closed. */}
+      {originalReflection && !editing ? (
+        <Card>
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center flex-shrink-0">
+              <CheckCircle2 size={20} className="text-emerald-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-base font-semibold text-emerald-900">
+                {t("student.reflectionSubmittedTitle")}
+              </h2>
+              <p className="text-xs text-gray-500 mt-1">
+                {t("student.reflectionSubmittedBody")}
+              </p>
+              <blockquote className="mt-3 border-s-2 border-emerald-200 ps-3 text-sm text-gray-600 whitespace-pre-wrap">
+                {originalReflection}
+              </blockquote>
+              <div className="flex items-center gap-2 mt-4">
+                <Link
+                  href="/student/map"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-2 transition-colors"
+                >
+                  <Map size={14} />
+                  {t("student.backToMap")}
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setEditing(true)}
+                  className="inline-flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-lg px-3 py-2 transition-colors"
+                >
+                  <Pencil size={13} />
+                  {t("student.editReflection")}
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-        {saveReflection.isError && (
-          <p className="text-xs text-red-500 mt-2">
-            {saveReflection.error.message}
+        </Card>
+      ) : (
+        <Card>
+          <div className="flex items-center gap-2 mb-3">
+            <MessageSquare size={16} className="text-brand-500" />
+            <h2 className="text-base font-semibold">{t("student.reflection")}</h2>
+          </div>
+          <p className="text-xs text-gray-400 mb-3">
+            {t("student.reflectionHint")}
           </p>
-        )}
-      </Card>
+          <textarea
+            value={reflection}
+            onChange={(e) => setReflection(e.target.value)}
+            placeholder={t("student.reflectionPlaceholder")}
+            rows={4}
+            maxLength={2000}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500"
+          />
+          <div className="flex items-center justify-between mt-3">
+            <span className="text-xs text-gray-400">
+              {reflection.length}/2000
+            </span>
+            <div className="flex items-center gap-2">
+              {justSaved && (
+                <span className="inline-flex items-center gap-1 text-xs text-green-600">
+                  <Check size={12} /> {t("student.reflectionSaved")}
+                </span>
+              )}
+              {editing && originalReflection && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReflection(originalReflection);
+                    setEditing(false);
+                  }}
+                  className="text-xs text-gray-400 hover:text-gray-600 px-2"
+                >
+                  {t("common.cancel")}
+                </button>
+              )}
+              <Button
+                size="sm"
+                disabled={!isDirty || saveReflection.isPending}
+                onClick={() => saveReflection.mutate()}
+              >
+                {saveReflection.isPending
+                  ? t("student.saving")
+                  : t("student.saveReflection")}
+              </Button>
+            </div>
+          </div>
+          {saveReflection.isError && (
+            <p className="text-xs text-red-500 mt-2">
+              {saveReflection.error.message}
+            </p>
+          )}
+        </Card>
+      )}
     </div>
   );
 }
