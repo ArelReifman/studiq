@@ -61,9 +61,17 @@ A tutor approves a student, the AI watches how the tutor teaches *and* how the s
 
 Next.js 15 · React 19 · TypeScript · Tailwind v4 · TanStack Query · Hono · Drizzle · Zod · Supabase (Postgres + Auth + Realtime) · Anthropic Claude · pnpm + Turborepo · Vercel
 
+### Latest features
+
+- **Per-student exam dates** — teachers can override course exam dates for individual students taking exams at different universities or mo'ed dates
+- **Triage bar** — teachers see at a glance which students need attention (flagged difficulties, unreviewed cards, pending approvals)
+- **Navbar badges** — unreviewed difficulty cards and pending approvals surfaced in navigation for quick access
+- **Difficulty reviews** — mark difficulty cards as "seen" without closing them, building a teaching style over time
+- **Student course selection** — self-registering students pick their course at signup, enabling immediate learning map population on approval
+
 ### By the numbers
 
-17 Postgres tables · 10 realtime channels · 23 pages · 16 Zod-validated routes · 5 Claude-powered services
+18 Postgres tables · 10 realtime channels · 25 pages · 16 Zod-validated routes · 5 Claude-powered services
 
 ---
 
