@@ -11,6 +11,7 @@ import {
   students,
   studentInvites,
   studentAiProfiles,
+  courses,
 } from "../db/schema.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { notifyTelegram, escapeTelegramHtml } from "../lib/notify.js";
@@ -64,6 +65,9 @@ const registerSchema = z.object({
   teacher_invite_token: z.string().optional(),
   // Optional self-described context shown to the teacher on the approvals page.
   signup_note: z.string().max(500).optional(),
+  // Course the student picked at signup. Becomes the default course for
+  // their learning map after the teacher approves them.
+  signup_course_id: z.string().uuid().optional(),
 });
 
 const loginSchema = z.object({
@@ -79,6 +83,18 @@ function getAdminClient() {
 }
 
 export const authRoutes = new Hono()
+  // Public list of courses available for student self-signup. Returned
+  // without auth because the registration page needs to render this BEFORE
+  // the user has an account. Course names are not sensitive — they're the
+  // marketing surface ("Linear Algebra 1", "Calculus II"), not the content.
+  .get("/courses", async (c) => {
+    const rows = await db
+      .select({ id: courses.id, name: courses.name })
+      .from(courses)
+      .orderBy(courses.name);
+    return c.json(rows);
+  })
+
   .post("/register", zValidator("json", registerSchema), async (c) => {
     const body = c.req.valid("json");
     const supabase = getAdminClient();
@@ -183,6 +199,7 @@ export const authRoutes = new Hono()
           email: body.email,
           status: "pending",
           signup_note: body.signup_note ?? null,
+          signup_course_id: body.signup_course_id ?? null,
         });
 
         // Notify teacher. We `await` because Vercel serverless may suspend

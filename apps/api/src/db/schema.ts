@@ -125,6 +125,10 @@ export const profiles = pgTable("profiles", {
   rejected_at: timestamp("rejected_at", { withTimezone: true }),
   // Optional self-described context surfaced to the teacher during review.
   signup_note: text("signup_note"),
+  // Course the student picked during self-signup. Surfaced to the teacher
+  // on the approvals page, and copied to students.primary_course_id on
+  // approve so the learning map populates right away.
+  signup_course_id: uuid("signup_course_id"),
   created_at: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -167,6 +171,11 @@ export const students = pgTable(
     // (What evolves over time — insights — lives in studentInsights table
     //  so each insight has its own timestamp and can be added/removed.)
     background_note: text("background_note"),
+    // Course assigned at signup (or by the teacher on approval). Lets the
+    // learning map default to a sensible course when the student has no
+    // lessons yet — without this, a freshly-approved student lands on a
+    // 404 because the existing logic requires at least one lesson.
+    primary_course_id: uuid("primary_course_id"),
   },
   (t) => [index("idx_students_teacher_id").on(t.teacher_id)]
 );

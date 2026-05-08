@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, X, Mail, Clock, MessageSquare, CalendarClock, UserPlus, AlertTriangle } from "lucide-react";
+import { Check, X, Mail, Clock, MessageSquare, CalendarClock, UserPlus, AlertTriangle, BookOpen } from "lucide-react";
 import { api } from "@/lib/api";
 import { useT } from "@/i18n";
 import { Card } from "@/components/ui/card";
@@ -13,6 +13,8 @@ interface PendingProfile {
   email: string;
   full_name: string;
   signup_note: string | null;
+  signup_course_id: string | null;
+  signup_course_name: string | null;
   created_at: string;
 }
 
@@ -357,6 +359,16 @@ export default function ApprovalsPage() {
                     {new Date(u.created_at).toLocaleDateString()}
                   </span>
                 </div>
+
+                {u.signup_course_name && (
+                  <div className="mb-3 inline-flex items-center gap-1.5 bg-brand-50 border border-brand-100 rounded-lg px-3 py-1.5 text-xs text-brand-800">
+                    <BookOpen size={11} className="text-brand-600" />
+                    <span className="font-medium">
+                      {t("approvals.signupCourseLabel")}:
+                    </span>
+                    <span className="font-semibold">{u.signup_course_name}</span>
+                  </div>
+                )}
 
                 {u.signup_note && (
                   <div className="mb-3 bg-gray-50 border border-gray-100 rounded-lg p-3 text-xs text-gray-700">

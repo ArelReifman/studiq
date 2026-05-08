@@ -16,7 +16,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { profiles, students, studentAiProfiles } from "../db/schema.js";
+import { profiles, students, studentAiProfiles, courses } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { userIdParamSchema } from "../lib/validators.js";
 import { audit } from "../lib/audit.js";
@@ -30,7 +30,10 @@ export const approvalsRoutes = new Hono()
   .use("*", authMiddleware)
   .use("*", requireRole("teacher"))
 
-  // GET /approvals — list pending students
+  // GET /approvals — list pending students.
+  // Joins courses by signup_course_id so the teacher sees which course the
+  // student picked at signup right inside the approval row — saves a round
+  // trip and gives one-glance context.
   .get("/", async (c) => {
     const pending = await db
       .select({
@@ -38,9 +41,12 @@ export const approvalsRoutes = new Hono()
         email: profiles.email,
         full_name: profiles.full_name,
         signup_note: profiles.signup_note,
+        signup_course_id: profiles.signup_course_id,
+        signup_course_name: courses.name,
         created_at: profiles.created_at,
       })
       .from(profiles)
+      .leftJoin(courses, eq(courses.id, profiles.signup_course_id))
       .where(eq(profiles.status, "pending"))
       .orderBy(desc(profiles.created_at));
 
@@ -69,8 +75,14 @@ export const approvalsRoutes = new Hono()
 
       // Pre-flight: confirm the target is a pending student before opening
       // a transaction. Cheaper than rolling back, and avoids a misleading 500.
+      // Also pulls signup_course_id so we can carry it across to the
+      // students row — gives the new account a primed learning map.
       const [target] = await db
-        .select({ status: profiles.status, role: profiles.role })
+        .select({
+          status: profiles.status,
+          role: profiles.role,
+          signup_course_id: profiles.signup_course_id,
+        })
         .from(profiles)
         .where(eq(profiles.id, userId))
         .limit(1);
@@ -113,6 +125,7 @@ export const approvalsRoutes = new Hono()
               teacher_id: teacherId,
               grade_level: body.grade_level ?? null,
               notes: body.notes ?? null,
+              primary_course_id: target.signup_course_id ?? null,
             });
             await tx.insert(studentAiProfiles).values({ student_id: userId });
           }
