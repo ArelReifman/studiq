@@ -102,6 +102,8 @@
   "teacher.noStudents": "אין תלמידים עדיין. הזמן/י את התלמיד/ה הראשון/ה.",
   "teacher.difficulties": "קשיים",
   "teacher.noDifficulties": "אין קשיים עדיין.",
+  "teacher.needsAttention": "צריכים תשומת לב",
+  "teacher.unreviewedDifficulties": "{count} קשיים לא נבדקו",
   "teacher.new": "חדש",
   "teacher.studentCount": "תלמיד {count}",
   "teacher.studentCountPlural": "{count} תלמידים",

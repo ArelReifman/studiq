@@ -102,6 +102,8 @@
   "teacher.noStudents": "No students yet. Invite your first student above.",
   "teacher.difficulties": "Difficulties",
   "teacher.noDifficulties": "No difficulties yet.",
+  "teacher.needsAttention": "Needs attention",
+  "teacher.unreviewedDifficulties": "{count} unreviewed difficulties",
   "teacher.new": "new",
   "teacher.studentCount": "{count} student",
   "teacher.studentCountPlural": "{count} students",
