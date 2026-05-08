@@ -53,7 +53,25 @@ export default function LessonDetailPage() {
   });
 
   if (isLoading) return <div className="text-gray-400">{t("common.loading")}</div>;
-  if (!lesson) return <div className="text-gray-400">{t("lessons.notFound")}</div>;
+  if (!lesson) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] text-center px-4">
+        <h2 className="text-lg font-semibold text-gray-700 mb-2">
+          {t("lessons.notFound")}
+        </h2>
+        <p className="text-sm text-gray-500 mb-5 max-w-md">
+          {t("lessons.notFoundHint")}
+        </p>
+        <Link
+          href="/student/map"
+          className="inline-flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors"
+        >
+          <Map size={14} />
+          {t("student.backToMap")}
+        </Link>
+      </div>
+    );
+  }
 
   const hasMaterial = !!lesson.material_url;
   const originalReflection = lesson.student_reflection ?? "";
