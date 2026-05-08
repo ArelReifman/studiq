@@ -67,7 +67,10 @@ export const learningMapRoutes = new Hono()
       studentId = studentIdParam;
     }
 
-    // If no course_id provided, infer from most-recent lesson
+    // If no course_id provided, infer from most-recent lesson — and fall
+    // back to the student's primary_course_id (set at signup or approval).
+    // The fallback exists so a freshly-approved student lands on a populated
+    // map instead of a 404, even before their first lesson is created.
     if (!courseId) {
       const [latest] = await db
         .select({ course_id: lessonSessions.course_id })
@@ -80,9 +83,19 @@ export const learningMapRoutes = new Hono()
         )
         .orderBy(desc(lessonSessions.generated_at))
         .limit(1);
-      if (!latest?.course_id)
-        return c.json({ error: "No course found for student" }, 404);
-      courseId = latest.course_id;
+
+      if (latest?.course_id) {
+        courseId = latest.course_id;
+      } else {
+        const [student] = await db
+          .select({ primary_course_id: students.primary_course_id })
+          .from(students)
+          .where(eq(students.id, studentId))
+          .limit(1);
+        if (!student?.primary_course_id)
+          return c.json({ error: "No course found for student" }, 404);
+        courseId = student.primary_course_id;
+      }
     }
 
     // 1. Fetch course

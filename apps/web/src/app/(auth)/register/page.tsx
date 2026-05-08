@@ -14,6 +14,11 @@ interface InviteInfo {
   grade_level: string | null;
 }
 
+interface PublicCourse {
+  id: string;
+  name: string;
+}
+
 export default function RegisterPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -31,14 +36,28 @@ export default function RegisterPage() {
 
   const [invite, setInvite] = useState<InviteInfo | null>(null);
   const [inviteError, setInviteError] = useState("");
+  const [courses, setCourses] = useState<PublicCourse[]>([]);
   const [form, setForm] = useState({
     full_name: "",
     email: "",
     password: "",
     signup_note: "",
+    signup_course_id: "",
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Self-signup students see a course picker so the teacher knows what
+  // they're studying for and the learning map can populate immediately
+  // after approval. Skipped for invited students (the teacher already
+  // knows what they're enrolling them in) and for teacher signup.
+  useEffect(() => {
+    if (!isStudentSelfSignup) return;
+    api
+      .get<PublicCourse[]>("/auth/courses")
+      .then(setCourses)
+      .catch(() => setCourses([]));
+  }, [isStudentSelfSignup]);
 
   useEffect(() => {
     if (!inviteToken) return;
@@ -70,6 +89,10 @@ export default function RegisterPage() {
         role: isStudent ? "student" : "teacher",
         teacher_invite_token: inviteToken ?? undefined,
         signup_note: isStudentSelfSignup && form.signup_note ? form.signup_note : undefined,
+        signup_course_id:
+          isStudentSelfSignup && form.signup_course_id
+            ? form.signup_course_id
+            : undefined,
       });
 
       const loginData = await api.post<{
@@ -195,6 +218,32 @@ export default function RegisterPage() {
           />
           <p className="text-xs text-gray-400 mt-1">{t("register.password8")}</p>
         </div>
+
+        {isStudentSelfSignup && courses.length > 0 && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t("register.courseLabel")}
+            </label>
+            <select
+              name="signup_course_id"
+              value={form.signup_course_id}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, signup_course_id: e.target.value }))
+              }
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+            >
+              <option value="">{t("register.coursePlaceholder")}</option>
+              {courses.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-400 mt-1">
+              {t("register.courseHint")}
+            </p>
+          </div>
+        )}
 
         {isStudentSelfSignup && (
           <div>
