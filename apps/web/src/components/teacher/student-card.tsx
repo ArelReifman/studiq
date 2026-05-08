@@ -23,7 +23,6 @@ interface StudentCardProps {
 export function StudentCard({
   id,
   full_name,
-  grade_level,
   avg_completion_rate,
   weak_topics,
   ai_summary,
