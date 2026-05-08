@@ -11,7 +11,7 @@ import { TaskItem } from "@/components/student/task-item";
 import { LessonSolutionUpload } from "@/components/student/lesson-solution-upload";
 import { formatDate } from "@/lib/utils";
 import type { LessonSession, HomeworkItem, TodoItem } from "@studiq/types";
-import { BookOpen, FileText, ExternalLink, History } from "lucide-react";
+import { BookOpen, FileText, ExternalLink, History, Map, CalendarDays } from "lucide-react";
 
 export default function StudentDashboard() {
   const user = useAuthStore((s) => s.user);
@@ -49,12 +49,30 @@ export default function StudentDashboard() {
 
   if (lessons.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 text-center">
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
         <BookOpen size={48} className="text-brand-200 mb-4" />
         <h2 className="text-xl font-semibold text-gray-700 mb-2">
           {t("student.firstLesson")}
         </h2>
-        <p className="text-gray-500 text-sm">{t("student.firstLessonSub")}</p>
+        <p className="text-gray-500 text-sm mb-6 max-w-md">
+          {t("student.firstLessonSub")}
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Link
+            href="/student/map"
+            className="inline-flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors"
+          >
+            <Map size={14} />
+            {t("student.openMap")}
+          </Link>
+          <Link
+            href="/student/book"
+            className="inline-flex items-center gap-1.5 text-sm text-gray-600 hover:text-brand-700 hover:bg-brand-50 rounded-lg px-4 py-2 transition-colors"
+          >
+            <CalendarDays size={14} />
+            {t("student.bookLesson")}
+          </Link>
+        </div>
       </div>
     );
   }

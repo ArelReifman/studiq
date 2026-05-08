@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { StudentCard } from "@/components/teacher/student-card";
 import { useT } from "@/i18n";
-import { Users, AlertTriangle } from "lucide-react";
+import { Users, AlertTriangle, BookOpen, ArrowRight } from "lucide-react";
 
 interface StudentRow {
   id: string;
@@ -80,11 +80,33 @@ export default function TeacherDashboard() {
       </div>
 
       {students.length === 0 ? (
-        <Card>
-          <p className="text-gray-400 text-sm text-center py-4">
-            {t("teacher.noStudents")}
+        <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl bg-white">
+          <div className="w-12 h-12 rounded-full bg-brand-50 mx-auto mb-3 flex items-center justify-center">
+            <Users size={20} className="text-brand-500" />
+          </div>
+          <h3 className="text-base font-semibold text-gray-700 mb-1">
+            {t("teacher.noStudentsTitle")}
+          </h3>
+          <p className="text-sm text-gray-500 mb-5 max-w-sm mx-auto">
+            {t("teacher.noStudentsBody")}
           </p>
-        </Card>
+          <div className="inline-flex flex-wrap items-center justify-center gap-2">
+            <Link
+              href="/teacher/courses"
+              className="inline-flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors"
+            >
+              <BookOpen size={14} />
+              {t("teacher.noStudentsCtaCourses")}
+            </Link>
+            <Link
+              href="/teacher/approvals"
+              className="inline-flex items-center gap-1.5 text-sm text-gray-600 hover:text-brand-700 hover:bg-brand-50 rounded-lg px-4 py-2 transition-colors"
+            >
+              {t("teacher.noStudentsCtaApprovals")}
+              <ArrowRight size={13} className="rtl:rotate-180" />
+            </Link>
+          </div>
+        </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {students.map((s) => (
