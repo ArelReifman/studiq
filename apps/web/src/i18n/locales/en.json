@@ -431,7 +431,7 @@
   "map.statusNotStartedTeacher": "Not started",
   "map.statusMasteredStudent": "Mastered",
   "map.statusInProgressStudent": "In progress",
-  "map.statusStrugglingStudent": "Reinforce",
+  "map.statusStrugglingStudent": "Struggling",
   "map.statusNotStartedStudent": "Not started",
   "map.recReason.struggling": "Struggles detected",
   "map.recReason.in_progress": "In progress",

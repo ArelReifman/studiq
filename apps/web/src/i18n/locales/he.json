@@ -431,7 +431,7 @@
   "map.statusNotStartedTeacher": "טרם",
   "map.statusMasteredStudent": "שלטת",
   "map.statusInProgressStudent": "בתהליך",
-  "map.statusStrugglingStudent": "לחיזוק",
+  "map.statusStrugglingStudent": "קשיים",
   "map.statusNotStartedStudent": "טרם",
   "map.recReason.struggling": "זוהו קשיים",
   "map.recReason.in_progress": "בתהליך",

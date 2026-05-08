@@ -88,7 +88,7 @@ export default function StudentDashboard() {
         )
       : 0;
 
-  const firstName = user?.full_name?.split(" ")[0] ?? "";
+  const firstName = (user?.full_name?.split(" ")[0] ?? "").replace(/^\w/, (c) => c.toUpperCase());
 
   return (
     <div>

@@ -295,7 +295,7 @@ function StudentExamDateEditor({
           ? hasOverride
             ? "bg-brand-50 border border-brand-200 text-brand-800 hover:bg-brand-100"
             : "bg-gray-50 border border-gray-200 text-gray-700 hover:bg-gray-100"
-          : "bg-white border border-dashed border-gray-300 text-gray-500 hover:border-brand-300 hover:text-brand-700"
+          : "bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100"
       }`}
     >
       <CalendarDays size={13} />

@@ -128,7 +128,13 @@ export function StudentCard({
             {rate !== null && (
               <Badge
                 variant={
-                  rate >= 0.7 ? "success" : rate >= 0.4 ? "warning" : "danger"
+                  rate === 0
+                    ? "default"
+                    : rate >= 0.7
+                    ? "success"
+                    : rate >= 0.4
+                    ? "warning"
+                    : "danger"
                 }
               >
                 {formatPercent(rate)}

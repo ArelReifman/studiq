@@ -124,7 +124,7 @@ export function CreateLessonModal({
     if (!titleAutoFilled) return;
     const topic = courseDetail?.topics.find((tp) => tp.id === topicId);
     if (topic) {
-      setTitle(`${topic.name} — ${todayStr()}`);
+      setTitle(topic.name);
     } else {
       setTitle("");
     }
