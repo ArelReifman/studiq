@@ -165,8 +165,19 @@ export function LearningMapView({
       <div className="flex flex-col lg:flex-row flex-1 min-h-0">
         {/* SIDE PANEL */}
         <aside className="w-full lg:w-56 lg:flex-shrink-0 order-2 lg:order-none border-t lg:border-t-0 lg:border-s border-gray-100 flex flex-col p-3 gap-3">
-          {role === "teacher" && recommendation && (
-            <div className="bg-brand-50/60 border border-brand-100 rounded-lg p-3 flex flex-col gap-2">
+          {/* AI recommendation panel — hidden when the teacher is already
+              focused on the recommended topic, since the active card has its
+              own big "create lesson" CTA in that case. Showing both creates
+              two identical buttons in the same eyeline. When the teacher
+              navigates to a different topic, the panel reappears as a
+              "you should look at this instead" nudge — which is when the
+              recommendation is actually useful. */}
+          {role === "teacher" && recommendation && activeId !== recommendation.id && (
+            <button
+              onClick={() => setActiveId(recommendation.id)}
+              className="bg-brand-50/60 border border-brand-100 rounded-lg p-3 flex flex-col gap-2 text-start hover:bg-brand-50 hover:border-brand-200 transition-colors group"
+              title={t("map.aiRecommendation")}
+            >
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 rounded-md bg-white border border-brand-100 flex items-center justify-center">
                   <Sparkles size={12} className="text-brand-600" />
@@ -175,7 +186,7 @@ export function LearningMapView({
                   {t("map.aiRecommendation")}
                 </span>
               </div>
-              <div className="text-[13px] font-semibold text-gray-900 leading-tight line-clamp-2">
+              <div className="text-[13px] font-semibold text-gray-900 leading-tight line-clamp-2 group-hover:text-brand-700 transition-colors">
                 {recommendation.name}
               </div>
               <div className="text-[10px] text-gray-500">
@@ -185,13 +196,7 @@ export function LearningMapView({
                     count: recommendation.stats.tasks_failed,
                   })}`}
               </div>
-              <button
-                onClick={() => onCreateLesson?.(recommendation.id)}
-                className="h-7 rounded-md bg-white border border-brand-200 text-[11px] font-semibold text-brand-700 hover:bg-brand-50 transition-colors"
-              >
-                {t("map.createLesson")}
-              </button>
-            </div>
+            </button>
           )}
 
           {role === "student" && (
