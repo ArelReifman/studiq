@@ -166,6 +166,11 @@
   "reports.empty": "Your first progress report will appear here after your teacher generates it.",
   "reports.completion": "completion",
   "reports.difficulties": "difficulties",
+  "reports.sectionTitle": "Progress Reports",
+  "reports.generate": "Generate Report",
+  "reports.generating": "Generating...",
+  "reports.noReports": "No reports yet. Generate one to see how this student is progressing.",
+  "reports.suggestedDifficulty": "Suggested difficulty",
 
   "studentDetail.backToStudents": "Back to students",
   "studentDetail.generateLesson": "Generate New Lesson",
