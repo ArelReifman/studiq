@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/auth";
 import { api } from "@/lib/api";
 import { useT } from "@/i18n";
@@ -24,6 +25,20 @@ export default function TeacherLayout({
   useRealtimeSync();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+
+  // Sum of unreviewed difficulties across all students. Reuses the same
+  // ["students"] query the dashboard fetches, so React Query dedupes — no
+  // extra HTTP cost when navigating between dashboard and other pages.
+  const { data: students = [] } = useQuery<
+    { id: string; unreviewed_difficulties: number }[]
+  >({
+    queryKey: ["students"],
+    queryFn: () => api.get("/students"),
+  });
+  const dashboardBadge = students.reduce(
+    (sum, s) => sum + (s.unreviewed_difficulties ?? 0),
+    0
+  );
 
   // Close drawer on route change
   useEffect(() => {
@@ -47,7 +62,13 @@ export default function TeacherLayout({
   }, [pathname]);
 
   const nav = [
-    { href: "/teacher/dashboard", label: t("teacher.dashboard"), icon: LayoutDashboard },
+    {
+      href: "/teacher/dashboard",
+      label: t("teacher.dashboard"),
+      icon: LayoutDashboard,
+      badge: dashboardBadge,
+      badgeTone: "danger" as const,
+    },
     { href: "/teacher/approvals", label: t("approvals.navLabel"), icon: UserCheck, badge: pendingCount },
     { href: "/teacher/courses", label: t("teacher.courses"), icon: BookOpen },
     { href: "/teacher/schedule", label: t("teacher.schedule"), icon: CalendarClock },
@@ -76,7 +97,7 @@ export default function TeacherLayout({
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {nav.map(({ href, label, icon: Icon, badge }) => (
+        {nav.map(({ href, label, icon: Icon, badge, badgeTone }) => (
           <Link
             key={href}
             href={href}
@@ -90,7 +111,12 @@ export default function TeacherLayout({
             <Icon size={16} />
             <span className="flex-1">{label}</span>
             {badge && badge > 0 ? (
-              <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 text-[10px] font-bold rounded-full bg-amber-500 text-white">
+              <span
+                className={cn(
+                  "inline-flex items-center justify-center min-w-5 h-5 px-1.5 text-[10px] font-bold rounded-full text-white",
+                  badgeTone === "danger" ? "bg-red-500" : "bg-amber-500"
+                )}
+              >
                 {badge}
               </span>
             ) : null}

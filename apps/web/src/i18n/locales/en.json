@@ -134,6 +134,10 @@
   "student.saveReflection": "Save",
   "student.saving": "Saving...",
   "student.reflectionSaved": "Saved",
+  "student.reflectionSubmittedTitle": "Reflection submitted",
+  "student.reflectionSubmittedBody": "Your teacher will read it and follow up with feedback or your next lesson.",
+  "student.editReflection": "Edit",
+  "student.backToMap": "Back to learning map",
 
   "onboarding.welcome": "Welcome to Studiq!",
   "onboarding.subtitle": "Choose the topics you want to study. Your AI tutor will use these to create your first personalized lesson.",
