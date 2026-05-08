@@ -1,11 +1,12 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { StudentCard } from "@/components/teacher/student-card";
 import { useT } from "@/i18n";
-import { Users } from "lucide-react";
+import { Users, AlertTriangle } from "lucide-react";
 
 interface StudentRow {
   id: string;
@@ -20,9 +21,6 @@ interface StudentRow {
 export default function TeacherDashboard() {
   const t = useT();
 
-  // Difficulties used to live in a side-panel here. They were moved to the
-  // per-student page (which already had its own difficulties section), and
-  // each card surfaces an unreviewed-count badge so nothing is missed.
   const { data: students = [] } = useQuery<StudentRow[]>({
     queryKey: ["students"],
     queryFn: () => api.get("/students"),
@@ -33,12 +31,46 @@ export default function TeacherDashboard() {
       ? t("teacher.studentCount", { count: students.length })
       : t("teacher.studentCountPlural", { count: students.length });
 
+  const needsAttention = students.filter((s) => s.unreviewed_difficulties > 0);
+
   return (
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold">{t("teacher.dashboard")}</h1>
         <p className="text-gray-500 text-sm mt-0.5">{studentCountText}</p>
       </div>
+
+      {needsAttention.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle size={15} className="text-amber-500" />
+            <h2 className="font-semibold text-sm text-amber-700">
+              {t("teacher.needsAttention")}
+            </h2>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-1">
+            {needsAttention.map((s) => (
+              <Link
+                key={s.id}
+                href={`/teacher/students/${s.id}`}
+                className="flex-shrink-0 flex items-center gap-3 bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors rounded-xl px-4 py-3 min-w-[200px]"
+              >
+                <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle size={14} className="text-amber-600" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-medium text-sm truncate">{s.full_name}</p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    {t("teacher.unreviewedDifficulties", {
+                      count: s.unreviewed_difficulties,
+                    })}
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 mb-3">
         <Users size={16} className="text-gray-400" />
