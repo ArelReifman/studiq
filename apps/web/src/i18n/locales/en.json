@@ -175,6 +175,8 @@
   "studentDetail.feedbackNote": "Feedback will be included in the next generated lesson.",
   "studentDetail.recentDifficulties": "Recent Difficulties ({count} unreviewed)",
   "studentDetail.new": "New",
+  "studentDetail.markReviewed": "Mark seen",
+  "studentDetail.markReviewedHint": "Marks reviewed — drops from \"needs attention\"",
   "studentDetail.noLessons": "No lessons yet.",
   "studentDetail.deleteLesson": "Delete lesson",
   "studentDetail.confirmDeleteLesson": "Delete this lesson permanently? This cannot be undone.",
