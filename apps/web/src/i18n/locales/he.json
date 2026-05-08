@@ -175,6 +175,8 @@
   "studentDetail.feedbackNote": "המשוב ישולב בשיעור הבא שייווצר.",
   "studentDetail.recentDifficulties": "קשיים אחרונים ({count} לא נבדקו)",
   "studentDetail.new": "חדש",
+  "studentDetail.markReviewed": "ראיתי",
+  "studentDetail.markReviewedHint": "סמן/י כנקרא — ייעלם מ\"צריכים תשומת לב\"",
   "studentDetail.noLessons": "אין שיעורים עדיין.",
   "studentDetail.deleteLesson": "מחק שיעור",
   "studentDetail.confirmDeleteLesson": "למחוק את השיעור לצמיתות? לא ניתן לשחזר.",

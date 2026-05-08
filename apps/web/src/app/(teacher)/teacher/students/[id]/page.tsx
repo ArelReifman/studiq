@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate, formatPercent } from "@/lib/utils";
 import type { LessonSession, DifficultyReport, StudentAiProfile } from "@studiq/types";
-import { ArrowLeft, AlertTriangle, Sparkles, Trash2, MessageSquare, Map, ClipboardCheck, RotateCw, ArrowUp, CheckCircle2, ExternalLink } from "lucide-react";
+import { ArrowLeft, AlertTriangle, Sparkles, Trash2, MessageSquare, Map, ClipboardCheck, RotateCw, ArrowUp, CheckCircle2, ExternalLink, Check } from "lucide-react";
 import { useT } from "@/i18n";
 import { CreateLessonModal } from "@/components/teacher/create-lesson-modal";
 import { LessonReviewModal } from "@/components/teacher/lesson-review-modal";
@@ -51,6 +51,33 @@ export default function StudentDetailPage() {
   const { data: difficulties = [] } = useQuery<(DifficultyReport & { student_name: string })[]>({
     queryKey: ["difficulties", { student_id: id }],
     queryFn: () => api.get(`/difficulties?student_id=${id}`),
+  });
+
+  // Mark a difficulty report reviewed. Optimistic — flip the row's
+  // `reviewed` flag locally so the card disappears instantly. On error we
+  // revert and show the message.
+  const markReviewed = useMutation({
+    mutationFn: (reportId: string) =>
+      api.patch(`/difficulties/${reportId}`, { reviewed: true }),
+    onMutate: async (reportId) => {
+      const queryKey = ["difficulties", { student_id: id }];
+      await qc.cancelQueries({ queryKey });
+      const prev = qc.getQueryData<(DifficultyReport & { student_name: string })[]>(queryKey);
+      qc.setQueryData<(DifficultyReport & { student_name: string })[]>(
+        queryKey,
+        (old = []) => old.map((d) => (d.id === reportId ? { ...d, reviewed: true } : d))
+      );
+      return { prev };
+    },
+    onError: (err, _vars, ctx) => {
+      qc.setQueryData(["difficulties", { student_id: id }], ctx?.prev);
+      alert(err instanceof Error ? err.message : "Failed");
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["difficulties"] });
+      // Refresh the dashboard counter too so the "needs attention" strip updates.
+      qc.invalidateQueries({ queryKey: ["students"] });
+    },
   });
 
   const deleteLesson = useMutation({
@@ -195,8 +222,8 @@ export default function StudentDetailPage() {
                 <div className="space-y-2">
                   {openDifficulties.slice(0, 5).map((d) => (
                     <Card key={d.id} className="p-3">
-                      <div className="flex items-start justify-between">
-                        <div>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
                           <p className="text-xs text-gray-700">{d.description}</p>
                           <div className="flex flex-wrap gap-1 mt-1">
                             {d.topic_tags.map((tag) => (
@@ -205,7 +232,19 @@ export default function StudentDetailPage() {
                           </div>
                           <p className="text-xs text-gray-300 mt-1">{formatDate(d.created_at)}</p>
                         </div>
-                        <Badge variant="danger" className="flex-shrink-0 ms-2">{t("studentDetail.new")}</Badge>
+                        <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                          <Badge variant="danger">{t("studentDetail.new")}</Badge>
+                          <button
+                            type="button"
+                            onClick={() => markReviewed.mutate(d.id)}
+                            disabled={markReviewed.isPending}
+                            title={t("studentDetail.markReviewedHint")}
+                            className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 disabled:opacity-50 rounded px-2 py-1 transition-colors"
+                          >
+                            <Check size={12} />
+                            {t("studentDetail.markReviewed")}
+                          </button>
+                        </div>
                       </div>
                     </Card>
                   ))}
