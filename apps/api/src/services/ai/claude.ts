@@ -4,7 +4,10 @@ let _client: Anthropic | null = null;
 
 export function getClaudeClient(): Anthropic {
   if (!_client) {
-    const apiKey = process.env["ANTHROPIC_API_KEY"];
+    // .trim() guards against a trailing newline/space accidentally pasted
+    // into the Vercel env var — Node's HTTP layer rejects whitespace in
+    // header values with a vague TypeError.
+    const apiKey = process.env["ANTHROPIC_API_KEY"]?.trim();
     if (!apiKey) throw new Error("ANTHROPIC_API_KEY environment variable is required");
     _client = new Anthropic({ apiKey });
   }
@@ -27,14 +30,17 @@ export async function callClaude<T>(
   } catch (err) {
     // The Anthropic SDK wraps the real network error in `cause`. Surface
     // it so we don't see vague "Connection error." with no detail.
+    // Redact API keys — Node's HTTP layer echoes header values into errors,
+    // so a malformed key would leak verbatim into the response.
+    const redact = (s: string) => s.replace(/sk-ant-[A-Za-z0-9_\-]+/g, "sk-ant-***");
     const cause = (err as { cause?: unknown })?.cause;
     const causeMsg =
       cause instanceof Error
-        ? `${cause.name}: ${cause.message}`
+        ? `${cause.name}: ${redact(cause.message)}`
         : cause
-          ? String(cause)
+          ? redact(String(cause))
           : "no cause";
-    const baseMsg = err instanceof Error ? err.message : String(err);
+    const baseMsg = err instanceof Error ? redact(err.message) : redact(String(err));
     throw new Error(`Claude call failed — ${baseMsg} (cause: ${causeMsg})`);
   }
 
