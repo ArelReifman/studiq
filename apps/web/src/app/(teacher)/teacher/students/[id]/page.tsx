@@ -9,8 +9,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate, formatPercent } from "@/lib/utils";
-import type { LessonSession, DifficultyReport, StudentAiProfile } from "@studiq/types";
-import { ArrowLeft, AlertTriangle, Sparkles, Trash2, MessageSquare, Map, ClipboardCheck, RotateCw, ArrowUp, CheckCircle2, ExternalLink, Check } from "lucide-react";
+import type { LessonSession, DifficultyReport, StudentAiProfile, StudentReport } from "@studiq/types";
+import { ArrowLeft, AlertTriangle, Sparkles, Trash2, MessageSquare, Map, ClipboardCheck, RotateCw, ArrowUp, CheckCircle2, ExternalLink, Check, FileBarChart2 } from "lucide-react";
 import { useT } from "@/i18n";
 import { CreateLessonModal } from "@/components/teacher/create-lesson-modal";
 import { LessonReviewModal } from "@/components/teacher/lesson-review-modal";
@@ -51,6 +51,16 @@ export default function StudentDetailPage() {
   const { data: difficulties = [] } = useQuery<(DifficultyReport & { student_name: string })[]>({
     queryKey: ["difficulties", { student_id: id }],
     queryFn: () => api.get(`/difficulties?student_id=${id}`),
+  });
+
+  const { data: reports = [] } = useQuery<StudentReport[]>({
+    queryKey: ["reports", { student_id: id }],
+    queryFn: () => api.get(`/reports?student_id=${id}`),
+  });
+
+  const generateReport = useMutation({
+    mutationFn: () => api.post("/reports/generate", { student_id: id }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["reports", { student_id: id }] }),
   });
 
   // Mark a difficulty report reviewed. Optimistic — flip the row's
@@ -355,6 +365,82 @@ export default function StudentDetailPage() {
                 <p className="text-gray-400 text-sm">{t("studentDetail.noLessons")}</p>
               )}
             </div>
+          </div>
+
+          {/* Progress Reports */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <FileBarChart2 size={15} className="text-gray-400" />
+                <h2 className="font-semibold text-sm text-gray-600">
+                  {t("reports.sectionTitle")}
+                  {reports.length > 0 && (
+                    <span className="text-gray-400 font-normal ms-1">({reports.length})</span>
+                  )}
+                </h2>
+              </div>
+              <button
+                onClick={() => generateReport.mutate()}
+                disabled={generateReport.isPending}
+                className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 disabled:opacity-50 transition-colors"
+              >
+                <Sparkles size={12} className={generateReport.isPending ? "animate-ai-pulse" : ""} />
+                {generateReport.isPending ? t("reports.generating") : t("reports.generate")}
+              </button>
+            </div>
+
+            {reports.length === 0 ? (
+              <p className="text-gray-400 text-sm">{t("reports.noReports")}</p>
+            ) : (
+              <div className="space-y-3">
+                {reports.map((report) => {
+                  const recs = report.ai_recommendations as {
+                    focus_topics?: string[];
+                    suggested_difficulty?: string;
+                    notes?: string;
+                  } | null;
+                  return (
+                    <Card key={report.id} className="p-3">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
+                        <Badge variant="neutral">
+                          {formatDate(report.period_start)} — {formatDate(report.period_end)}
+                        </Badge>
+                        {report.completion_rate !== null && (
+                          <Badge variant={Number(report.completion_rate) >= 0.7 ? "success" : "warning"}>
+                            {formatPercent(report.completion_rate)} {t("reports.completion")}
+                          </Badge>
+                        )}
+                        {report.difficulty_count !== null && report.difficulty_count > 0 && (
+                          <span className="text-xs text-gray-400">
+                            {report.difficulty_count} {t("reports.difficulties")}
+                          </span>
+                        )}
+                      </div>
+                      {report.summary && (
+                        <p className="text-sm text-gray-700 mb-2">{report.summary}</p>
+                      )}
+                      {recs && (
+                        <div className="bg-brand-50 rounded-lg p-2.5 text-xs text-brand-700 space-y-1">
+                          {recs.notes && <p>{recs.notes}</p>}
+                          {recs.focus_topics && recs.focus_topics.length > 0 && (
+                            <div className="flex flex-wrap gap-1 pt-1">
+                              {recs.focus_topics.map((topic) => (
+                                <Badge key={topic} variant="neutral" className="text-[10px]">{topic}</Badge>
+                              ))}
+                            </div>
+                          )}
+                          {recs.suggested_difficulty && (
+                            <p className="text-brand-500 font-medium">
+                              {t("reports.suggestedDifficulty")}: {recs.suggested_difficulty}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>

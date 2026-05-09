@@ -22,10 +22,6 @@ interface CreateLessonModalProps {
   initialCourseId?: string;
 }
 
-function todayStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 export function CreateLessonModal({
   studentId,
@@ -124,7 +120,7 @@ export function CreateLessonModal({
     if (!titleAutoFilled) return;
     const topic = courseDetail?.topics.find((tp) => tp.id === topicId);
     if (topic) {
-      setTitle(`${topic.name} — ${todayStr()}`);
+      setTitle(topic.name);
     } else {
       setTitle("");
     }
