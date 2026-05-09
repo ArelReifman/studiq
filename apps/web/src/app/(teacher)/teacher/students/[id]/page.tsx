@@ -61,6 +61,7 @@ export default function StudentDetailPage() {
   const generateReport = useMutation({
     mutationFn: () => api.post("/reports/generate", { student_id: id }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["reports", { student_id: id }] }),
+    onError: (err) => alert(err instanceof Error ? err.message : "Failed to generate report"),
   });
 
   // Mark a difficulty report reviewed. Optimistic — flip the row's
