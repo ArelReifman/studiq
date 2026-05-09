@@ -59,7 +59,13 @@ export const reportRoutes = new Hono()
 
       if (!student) return c.json({ error: "Student not found" }, 404);
 
-      const report = await generateReport(student_id, teacherId);
-      return c.json(report, 201);
+      try {
+        const report = await generateReport(student_id, teacherId);
+        return c.json(report, 201);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Report generation failed";
+        console.error("[generateReport]", err);
+        return c.json({ error: msg }, 500);
+      }
     }
   );
