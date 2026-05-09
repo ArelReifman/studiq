@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useT } from "@/i18n";
 import { Card } from "@/components/ui/card";
 import { Calendar, TimeSlotGrid, type TimeSlot } from "@/components/calendar/calendar";
-import { Plus, CalendarCheck, MessageSquare, X } from "lucide-react";
+import { Plus, CalendarCheck, MessageSquare, X, CalendarDays, CheckCircle2, AlertCircle } from "lucide-react";
 import { groupConsecutiveBookings } from "@/lib/booking-grouping";
 
 interface Slot extends TimeSlot {
@@ -42,6 +43,7 @@ function formatDate(s: string): string {
 export default function TeacherSchedulePage() {
   const t = useT();
   const qc = useQueryClient();
+  const searchParams = useSearchParams();
 
   const [selectedDate, setSelectedDate] = useState<string | undefined>(() => {
     return new Date().toISOString().split("T")[0]!;
@@ -49,6 +51,24 @@ export default function TeacherSchedulePage() {
   const [startTime, setStartTime] = useState("14:00");
   const [endTime, setEndTime] = useState("15:00");
   const [error, setError] = useState<string | null>(null);
+  const [gcalBanner, setGcalBanner] = useState<"connected" | "error" | null>(null);
+
+  // Show a banner if Google Calendar OAuth redirected back here
+  useEffect(() => {
+    const gcal = searchParams.get("gcal");
+    if (gcal === "connected") setGcalBanner("connected");
+    else if (gcal === "error") setGcalBanner("error");
+  }, [searchParams]);
+
+  const { data: gcalStatus } = useQuery<{ connected: boolean }>({
+    queryKey: ["gcal-status"],
+    queryFn: () => api.get("/auth/google/status"),
+  });
+
+  const disconnectGcalMutation = useMutation({
+    mutationFn: () => api.delete("/auth/google"),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["gcal-status"] }),
+  });
 
   const { data: slots = [], isLoading: slotsLoading } = useQuery<Slot[]>({
     queryKey: ["my-availability"],
@@ -173,14 +193,72 @@ export default function TeacherSchedulePage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-800">
-          {t("teacher.schedule")}
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          {t("teacher.scheduleHint")}
-        </p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">
+            {t("teacher.schedule")}
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {t("teacher.scheduleHint")}
+          </p>
+        </div>
+
+        {/* Google Calendar connect / disconnect */}
+        <div className="flex items-center gap-2">
+          {gcalStatus?.connected ? (
+            <>
+              <span className="flex items-center gap-1.5 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-1.5">
+                <CheckCircle2 size={14} />
+                {t("teacher.gcalConnected")}
+              </span>
+              <button
+                type="button"
+                onClick={() => disconnectGcalMutation.mutate()}
+                disabled={disconnectGcalMutation.isPending}
+                className="text-xs text-gray-500 hover:text-red-600 transition-colors px-2 py-1.5 rounded-md hover:bg-red-50"
+              >
+                {t("teacher.gcalDisconnect")}
+              </button>
+            </>
+          ) : (
+            <a
+              href="/api/auth/google/start"
+              className="flex items-center gap-1.5 text-sm text-gray-700 bg-white border border-gray-200 rounded-lg px-3 py-1.5 hover:border-brand-300 hover:bg-brand-50 transition-colors shadow-sm"
+            >
+              <CalendarDays size={14} />
+              {t("teacher.gcalConnect")}
+            </a>
+          )}
+        </div>
       </div>
+
+      {/* Google Calendar OAuth result banner */}
+      {gcalBanner === "connected" && (
+        <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">
+          <CheckCircle2 size={15} />
+          {t("teacher.gcalConnectedBanner")}
+          <button
+            type="button"
+            onClick={() => setGcalBanner(null)}
+            className="ms-auto text-green-600 hover:text-green-800"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+      {gcalBanner === "error" && (
+        <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+          <AlertCircle size={15} />
+          {t("teacher.gcalErrorBanner")}
+          <button
+            type="button"
+            onClick={() => setGcalBanner(null)}
+            className="ms-auto text-red-600 hover:text-red-800"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">

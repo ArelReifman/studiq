@@ -19,6 +19,7 @@ import { coursesRoutes } from "./routes/courses.js";
 import { learningMapRoutes } from "./routes/learning-map.js";
 import { approvalsRoutes } from "./routes/approvals.js";
 import { profileRoutes } from "./routes/profile.js";
+import { googleAuthRoutes } from "./routes/google-auth.js";
 import { rateLimit } from "./middleware/rate-limit.js";
 
 export function createApp(basePath = "") {
@@ -88,6 +89,7 @@ export function createApp(basePath = "") {
   app.route("/learning-map", learningMapRoutes);
   app.route("/approvals", approvalsRoutes);
   app.route("/profile", profileRoutes);
+  app.route("/auth/google", googleAuthRoutes);
 
   app.get("/health", (c) => c.json({ status: "ok", version: "1.0.1", timestamp: new Date().toISOString() }));
   app.notFound((c) => c.json({ error: "Not found" }, 404));

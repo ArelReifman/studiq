@@ -526,5 +526,11 @@
   "studentContext.addInsight": "הוסף",
   "studentContext.insightsEmpty": "אין עדיין תובנות. הוסף את הראשונה כשתגלה משהו שעוזר לתלמיד.",
   "studentContext.removeInsight": "הסר תובנה",
-  "studentContext.confirmDelete": "להסיר את התובנה הזו?"
+  "studentContext.confirmDelete": "להסיר את התובנה הזו?",
+
+  "teacher.gcalConnect": "חיבור Google Calendar",
+  "teacher.gcalConnected": "Google Calendar מחובר",
+  "teacher.gcalDisconnect": "נתק",
+  "teacher.gcalConnectedBanner": "Google Calendar חובר בהצלחה! בכל אישור שיעור ייווצר אירוע ביומן ויישלח הזמנה לתלמיד.",
+  "teacher.gcalErrorBanner": "לא הצלחנו לחבר את Google Calendar. נסה שוב."
 }
