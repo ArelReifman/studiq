@@ -17,11 +17,26 @@ export async function callClaude<T>(
 ): Promise<T> {
   const client = getClaudeClient();
 
-  const message = await client.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 2048,
-    messages: [{ role: "user", content: prompt }],
-  });
+  let message;
+  try {
+    message = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 2048,
+      messages: [{ role: "user", content: prompt }],
+    });
+  } catch (err) {
+    // The Anthropic SDK wraps the real network error in `cause`. Surface
+    // it so we don't see vague "Connection error." with no detail.
+    const cause = (err as { cause?: unknown })?.cause;
+    const causeMsg =
+      cause instanceof Error
+        ? `${cause.name}: ${cause.message}`
+        : cause
+          ? String(cause)
+          : "no cause";
+    const baseMsg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Claude call failed — ${baseMsg} (cause: ${causeMsg})`);
+  }
 
   const content = message.content[0];
   if (!content || content.type !== "text") {
