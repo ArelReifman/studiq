@@ -535,5 +535,18 @@
   "teacher.gcalConnected": "Google Calendar connected",
   "teacher.gcalDisconnect": "Disconnect",
   "teacher.gcalConnectedBanner": "Google Calendar connected! Approved lessons will automatically create calendar events and send students an invite.",
-  "teacher.gcalErrorBanner": "Could not connect Google Calendar. Please try again."
+  "teacher.gcalErrorBanner": "Could not connect Google Calendar. Please try again.",
+
+  "teacher.actionRequired": "Waiting for you",
+  "teacher.allClear": "You're all caught up!",
+  "teacher.pendingRequestsSingle": "1 lesson request pending approval",
+  "teacher.pendingRequestsPlural": "{count} lesson requests pending approval",
+  "teacher.attendanceNeededSingle": "1 past lesson needs attendance marked",
+  "teacher.attendanceNeededPlural": "{count} past lessons need attendance marked",
+  "teacher.submissionsSingle": "{name} uploaded a solution for review",
+  "teacher.submissionsPlural": "{count} solutions uploaded for review",
+  "teacher.todayLessons": "Today",
+  "teacher.tomorrowLessons": "Tomorrow",
+  "teacher.noTodayLessons": "No approved lessons today",
+  "teacher.noTomorrowLessons": "No approved lessons tomorrow"
 }
