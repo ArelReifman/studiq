@@ -526,5 +526,11 @@
   "studentContext.addInsight": "Add",
   "studentContext.insightsEmpty": "No insights yet. Add your first one when you discover something that helps this student.",
   "studentContext.removeInsight": "Remove insight",
-  "studentContext.confirmDelete": "Remove this insight?"
+  "studentContext.confirmDelete": "Remove this insight?",
+
+  "teacher.gcalConnect": "Connect Google Calendar",
+  "teacher.gcalConnected": "Google Calendar connected",
+  "teacher.gcalDisconnect": "Disconnect",
+  "teacher.gcalConnectedBanner": "Google Calendar connected! Approved lessons will automatically create calendar events and send students an invite.",
+  "teacher.gcalErrorBanner": "Could not connect Google Calendar. Please try again."
 }

@@ -650,6 +650,20 @@ export const lessonBookings = pgTable(
   ]
 );
 
+// ─── Teacher Google OAuth tokens ─────────────────────────────────────────────
+// One row per teacher — upserted each time they reconnect Google Calendar.
+
+export const teacherGoogleTokens = pgTable("teacher_google_tokens", {
+  teacher_id: uuid("teacher_id")
+    .primaryKey()
+    .references(() => teachers.id, { onDelete: "cascade" }),
+  access_token: text("access_token").notNull(),
+  refresh_token: text("refresh_token").notNull(),
+  expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ─── Audit log ────────────────────────────────────────────────────────────────
 // Append-only security event log. Captures who did what, when, and from where.
 // Writes are best-effort: a failed insert must NEVER block the underlying request.
