@@ -467,6 +467,86 @@ export default function TeacherSchedulePage() {
         </Card>
       </div>
 
+      {/* Upcoming approved lessons */}
+      <Card>
+        <div className="flex items-center gap-2 mb-4">
+          <CalendarCheck size={18} className="text-green-600" />
+          <h2 className="text-lg font-semibold text-gray-800">
+            {t("teacher.upcomingLessons")}
+          </h2>
+          {upcomingActive.length > 0 && (
+            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+              {upcomingActive.length}
+            </span>
+          )}
+        </div>
+
+        {upcomingGroups.length === 0 ? (
+          <p className="text-sm text-gray-400 py-6 text-center">
+            {t("teacher.noUpcomingLessons")}
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {upcomingGroups.map((g) => {
+              const isCancelRequest = g.status === "cancel_requested";
+              return (
+              <div
+                key={g.key}
+                className={
+                  isCancelRequest
+                    ? "flex items-start justify-between gap-3 border border-red-200 bg-red-50 rounded-lg p-3 transition-colors"
+                    : "flex items-start justify-between gap-3 border border-gray-100 rounded-lg p-3 hover:border-brand-200 transition-colors"
+                }
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="font-mono text-sm text-gray-700">
+                      {formatDate(g.date)}
+                    </span>
+                    <span className="font-mono text-sm font-semibold text-brand-700">
+                      {g.start_time}–{g.end_time}
+                    </span>
+                    <span className="font-medium text-gray-800">
+                      {g.student_name}
+                    </span>
+                    {g.hours > 1 && (
+                      <span className="text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">
+                        {t("approvals.hoursCount", { count: g.hours })}
+                      </span>
+                    )}
+                    {isCancelRequest && (
+                      <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
+                        {t("teacher.cancelPending")}
+                      </span>
+                    )}
+                  </div>
+                  {g.student_note && (
+                    <div className="flex items-start gap-1.5 mt-1.5 text-xs text-gray-500">
+                      <MessageSquare size={11} className="flex-shrink-0 mt-0.5" />
+                      <span className="italic">{g.student_note}</span>
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm(t("teacher.confirmCancelLesson"))) {
+                      cancelLessonMutation.mutate({ ids: g.ids });
+                    }
+                  }}
+                  disabled={cancelLessonMutation.isPending}
+                  className="flex-shrink-0 inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded-md px-2 py-1 transition-colors disabled:opacity-50"
+                >
+                  <X size={13} />
+                  {t("teacher.cancelLesson")}
+                </button>
+              </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
       {/* Past lessons — mark whether each one actually took place */}
       {recentPastGroups.length > 0 && (
         <Card>
@@ -555,86 +635,6 @@ export default function TeacherSchedulePage() {
           </div>
         </Card>
       )}
-
-      {/* Upcoming approved lessons */}
-      <Card>
-        <div className="flex items-center gap-2 mb-4">
-          <CalendarCheck size={18} className="text-green-600" />
-          <h2 className="text-lg font-semibold text-gray-800">
-            {t("teacher.upcomingLessons")}
-          </h2>
-          {upcomingActive.length > 0 && (
-            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
-              {upcomingActive.length}
-            </span>
-          )}
-        </div>
-
-        {upcomingGroups.length === 0 ? (
-          <p className="text-sm text-gray-400 py-6 text-center">
-            {t("teacher.noUpcomingLessons")}
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {upcomingGroups.map((g) => {
-              const isCancelRequest = g.status === "cancel_requested";
-              return (
-              <div
-                key={g.key}
-                className={
-                  isCancelRequest
-                    ? "flex items-start justify-between gap-3 border border-red-200 bg-red-50 rounded-lg p-3 transition-colors"
-                    : "flex items-start justify-between gap-3 border border-gray-100 rounded-lg p-3 hover:border-brand-200 transition-colors"
-                }
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <span className="font-mono text-sm text-gray-700">
-                      {formatDate(g.date)}
-                    </span>
-                    <span className="font-mono text-sm font-semibold text-brand-700">
-                      {g.start_time}–{g.end_time}
-                    </span>
-                    <span className="font-medium text-gray-800">
-                      {g.student_name}
-                    </span>
-                    {g.hours > 1 && (
-                      <span className="text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">
-                        {t("approvals.hoursCount", { count: g.hours })}
-                      </span>
-                    )}
-                    {isCancelRequest && (
-                      <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
-                        {t("teacher.cancelPending")}
-                      </span>
-                    )}
-                  </div>
-                  {g.student_note && (
-                    <div className="flex items-start gap-1.5 mt-1.5 text-xs text-gray-500">
-                      <MessageSquare size={11} className="flex-shrink-0 mt-0.5" />
-                      <span className="italic">{g.student_note}</span>
-                    </div>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (confirm(t("teacher.confirmCancelLesson"))) {
-                      cancelLessonMutation.mutate({ ids: g.ids });
-                    }
-                  }}
-                  disabled={cancelLessonMutation.isPending}
-                  className="flex-shrink-0 inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded-md px-2 py-1 transition-colors disabled:opacity-50"
-                >
-                  <X size={13} />
-                  {t("teacher.cancelLesson")}
-                </button>
-              </div>
-              );
-            })}
-          </div>
-        )}
-      </Card>
     </div>
   );
 }
