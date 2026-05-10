@@ -172,8 +172,55 @@ export const bookingRoutes = new Hono()
       })
       .returning();
 
-    // Telegram: notify the teacher of the new booking request
+    // Telegram: notify the teacher of the new booking request.
+    // When a student books N consecutive hours, the frontend fires N parallel
+    // POSTs. We don't want N pings — we want ONE merged ping like "14:00–17:00".
+    // Strategy: wait 1.5s, then query for all just-created pending bookings by
+    // this student on this date, group consecutive ones, and only the booking
+    // whose start_time equals the group's earliest start_time sends the
+    // notification. Non-first siblings see themselves not at the head and skip.
     void (async () => {
+      await new Promise((r) => setTimeout(r, 1500));
+
+      const recentCutoff = new Date(Date.now() - 10_000);
+      const recent = await db
+        .select({
+          id: lessonBookings.id,
+          start_time: lessonBookings.start_time,
+          end_time: lessonBookings.end_time,
+        })
+        .from(lessonBookings)
+        .where(
+          and(
+            eq(lessonBookings.student_id, studentId),
+            eq(lessonBookings.date, slot.date),
+            eq(lessonBookings.status, "pending"),
+            gte(lessonBookings.created_at, recentCutoff)
+          )
+        )
+        .orderBy(lessonBookings.start_time);
+
+      // Walk forward from this booking; merge each next slot whose start
+      // equals the running end. Same backwards. This gives the consecutive
+      // group containing this booking.
+      const idx = recent.findIndex((r) => r.id === booking!.id);
+      if (idx === -1) return;
+      let lo = idx;
+      let hi = idx;
+      while (lo > 0 && recent[lo - 1]!.end_time === recent[lo]!.start_time) lo--;
+      while (
+        hi < recent.length - 1 &&
+        recent[hi]!.end_time === recent[hi + 1]!.start_time
+      )
+        hi++;
+
+      // Only the head of the group sends the message.
+      if (recent[lo]!.id !== booking!.id) return;
+
+      const groupStart = recent[lo]!.start_time;
+      const groupEnd = recent[hi]!.end_time;
+      const hours = hi - lo + 1;
+
       const [studentRow] = await db
         .select({ name: profiles.full_name })
         .from(profiles)
@@ -183,8 +230,9 @@ export const bookingRoutes = new Hono()
       const noteLine = body.note
         ? `\n📝 ${escapeTelegramHtml(body.note)}`
         : "";
+      const durationLabel = hours > 1 ? ` · ${hours}h` : "";
       await notifyTelegram(
-        `📅 <b>New lesson request</b>\n${escapeTelegramHtml(studentName)} · ${slot.date} · ${slot.start_time}–${slot.end_time}${noteLine}`
+        `📅 <b>New lesson request</b>\n${escapeTelegramHtml(studentName)} · ${slot.date} · ${groupStart}–${groupEnd}${durationLabel}${noteLine}`
       );
     })();
 
