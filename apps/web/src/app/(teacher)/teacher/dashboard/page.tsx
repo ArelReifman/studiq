@@ -282,7 +282,7 @@ export default function TeacherDashboard() {
                   key={g.key}
                   className="flex items-center gap-3"
                 >
-                  <span className="font-mono text-xs text-gray-500 flex-shrink-0 w-24">
+                  <span className="font-mono text-xs text-gray-500 flex-shrink-0 w-24" dir="ltr">
                     {formatTime(g.start_time)}–{formatTime(g.end_time)}
                   </span>
                   <span className="text-sm font-medium text-gray-800 truncate flex-1">
@@ -320,7 +320,7 @@ export default function TeacherDashboard() {
             <div className="space-y-2">
               {tomorrowGroups.map((g) => (
                 <div key={g.key} className="flex items-center gap-3">
-                  <span className="font-mono text-xs text-gray-500 flex-shrink-0 w-24">
+                  <span className="font-mono text-xs text-gray-500 flex-shrink-0 w-24" dir="ltr">
                     {formatTime(g.start_time)}–{formatTime(g.end_time)}
                   </span>
                   <span className="text-sm font-medium text-gray-800 truncate flex-1">
