@@ -635,6 +635,7 @@ export const lessonBookings = pgTable(
     status: bookingStatusEnum("status").notNull().default("pending"),
     student_note: text("student_note"),
     teacher_note: text("teacher_note"),
+    gcal_event_id: text("gcal_event_id"), // Google Calendar event ID, set on approval
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

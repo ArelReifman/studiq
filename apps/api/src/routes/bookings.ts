@@ -13,7 +13,7 @@ import {
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { notifyTelegram, escapeTelegramHtml } from "../lib/notify.js";
 import { ensureDefaultSlots } from "../services/scheduling/ensure-default-slots.js";
-import { createCalendarEvent } from "../services/google-calendar.js";
+import { createCalendarEvent, deleteCalendarEvent } from "../services/google-calendar.js";
 import { getIsraelToday, isSlotInPastIsrael } from "../lib/time.js";
 import { uuidParamSchema } from "../lib/validators.js";
 
@@ -287,16 +287,29 @@ export const bookingRoutes = new Hono()
         return c.json({ error: "Booking not found or already handled" }, 404);
       }
 
-      // When booking is approved, create a Google Calendar event (fire-and-forget).
+      // When booking is approved, create a Google Calendar event and store its ID.
       // Silently skipped if the teacher hasn't connected Google Calendar.
       if (body.status === "approved") {
-        void createCalendarEvent({
-          date: updated.date,
-          start_time: updated.start_time,
-          end_time: updated.end_time,
-          student_id: updated.student_id,
-          teacher_id: teacherId,
-        });
+        void (async () => {
+          const eventId = await createCalendarEvent({
+            date: updated.date,
+            start_time: updated.start_time,
+            end_time: updated.end_time,
+            student_id: updated.student_id,
+            teacher_id: teacherId,
+          });
+          if (eventId) {
+            await db
+              .update(lessonBookings)
+              .set({ gcal_event_id: eventId })
+              .where(eq(lessonBookings.id, updated.id));
+          }
+        })();
+      }
+
+      // When booking is cancelled, delete the Google Calendar event if one exists.
+      if (body.status === "cancelled" && updated.gcal_event_id) {
+        void deleteCalendarEvent(teacherId, updated.gcal_event_id);
       }
 
       // Telegram log when the teacher cancels — confirms the action was
