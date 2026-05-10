@@ -66,6 +66,10 @@ export const googleAuthRoutes = new Hono()
       return c.redirect(`${appUrl}/teacher/schedule?gcal=error&reason=state_mismatch`);
     }
 
+    if (!code) {
+      return c.redirect(`${appUrl}/teacher/schedule?gcal=error&reason=no_code`);
+    }
+
     const tokenRes = await fetch(GOOGLE_TOKEN_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
