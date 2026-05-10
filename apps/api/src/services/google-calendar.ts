@@ -64,6 +64,7 @@ export async function createCalendarEvent(booking: {
     attendees: [{ email: studentProfile.email }],
     reminders: { useDefault: true },
     guestsCanSeeOtherGuests: false,
+    colorId: "2", // Sage
   };
 
   const res = await fetch(

@@ -2,7 +2,7 @@
 
 # Studiq
 
-**A full stack personalization engine built to scale adaptive lesson planning and student profiling.**
+**An AI-powered personalization engine for tutors. The AI learns your teaching style and applies it per student.**
 
 Built solo &nbsp;·&nbsp; [Live](https://studiq-three.vercel.app) &nbsp;·&nbsp; Next.js 15 · Hono · Postgres · Claude
 
@@ -10,73 +10,68 @@ Built solo &nbsp;·&nbsp; [Live](https://studiq-three.vercel.app) &nbsp;·&nbsp;
 
 ---
 
-Built out of a real tutoring workflow: the tutor teaches, the AI watches, and every lesson that follows is shaped by both the tutor's style and the student's progress. Two students studying the same subject get different lessons. The more feedback and sessions in the system, the sharper the personalization becomes.
+A tutor approves a student, the AI watches how the tutor teaches *and* how the student learns, and every generated lesson is shaped by both. Two students of the same tutor get different lessons. Two tutors of the same student would too.
 
-### Adaptive lesson planning and student profiling
+### What the AI does
 
-Claude is integrated across five coordinated services to capture tutoring patterns, build dynamic student profiles, and generate adaptive content:
-
-| Service | Reads | Produces |
+| Loop | Reads | Writes |
 |---|---|---|
-| **Style learner** | tutor feedback, notes, manually-authored lessons | `teaching_style_summary` |
-| **Profile builder** | completed/failed tasks, flagged difficulties | `student_ai_profile` — topic strengths, gaps, learning style |
-| **Difficulty tagger** | a flagged task | topic labels that update the profile |
-| **Report writer** | last 7 days of activity | weekly summary + gap-based recommendations |
-| **Lesson generator** | teaching style + student profile | tailored lesson, homework, todos |
+| **Style learner** | your feedback, notes, manually-authored lessons | `teaching_style_summary` |
+| **Profile builder** | completed/failed tasks, tagged difficulties | `student_ai_profile` (strong/weak topics, learning style) |
+| **Difficulty tagger** | a flagged task | topic labels |
+| **Report writer** | last 7 days of activity | weekly summary + recommendations |
+| **Lesson generator** | all of the above | tailored lesson + homework + todos |
 
 → `apps/api/src/services/ai/`
 
-### Feedback-driven workflow
-
-Progress tracking feeds directly into the recommendations loop. Completed and failed tasks, difficulty flags, topic-level tags, and per-student exam dates all accumulate over time — surfacing learning gaps and improving what the AI generates next.
+### The personalization loop
 
 ```
-   tutor writes feedback / notes / manual lessons
+   teacher writes feedback / notes / manual lessons
                          │
                          ▼
-              [1] teaching_style_summary ──────────┐
-                                                    │
-   student works, completes tasks, flags difficulty │
-                         │                          │
-                         ▼                          │
-                  [3] tag topics                    │
-                         │                          │
-                         ▼                          │
-              [2] student_ai_profile ───────────────┤
-                         │                          │
-                         ▼                          ▼
-                          [5] generate lesson (personalized)
-                         │                          │
-                         ▼                          ▼
-                    new lesson            [4] weekly report
+              [1] teaching_style_summary ──┐
+                                           │
+   student does work / flags difficulty    │
+                         │                 │
+                         ▼                 │
+                  [3] tag topics           │
+                         │                 │
+                         ▼                 │
+              [2] student_ai_profile ──────┤
+                         │                 │
+                         ▼                 ▼
+                          [5] generate lesson
+                         │                 │
+                         ▼                 ▼
+                    new lesson    [4] weekly report
                          │
                          └──▶ student work ──▶ back to top
 ```
 
-### Authentication and role-based access control
+### Engineering decisions worth calling out
 
-Two roles — tutor and student — with fully separate workflows, data visibility, and lifecycle states:
-
-- Students self-register (land as **pending**, require tutor approval) or join via invite link (auto-approved, skips queue)
-- Tutors manage approvals, assign courses, set per-student exam date overrides, and control topic locking
-- HttpOnly JWT + parallel readable `{role, status}` cookie for edge middleware routing
-- CSRF via `X-Requested-With`, per-route rate limiting, lifecycle enforcement in middleware
-
-### Engineering highlights
-
-- **Race-safe approvals** — three writes in one transaction gated on `WHERE status = 'pending'`. Two tutors approving the same student concurrently can't both win. → `routes/approvals.ts`
-- **Reactive UI** — one Supabase Realtime channel, 10 tables, one hook translates all events to React Query invalidations. No manual refetch anywhere. → `hooks/use-realtime-sync.ts`
-- **Per-student exam dates** — student-level override wins over the course default, so students at different universities or on different exam cycles each see their own countdown and urgency signals
-- **Cold-start DB** — Drizzle behind a `Proxy`, opens on first use; auto-detects Supabase pooler and disables prepared statements. → `db/client.ts`
-- **Bilingual** — Hebrew (RTL) and English from one stylesheet, one Vercel project, one cookie scope
+- **Race-safe approvals** — three writes in one transaction gated on `WHERE status = 'pending'`. Two teachers approving the same user concurrently can't both win. → `routes/approvals.ts`
+- **Reactive UI by default** — one Supabase channel, 10 tables, one hook translates events to React Query invalidations. No manual refetch anywhere. → `hooks/use-realtime-sync.ts`
+- **Defense-in-depth auth** — HttpOnly JWT + parallel readable `{role, status}` cookie for middleware routing. CSRF via `X-Requested-With`, rate-limited, lifecycle states enforced in middleware. → `middleware/auth.ts`
+- **Cold-start friendly DB** — Drizzle behind a `Proxy`, opens on first use; auto-detects Supabase pooler and disables prepared statements. → `db/client.ts`
+- **Bilingual** — Hebrew (RTL) and English from one stylesheet, one Vercel project, one cookie scope.
 
 ### Stack
 
 Next.js 15 · React 19 · TypeScript · Tailwind v4 · TanStack Query · Hono · Drizzle · Zod · Supabase (Postgres + Auth + Realtime) · Anthropic Claude · pnpm + Turborepo · Vercel
 
+### Latest features
+
+- **Per-student exam dates** — teachers can override course exam dates for individual students taking exams at different universities or mo'ed dates
+- **Triage bar** — teachers see at a glance which students need attention (flagged difficulties, unreviewed cards, pending approvals)
+- **Navbar badges** — unreviewed difficulty cards and pending approvals surfaced in navigation for quick access
+- **Difficulty reviews** — mark difficulty cards as "seen" without closing them, building a teaching style over time
+- **Student course selection** — self-registering students pick their course at signup, enabling immediate learning map population on approval
+
 ### By the numbers
 
-18 Postgres tables · 10 Realtime channels · 25 pages · 16 Zod-validated routes · 5 Claude-powered services
+18 Postgres tables · 10 realtime channels · 25 pages · 16 Zod-validated routes · 5 Claude-powered services
 
 ---
 
