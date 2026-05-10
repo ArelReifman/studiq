@@ -27,10 +27,13 @@ interface BookingRow {
     | "cancelled";
   student_note: string | null;
   teacher_note: string | null;
+  attendance: "attended" | "no_show" | null;
   student_name: string;
   student_id: string;
   created_at: string;
 }
+
+type Attendance = "attended" | "no_show" | null;
 
 function formatDate(s: string): string {
   return new Date(s + "T00:00:00").toLocaleDateString(undefined, {
@@ -38,6 +41,13 @@ function formatDate(s: string): string {
     month: "short",
     day: "numeric",
   });
+}
+
+// True iff this lesson's end_time has already passed (Israel local time, but
+// since the page runs in the teacher's browser using their tz, comparing
+// against `new Date()` is correct enough — both teacher and slot are in IL).
+function hasLessonEnded(date: string, endTime: string): boolean {
+  return new Date(`${date}T${endTime}:00`).getTime() <= Date.now();
 }
 
 export default function TeacherSchedulePage() {
@@ -97,7 +107,10 @@ export default function TeacherSchedulePage() {
       bookings.filter(
         (b) =>
           (b.status === "approved" || b.status === "cancel_requested") &&
-          b.date >= today
+          b.date >= today &&
+          // Today's lessons that already ended belong in the "Past" section
+          // (where the teacher marks attendance), not in "Upcoming".
+          !hasLessonEnded(b.date, b.end_time)
       ),
     [bookings, today]
   );
@@ -105,6 +118,31 @@ export default function TeacherSchedulePage() {
   const upcomingGroups = useMemo(
     () => groupConsecutiveBookings(upcomingActive),
     [upcomingActive]
+  );
+
+  // Recent ended lessons (last 30 days, including today's already-finished
+  // ones) — these are the ones the teacher can mark as attended / no-show.
+  const recentPast = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const cutoffStr = cutoff.toISOString().split("T")[0]!;
+    return bookings.filter(
+      (b) =>
+        (b.status === "approved" || b.status === "cancel_requested") &&
+        b.date >= cutoffStr &&
+        hasLessonEnded(b.date, b.end_time)
+    );
+  }, [bookings]);
+
+  const recentPastGroups = useMemo(
+    () =>
+      groupConsecutiveBookings(recentPast).sort((a, b) =>
+        // Most recent first (latest start time wins).
+        b.date === a.date
+          ? b.start_time.localeCompare(a.start_time)
+          : b.date.localeCompare(a.date)
+      ),
+    [recentPast]
   );
 
   const bookedDates = useMemo(
@@ -184,6 +222,30 @@ export default function TeacherSchedulePage() {
       await Promise.all(
         ids.map((id) =>
           api.patch(`/bookings/${id}`, { status: "cancelled" })
+        )
+      );
+    },
+    onError: (e: Error) => setError(e.message),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["my-bookings-as-teacher"] });
+      qc.invalidateQueries({ queryKey: ["my-availability"] });
+      qc.invalidateQueries({ queryKey: ["booking-slots"] });
+    },
+  });
+  // Marks the whole grouped lesson (1+ slots) as attended / no_show / unset.
+  // Each row is updated independently — backend keeps them in sync since the
+  // teacher always marks a group as one unit.
+  const markAttendanceMutation = useMutation({
+    mutationFn: async ({
+      ids,
+      attendance,
+    }: {
+      ids: string[];
+      attendance: Attendance;
+    }) => {
+      await Promise.all(
+        ids.map((id) =>
+          api.patch(`/bookings/${id}/attendance`, { attendance })
         )
       );
     },
@@ -404,6 +466,95 @@ export default function TeacherSchedulePage() {
           )}
         </Card>
       </div>
+
+      {/* Past lessons — mark whether each one actually took place */}
+      {recentPastGroups.length > 0 && (
+        <Card>
+          <div className="flex items-center gap-2 mb-4">
+            <CalendarCheck size={18} className="text-gray-500" />
+            <h2 className="text-lg font-semibold text-gray-800">
+              {t("teacher.pastLessons")}
+            </h2>
+            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">
+              {recentPastGroups.length}
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            {recentPastGroups.map((g) => {
+              // All bookings in a group are marked together, so the first
+              // booking's attendance is canonical for the whole group.
+              const attendance =
+                (g.bookings[0]?.attendance as Attendance) ?? null;
+              return (
+                <div
+                  key={g.key}
+                  className="flex items-start justify-between gap-3 border border-gray-100 rounded-lg p-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="font-mono text-sm text-gray-700">
+                        {formatDate(g.date)}
+                      </span>
+                      <span className="font-mono text-sm font-semibold text-gray-700">
+                        {g.start_time}–{g.end_time}
+                      </span>
+                      <span className="font-medium text-gray-800">
+                        {g.student_name}
+                      </span>
+                      {g.hours > 1 && (
+                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">
+                          {t("approvals.hoursCount", { count: g.hours })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Three-segment toggle: Took place / Didn't / Not marked */}
+                  <div className="flex-shrink-0 flex items-center rounded-md overflow-hidden border border-gray-200 text-xs">
+                    <button
+                      type="button"
+                      disabled={markAttendanceMutation.isPending}
+                      onClick={() =>
+                        markAttendanceMutation.mutate({
+                          ids: g.ids,
+                          attendance:
+                            attendance === "attended" ? null : "attended",
+                        })
+                      }
+                      className={
+                        attendance === "attended"
+                          ? "px-2.5 py-1 bg-green-100 text-green-700 font-medium"
+                          : "px-2.5 py-1 text-gray-500 hover:bg-gray-50"
+                      }
+                    >
+                      {t("teacher.attended")}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={markAttendanceMutation.isPending}
+                      onClick={() =>
+                        markAttendanceMutation.mutate({
+                          ids: g.ids,
+                          attendance:
+                            attendance === "no_show" ? null : "no_show",
+                        })
+                      }
+                      className={
+                        attendance === "no_show"
+                          ? "px-2.5 py-1 bg-red-100 text-red-700 font-medium border-s border-gray-200"
+                          : "px-2.5 py-1 text-gray-500 hover:bg-gray-50 border-s border-gray-200"
+                      }
+                    >
+                      {t("teacher.noShow")}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
 
       {/* Upcoming approved lessons */}
       <Card>
