@@ -172,21 +172,71 @@ export const bookingRoutes = new Hono()
       })
       .returning();
 
-    // Telegram: notify the teacher of the new booking request
-    void (async () => {
-      const [studentRow] = await db
-        .select({ name: profiles.full_name })
-        .from(profiles)
-        .where(eq(profiles.id, studentId))
-        .limit(1);
-      const studentName = studentRow?.name ?? "Student";
-      const noteLine = body.note
-        ? `\n📝 ${escapeTelegramHtml(body.note)}`
-        : "";
-      await notifyTelegram(
-        `📅 <b>New lesson request</b>\n${escapeTelegramHtml(studentName)} · ${slot.date} · ${slot.start_time}–${slot.end_time}${noteLine}`
-      );
-    })();
+    // Telegram: notify the teacher of the new booking request.
+    // The frontend fires N parallel POSTs for N consecutive hours. We coalesce
+    // them into ONE merged ping like "14:00–17:00 · 3h" by:
+    //   1. Wait 700ms inside the request so parallel siblings all commit.
+    //   2. Read all pending bookings by this student on this date created in
+    //      the last 10s, sort by start_time, find the consecutive group that
+    //      contains this booking.
+    //   3. Only the head of the group (earliest start_time) sends the ping.
+    //
+    // This must run BEFORE c.json() — Vercel freezes the function immediately
+    // after the response is sent, so deferred async work gets killed.
+    await new Promise((r) => setTimeout(r, 700));
+
+    const recentCutoff = new Date(Date.now() - 10_000);
+    const recent = await db
+      .select({
+        id: lessonBookings.id,
+        start_time: lessonBookings.start_time,
+        end_time: lessonBookings.end_time,
+      })
+      .from(lessonBookings)
+      .where(
+        and(
+          eq(lessonBookings.student_id, studentId),
+          eq(lessonBookings.date, slot.date),
+          eq(lessonBookings.status, "pending"),
+          gte(lessonBookings.created_at, recentCutoff)
+        )
+      )
+      .orderBy(lessonBookings.start_time);
+
+    const idx = recent.findIndex((r) => r.id === booking!.id);
+    if (idx !== -1) {
+      let lo = idx;
+      let hi = idx;
+      while (lo > 0 && recent[lo - 1]!.end_time === recent[lo]!.start_time) lo--;
+      while (
+        hi < recent.length - 1 &&
+        recent[hi]!.end_time === recent[hi + 1]!.start_time
+      )
+        hi++;
+
+      // Head-of-group rule guarantees exactly one notification per group.
+      if (recent[lo]!.id === booking!.id) {
+        const groupStart = recent[lo]!.start_time;
+        const groupEnd = recent[hi]!.end_time;
+        const hours = hi - lo + 1;
+
+        void (async () => {
+          const [studentRow] = await db
+            .select({ name: profiles.full_name })
+            .from(profiles)
+            .where(eq(profiles.id, studentId))
+            .limit(1);
+          const studentName = studentRow?.name ?? "Student";
+          const noteLine = body.note
+            ? `\n📝 ${escapeTelegramHtml(body.note)}`
+            : "";
+          const durationLabel = hours > 1 ? ` · ${hours}h` : "";
+          await notifyTelegram(
+            `📅 <b>New lesson request</b>\n${escapeTelegramHtml(studentName)} · ${slot.date} · ${groupStart}–${groupEnd}${durationLabel}${noteLine}`
+          );
+        })();
+      }
+    }
 
     return c.json(booking, 201);
   })

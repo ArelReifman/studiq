@@ -7,11 +7,9 @@ import { useAuthStore } from "@/store/auth";
 import { useT } from "@/i18n";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TaskItem } from "@/components/student/task-item";
-import { LessonSolutionUpload } from "@/components/student/lesson-solution-upload";
 import { formatDate } from "@/lib/utils";
 import type { LessonSession, HomeworkItem, TodoItem } from "@studiq/types";
-import { BookOpen, FileText, ExternalLink, History, Map, CalendarDays } from "lucide-react";
+import { BookOpen, ExternalLink, History, Map, CalendarDays } from "lucide-react";
 
 export default function StudentDashboard() {
   const user = useAuthStore((s) => s.user);
@@ -97,104 +95,52 @@ export default function StudentDashboard() {
       </h1>
       <p className="text-gray-500 mb-6">{t("student.currentLesson")}</p>
 
+      {/* Summary card only — material, solution upload, tasks, and feedback
+          all live on the dedicated lesson page to avoid duplicating the same
+          UI here and on /student/lessons/[id]. */}
       {activeLesson && (
-        <Card className="mb-6">
-          <div className="flex items-start justify-between mb-3">
-            <div className="flex-1 min-w-0">
-              <Badge variant="default" className="mb-2">
-                {t("student.activeLesson")}
-              </Badge>
-              <h2 className="text-lg font-semibold">{activeLesson.title}</h2>
-              {activeLesson.description && (
-                <p className="text-sm text-gray-500 mt-1">
-                  {activeLesson.description}
-                </p>
-              )}
+        <Link
+          href={`/student/lessons/${activeLesson.id}`}
+          className="block mb-6"
+        >
+          <Card className="hover:shadow-md transition-shadow cursor-pointer">
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex-1 min-w-0">
+                <Badge variant="default" className="mb-2">
+                  {t("student.activeLesson")}
+                </Badge>
+                <h2 className="text-lg font-semibold">{activeLesson.title}</h2>
+                {activeLesson.description && (
+                  <p className="text-sm text-gray-500 mt-1">
+                    {activeLesson.description}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-col items-end gap-2 flex-shrink-0 ms-3">
+                <span className="text-xs text-gray-400">
+                  {formatDate(activeLesson.generated_at)}
+                </span>
+                <span className="inline-flex items-center gap-1 text-xs text-brand-600">
+                  {t("student.openLesson")}
+                  <ExternalLink size={11} />
+                </span>
+              </div>
             </div>
-            <div className="flex flex-col items-end gap-2 flex-shrink-0 ms-3">
-              <span className="text-xs text-gray-400">
-                {formatDate(activeLesson.generated_at)}
-              </span>
-              <Link
-                href={`/student/lessons/${activeLesson.id}`}
-                className="inline-flex items-center gap-1 text-xs text-brand-600 hover:underline"
-              >
-                {t("student.openLesson")}
-                <ExternalLink size={11} />
-              </Link>
-            </div>
-          </div>
 
-          {/* Material PDF link */}
-          {activeLesson.material_url && (
-            <div className="mt-3 flex items-center gap-2 bg-brand-50 rounded-lg px-3 py-2 w-fit">
-              <FileText size={14} className="text-brand-500 flex-shrink-0" />
-              <a
-                href={activeLesson.material_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-brand-600 hover:underline truncate max-w-[300px]"
-              >
-                {activeLesson.material_name || t("createLesson.material")}
-              </a>
+            <div className="mt-4">
+              <div className="flex justify-between text-xs text-gray-500 mb-1">
+                <span>{t("student.progressLabel")}</span>
+                <span>{progress}%</span>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-brand-500 rounded-full transition-all"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
             </div>
-          )}
-
-          <div className="mt-4">
-            <div className="flex justify-between text-xs text-gray-500 mb-1">
-              <span>{t("student.progressLabel")}</span>
-              <span>{progress}%</span>
-            </div>
-            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-brand-500 rounded-full transition-all"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {/* Lesson-level solution upload (PDF / image) — same component the
-          dedicated lesson page uses, so the student gets the upload box
-          on whichever surface they happen to be on. */}
-      {activeLesson && (
-        <LessonSolutionUpload
-          lessonId={activeLesson.id}
-          solutionUrl={activeLesson.student_solution_url}
-          solutionName={activeLesson.student_solution_name}
-        />
-      )}
-
-      {(homework.length > 0 || todos.length > 0) && (
-        <div className="mb-6">
-          <h3 className="text-base font-semibold mb-3">
-            {t("student.tasks")}
-            <span className="text-sm font-normal text-gray-400 ms-2">
-              {completedHw + completedTodos}/{totalHw + totalTodos}{" "}
-              {t("student.done")}
-            </span>
-          </h3>
-          <div className="space-y-2">
-            {/* Legacy homework items (older lessons) */}
-            {homework.map((item) => (
-              <TaskItem
-                key={item.id}
-                item={item}
-                type="homework"
-                lessonId={activeLesson!.id}
-              />
-            ))}
-            {todos.map((item) => (
-              <TaskItem
-                key={item.id}
-                item={item}
-                type="todo"
-                lessonId={activeLesson!.id}
-              />
-            ))}
-          </div>
-        </div>
+          </Card>
+        </Link>
       )}
 
       {/* Lesson history (merged from former /student/lessons page) */}
