@@ -3,10 +3,37 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq, and } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { homeworkItems, lessonSessions } from "../db/schema.js";
+import { homeworkItems, lessonSessions, profiles } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { createAdminSupabase } from "../lib/supabase.js";
 import { uuidParamSchema } from "../lib/validators.js";
+import { notifyTelegram, escapeTelegramHtml } from "../lib/notify.js";
+
+// Fire-and-forget Telegram ping when a student attaches a homework file.
+// Looks up the student name + item title so the teacher can see at a glance
+// what was submitted, then links to the submission file.
+async function notifyHomeworkSubmission(
+  studentId: string,
+  itemId: string,
+  fileUrl: string,
+  fileName: string
+): Promise<void> {
+  const [studentRow] = await db
+    .select({ name: profiles.full_name })
+    .from(profiles)
+    .where(eq(profiles.id, studentId))
+    .limit(1);
+  const [itemRow] = await db
+    .select({ title: homeworkItems.title })
+    .from(homeworkItems)
+    .where(eq(homeworkItems.id, itemId))
+    .limit(1);
+  const studentName = studentRow?.name ?? "Student";
+  const itemTitle = itemRow?.title ?? "homework";
+  await notifyTelegram(
+    `📎 <b>Homework submitted</b>\n${escapeTelegramHtml(studentName)} · ${escapeTelegramHtml(itemTitle)}\n📄 <a href="${fileUrl}">${escapeTelegramHtml(fileName)}</a>`
+  );
+}
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB (client-side limit; Supabase bucket is the actual gate)
 const ALLOWED_TYPES = [
@@ -115,6 +142,8 @@ export const uploadRoutes = new Hono()
         .returning();
 
       if (!updated) return c.json({ error: "Failed to update homework item" }, 500);
+
+      void notifyHomeworkSubmission(studentId, itemId, fileUrl, file.name);
 
       return c.json({
         file_url: updated.file_url,
@@ -431,6 +460,8 @@ export const uploadRoutes = new Hono()
         .returning();
 
       if (!updated) return c.json({ error: "Failed to update homework item" }, 500);
+
+      void notifyHomeworkSubmission(studentId, itemId, urlData.publicUrl, file_name);
 
       return c.json({
         file_url: updated.file_url,
