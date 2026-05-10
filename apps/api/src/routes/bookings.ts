@@ -13,6 +13,10 @@ import {
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { notifyTelegram, escapeTelegramHtml } from "../lib/notify.js";
 import { ensureDefaultSlots } from "../services/scheduling/ensure-default-slots.js";
+import {
+  findConsecutiveGroup,
+  formatDurationLabel,
+} from "../services/scheduling/booking-groups.js";
 import { createCalendarEvent, deleteCalendarEvent } from "../services/google-calendar.js";
 import { getIsraelToday, isSlotInPastIsrael } from "../lib/time.js";
 import { uuidParamSchema } from "../lib/validators.js";
@@ -172,70 +176,34 @@ export const bookingRoutes = new Hono()
       })
       .returning();
 
-    // Telegram: notify the teacher of the new booking request.
-    // The frontend fires N parallel POSTs for N consecutive hours. We coalesce
-    // them into ONE merged ping like "14:00–17:00 · 3h" by:
-    //   1. Wait 700ms inside the request so parallel siblings all commit.
-    //   2. Read all pending bookings by this student on this date created in
-    //      the last 10s, sort by start_time, find the consecutive group that
-    //      contains this booking.
-    //   3. Only the head of the group (earliest start_time) sends the ping.
-    //
-    // This must run BEFORE c.json() — Vercel freezes the function immediately
-    // after the response is sent, so deferred async work gets killed.
-    await new Promise((r) => setTimeout(r, 700));
+    // Telegram: coalesce N parallel bookings into ONE ping per consecutive
+    // group. The head of the group (earliest start_time) is the only one that
+    // sends — others stay silent. Must run before c.json() because Vercel
+    // freezes deferred work after the response.
+    const group = await findConsecutiveGroup({
+      bookingId: booking!.id,
+      studentId,
+      date: slot.date,
+      statuses: ["pending"],
+      timeColumn: "created_at",
+    });
 
-    const recentCutoff = new Date(Date.now() - 10_000);
-    const recent = await db
-      .select({
-        id: lessonBookings.id,
-        start_time: lessonBookings.start_time,
-        end_time: lessonBookings.end_time,
-      })
-      .from(lessonBookings)
-      .where(
-        and(
-          eq(lessonBookings.student_id, studentId),
-          eq(lessonBookings.date, slot.date),
-          eq(lessonBookings.status, "pending"),
-          gte(lessonBookings.created_at, recentCutoff)
-        )
-      )
-      .orderBy(lessonBookings.start_time);
-
-    const idx = recent.findIndex((r) => r.id === booking!.id);
-    if (idx !== -1) {
-      let lo = idx;
-      let hi = idx;
-      while (lo > 0 && recent[lo - 1]!.end_time === recent[lo]!.start_time) lo--;
-      while (
-        hi < recent.length - 1 &&
-        recent[hi]!.end_time === recent[hi + 1]!.start_time
-      )
-        hi++;
-
-      // Head-of-group rule guarantees exactly one notification per group.
-      if (recent[lo]!.id === booking!.id) {
-        const groupStart = recent[lo]!.start_time;
-        const groupEnd = recent[hi]!.end_time;
-        const hours = hi - lo + 1;
-
-        void (async () => {
-          const [studentRow] = await db
-            .select({ name: profiles.full_name })
-            .from(profiles)
-            .where(eq(profiles.id, studentId))
-            .limit(1);
-          const studentName = studentRow?.name ?? "Student";
-          const noteLine = body.note
-            ? `\n📝 ${escapeTelegramHtml(body.note)}`
-            : "";
-          const durationLabel = hours > 1 ? ` · ${hours}h` : "";
-          await notifyTelegram(
-            `📅 <b>New lesson request</b>\n${escapeTelegramHtml(studentName)} · ${slot.date} · ${groupStart}–${groupEnd}${durationLabel}${noteLine}`
-          );
-        })();
-      }
+    if (group?.isHead) {
+      void (async () => {
+        const [studentRow] = await db
+          .select({ name: profiles.full_name })
+          .from(profiles)
+          .where(eq(profiles.id, studentId))
+          .limit(1);
+        const studentName = studentRow?.name ?? "Student";
+        const noteLine = body.note
+          ? `\n📝 ${escapeTelegramHtml(body.note)}`
+          : "";
+        const durationLabel = ` · ${formatDurationLabel(group.start_time, group.end_time)}`;
+        await notifyTelegram(
+          `📅 <b>New lesson request</b>\n${escapeTelegramHtml(studentName)} · ${slot.date} · ${group.start_time}–${group.end_time}${durationLabel}${noteLine}`
+        );
+      })();
     }
 
     return c.json(booking, 201);
@@ -376,48 +344,78 @@ export const bookingRoutes = new Hono()
         return c.json({ error: "Booking not found or already handled" }, 404);
       }
 
-      // When booking is approved, create a Google Calendar event and store its ID.
-      // Silently skipped if the teacher hasn't connected Google Calendar.
+      // Approve: create ONE Google Calendar event spanning the whole group
+      // (e.g. 14:00–16:30 for a 2.5h lesson made of 5 × 30-min slots), and
+      // share its event ID across every sibling booking. The frontend approves
+      // a group via Promise.all of N PATCHes; we coalesce by head-of-group.
       if (body.status === "approved") {
-        void (async () => {
-          const eventId = await createCalendarEvent({
-            date: updated.date,
-            start_time: updated.start_time,
-            end_time: updated.end_time,
-            student_id: updated.student_id,
-            teacher_id: teacherId,
-          });
-          if (eventId) {
-            await db
-              .update(lessonBookings)
-              .set({ gcal_event_id: eventId })
-              .where(eq(lessonBookings.id, updated.id));
-          }
-        })();
+        const group = await findConsecutiveGroup({
+          bookingId: updated.id,
+          studentId: updated.student_id,
+          date: updated.date,
+          statuses: ["approved"],
+          timeColumn: "updated_at",
+        });
+
+        if (group?.isHead) {
+          void (async () => {
+            const eventId = await createCalendarEvent({
+              date: updated.date,
+              start_time: group.start_time,
+              end_time: group.end_time,
+              student_id: updated.student_id,
+              teacher_id: teacherId,
+            });
+            if (eventId) {
+              await db
+                .update(lessonBookings)
+                .set({ gcal_event_id: eventId })
+                .where(inArray(lessonBookings.id, group.ids));
+            }
+          })();
+        }
       }
 
-      // When booking is cancelled, delete the Google Calendar event if one exists.
+      // Cancel: delete the shared calendar event once. If siblings reference
+      // the same gcal_event_id, the first cancellation wipes it for all —
+      // subsequent ones see a null and skip (and the 404 path in
+      // deleteCalendarEvent is forgiving anyway).
       if (body.status === "cancelled" && updated.gcal_event_id) {
-        void deleteCalendarEvent(teacherId, updated.gcal_event_id);
+        const sharedEventId = updated.gcal_event_id;
+        void (async () => {
+          await deleteCalendarEvent(teacherId, sharedEventId);
+          await db
+            .update(lessonBookings)
+            .set({ gcal_event_id: null })
+            .where(eq(lessonBookings.gcal_event_id, sharedEventId));
+        })();
       }
 
-      // Telegram log when the teacher cancels — confirms the action was
-      // applied. (No SMS to the student; if needed, we can add a separate
-      // notify hook later.)
+      // Telegram log when the teacher cancels — coalesce per consecutive group.
       if (body.status === "cancelled") {
-        void (async () => {
-          const [studentRow] = await db
-            .select({ name: profiles.full_name })
-            .from(profiles)
-            .where(eq(profiles.id, updated.student_id))
-            .limit(1);
-          const studentName = studentRow?.name ?? "Student";
-          await notifyTelegram(
-            `🚫 <b>Lesson cancelled by you</b>\n${escapeTelegramHtml(
-              studentName
-            )} · ${updated.date} · ${updated.start_time}–${updated.end_time}`
-          );
-        })();
+        const group = await findConsecutiveGroup({
+          bookingId: updated.id,
+          studentId: updated.student_id,
+          date: updated.date,
+          statuses: ["cancelled"],
+          timeColumn: "updated_at",
+        });
+        if (group?.isHead) {
+          void (async () => {
+            const [studentRow] = await db
+              .select({ name: profiles.full_name })
+              .from(profiles)
+              .where(eq(profiles.id, updated.student_id))
+              .limit(1);
+            const studentName = studentRow?.name ?? "Student";
+            const durationLabel = ` · ${formatDurationLabel(group.start_time, group.end_time)}`;
+            await notifyTelegram(
+              `🚫 <b>Lesson cancelled by you</b>\n${escapeTelegramHtml(
+                studentName
+              )} · ${updated.date} · ${group.start_time}–${group.end_time}${durationLabel}`
+            );
+          })();
+        }
       }
 
       return c.json(updated);
@@ -461,17 +459,30 @@ export const bookingRoutes = new Hono()
         .where(eq(lessonBookings.id, bookingId))
         .returning();
 
-      void (async () => {
-        const [studentRow] = await db
-          .select({ name: profiles.full_name })
-          .from(profiles)
-          .where(eq(profiles.id, studentId))
-          .limit(1);
-        const studentName = studentRow?.name ?? "Student";
-        await notifyTelegram(
-          `❌ <b>Booking cancelled</b>\n${escapeTelegramHtml(studentName)} · ${updated!.date} · ${updated!.start_time}–${updated!.end_time}`
-        );
-      })();
+      // Coalesce per consecutive group — students cancelling 5 × 30-min slots
+      // should send ONE "Booking cancelled" ping, not five.
+      const group = await findConsecutiveGroup({
+        bookingId: updated!.id,
+        studentId,
+        date: updated!.date,
+        statuses: ["cancelled"],
+        timeColumn: "updated_at",
+      });
+
+      if (group?.isHead) {
+        void (async () => {
+          const [studentRow] = await db
+            .select({ name: profiles.full_name })
+            .from(profiles)
+            .where(eq(profiles.id, studentId))
+            .limit(1);
+          const studentName = studentRow?.name ?? "Student";
+          const durationLabel = ` · ${formatDurationLabel(group.start_time, group.end_time)}`;
+          await notifyTelegram(
+            `❌ <b>Booking cancelled</b>\n${escapeTelegramHtml(studentName)} · ${updated!.date} · ${group.start_time}–${group.end_time}${durationLabel}`
+          );
+        })();
+      }
 
       return c.json({ message: "Booking cancelled", status: "cancelled" });
     }
@@ -483,18 +494,29 @@ export const bookingRoutes = new Hono()
         .where(eq(lessonBookings.id, bookingId))
         .returning();
 
-      // Telegram: tell the teacher this needs their attention.
-      void (async () => {
-        const [studentRow] = await db
-          .select({ name: profiles.full_name })
-          .from(profiles)
-          .where(eq(profiles.id, studentId))
-          .limit(1);
-        const studentName = studentRow?.name ?? "Student";
-        await notifyTelegram(
-          `⚠️ <b>Cancellation requested</b>\n${escapeTelegramHtml(studentName)} wants to cancel ${updated!.date} · ${updated!.start_time}–${updated!.end_time}`
-        );
-      })();
+      // Coalesce per consecutive group — one merged "Cancellation requested".
+      const group = await findConsecutiveGroup({
+        bookingId: updated!.id,
+        studentId,
+        date: updated!.date,
+        statuses: ["cancel_requested"],
+        timeColumn: "updated_at",
+      });
+
+      if (group?.isHead) {
+        void (async () => {
+          const [studentRow] = await db
+            .select({ name: profiles.full_name })
+            .from(profiles)
+            .where(eq(profiles.id, studentId))
+            .limit(1);
+          const studentName = studentRow?.name ?? "Student";
+          const durationLabel = ` · ${formatDurationLabel(group.start_time, group.end_time)}`;
+          await notifyTelegram(
+            `⚠️ <b>Cancellation requested</b>\n${escapeTelegramHtml(studentName)} wants to cancel ${updated!.date} · ${group.start_time}–${group.end_time}${durationLabel}`
+          );
+        })();
+      }
 
       return c.json({
         message: "Cancellation requested — pending your teacher's approval",
