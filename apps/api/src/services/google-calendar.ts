@@ -105,8 +105,10 @@ export async function deleteCalendarEvent(
     accessToken = await refreshAccessToken(teacherId, tokens.refresh_token);
   }
 
+  // sendUpdates=all → Google emails the student a cancellation notice and
+  // removes the event from their calendar if they had accepted the invite.
   const res = await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${gcalEventId}`,
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${gcalEventId}?sendUpdates=all`,
     {
       method: "DELETE",
       headers: { Authorization: `Bearer ${accessToken}` },
