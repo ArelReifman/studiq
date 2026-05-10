@@ -1,13 +1,14 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNotNull } from "drizzle-orm";
 import { db } from "../db/client.js";
 import {
   homeworkItems,
   difficultyReports,
   students,
   studentAiProfiles,
+  profiles,
 } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { tagDifficulty } from "../services/ai/tag-difficulty.js";
@@ -24,6 +25,34 @@ const lessonIdRequiredQuery = z.object({ lesson_id: z.string().uuid() });
 
 export const homeworkRoutes = new Hono()
   .use(authMiddleware)
+
+  // GET /homework/pending-submissions — teacher: all submitted files not yet reviewed
+  .get("/pending-submissions", requireRole("teacher"), async (c) => {
+    const teacherId = c.get("userId");
+
+    const rows = await db
+      .select({
+        id: homeworkItems.id,
+        title: homeworkItems.title,
+        file_url: homeworkItems.file_url,
+        file_name: homeworkItems.file_name,
+        created_at: homeworkItems.created_at,
+        student_id: homeworkItems.student_id,
+        student_name: profiles.full_name,
+      })
+      .from(homeworkItems)
+      .innerJoin(students, eq(students.id, homeworkItems.student_id))
+      .innerJoin(profiles, eq(profiles.id, homeworkItems.student_id))
+      .where(
+        and(
+          eq(students.teacher_id, teacherId),
+          isNotNull(homeworkItems.file_url)
+        )
+      )
+      .orderBy(homeworkItems.created_at);
+
+    return c.json(rows);
+  })
 
   // GET /homework?lesson_id=
   .get("/", zValidator("query", lessonIdRequiredQuery), async (c) => {
