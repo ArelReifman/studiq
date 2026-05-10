@@ -70,6 +70,14 @@ export default function TeacherSchedulePage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["gcal-status"] }),
   });
 
+  const connectGcalMutation = useMutation({
+    mutationFn: () => api.get<{ url: string }>("/auth/google/start"),
+    onSuccess: (data) => {
+      window.location.href = data.url;
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
   const { data: slots = [], isLoading: slotsLoading } = useQuery<Slot[]>({
     queryKey: ["my-availability"],
     queryFn: () => api.get("/availability"),
@@ -221,13 +229,15 @@ export default function TeacherSchedulePage() {
               </button>
             </>
           ) : (
-            <a
-              href="/api/auth/google/start"
-              className="flex items-center gap-1.5 text-sm text-gray-700 bg-white border border-gray-200 rounded-lg px-3 py-1.5 hover:border-brand-300 hover:bg-brand-50 transition-colors shadow-sm"
+            <button
+              type="button"
+              onClick={() => connectGcalMutation.mutate()}
+              disabled={connectGcalMutation.isPending}
+              className="flex items-center gap-1.5 text-sm text-gray-700 bg-white border border-gray-200 rounded-lg px-3 py-1.5 hover:border-brand-300 hover:bg-brand-50 transition-colors shadow-sm disabled:opacity-50"
             >
               <CalendarDays size={14} />
               {t("teacher.gcalConnect")}
-            </a>
+            </button>
           )}
         </div>
       </div>

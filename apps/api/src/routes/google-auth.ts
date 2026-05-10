@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { eq } from "drizzle-orm";
+import { createHmac, randomBytes } from "node:crypto";
 import { db } from "../db/client.js";
 import { teacherGoogleTokens } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
@@ -18,22 +18,40 @@ function getAppUrl(): string {
   return process.env["NEXT_PUBLIC_APP_URL"] ?? "http://localhost:3000";
 }
 
+// HMAC-sign the teacher_id into the OAuth state so the callback can identify
+// the teacher without an auth cookie. Browser navigation from Google strips
+// nothing, but the studiq-token cookie's embedded JWT may be expired (Supabase
+// access tokens live 1h while the cookie wrapper lasts 7d), so we cannot rely
+// on authMiddleware in the callback.
+function getHmacSecret(): string {
+  return process.env["SUPABASE_SERVICE_ROLE_KEY"] ?? "dev-only-fallback-secret";
+}
+
+function signState(teacherId: string): string {
+  const nonce = randomBytes(16).toString("hex");
+  const payload = `${teacherId}.${nonce}`;
+  const sig = createHmac("sha256", getHmacSecret()).update(payload).digest("hex");
+  return `${payload}.${sig}`;
+}
+
+function verifyState(state: string): string | null {
+  const parts = state.split(".");
+  if (parts.length !== 3) return null;
+  const [teacherId, nonce, sig] = parts;
+  if (!teacherId || !nonce || !sig) return null;
+  const expected = createHmac("sha256", getHmacSecret())
+    .update(`${teacherId}.${nonce}`)
+    .digest("hex");
+  if (sig !== expected) return null;
+  return teacherId;
+}
+
 export const googleAuthRoutes = new Hono()
-  .use(authMiddleware)
-  .use(requireRole("teacher"))
-
-  // ── Start OAuth flow: redirect teacher to Google consent screen
-  .get("/start", async (c) => {
-    const state = crypto.randomUUID();
-    const isProduction = process.env["NODE_ENV"] === "production";
-
-    setCookie(c, "google_oauth_state", state, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: "Lax",
-      path: "/",
-      maxAge: 300,
-    });
+  // ── Start OAuth flow: returns the Google auth URL.
+  // Called via api client (fresh bearer token), not browser navigation.
+  .get("/start", authMiddleware, requireRole("teacher"), async (c) => {
+    const teacherId = c.get("userId");
+    const state = signState(teacherId);
 
     const params = new URLSearchParams({
       client_id: process.env["GOOGLE_CLIENT_ID"]!,
@@ -45,24 +63,28 @@ export const googleAuthRoutes = new Hono()
       state,
     });
 
-    return c.redirect(`${GOOGLE_AUTH_URL}?${params}`);
+    return c.json({ url: `${GOOGLE_AUTH_URL}?${params}` });
   })
 
-  // ── OAuth callback: exchange code for tokens, store in DB
+  // ── OAuth callback: NO authMiddleware. teacher_id comes from signed state.
+  // This is a browser navigation from Google — the studiq-token cookie may
+  // contain an expired JWT, so we cannot use it to identify the teacher.
   .get("/callback", async (c) => {
-    const teacherId = c.get("userId");
     const { code, state, error } = c.req.query();
-    const isProduction = process.env["NODE_ENV"] === "production";
     const appUrl = getAppUrl();
 
     if (error) {
-      return c.redirect(`${appUrl}/teacher/schedule?gcal=error&reason=${encodeURIComponent(error)}`);
+      return c.redirect(
+        `${appUrl}/teacher/schedule?gcal=error&reason=${encodeURIComponent(error)}`
+      );
     }
 
-    const savedState = getCookie(c, "google_oauth_state");
-    deleteCookie(c, "google_oauth_state", { path: "/", secure: isProduction });
+    if (!state) {
+      return c.redirect(`${appUrl}/teacher/schedule?gcal=error&reason=no_state`);
+    }
 
-    if (!state || state !== savedState) {
+    const teacherId = verifyState(state);
+    if (!teacherId) {
       return c.redirect(`${appUrl}/teacher/schedule?gcal=error&reason=state_mismatch`);
     }
 
@@ -121,7 +143,7 @@ export const googleAuthRoutes = new Hono()
   })
 
   // ── Status: is this teacher connected?
-  .get("/status", async (c) => {
+  .get("/status", authMiddleware, requireRole("teacher"), async (c) => {
     const teacherId = c.get("userId");
     const [row] = await db
       .select({ teacher_id: teacherGoogleTokens.teacher_id })
@@ -132,7 +154,7 @@ export const googleAuthRoutes = new Hono()
   })
 
   // ── Disconnect: remove stored tokens
-  .delete("/", async (c) => {
+  .delete("/", authMiddleware, requireRole("teacher"), async (c) => {
     const teacherId = c.get("userId");
     await db
       .delete(teacherGoogleTokens)
