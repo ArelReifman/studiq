@@ -9,6 +9,13 @@ import { Calendar, TimeSlotGrid, type TimeSlot } from "@/components/calendar/cal
 import { Send, X, Plus } from "lucide-react";
 import { groupConsecutiveBookings, type BookingLike } from "@/lib/booking-grouping";
 
+// Compute minutes between two "HH:mm" strings.
+function slotMinutes(startTime: string, endTime: string): number {
+  const [sh = 0, sm = 0] = startTime.split(":").map(Number);
+  const [eh = 0, em = 0] = endTime.split(":").map(Number);
+  return eh * 60 + em - (sh * 60 + sm);
+}
+
 interface Slot extends TimeSlot {
   date: string;
 }
@@ -99,7 +106,7 @@ export default function StudentBookPage() {
     // Removing is always allowed; adding is blocked once the per-submission
     // cap is reached.
     if (!alreadyPicked && atCap) {
-      setError(t("booking.capReached", { max: MAX_PICKS }));
+      setError(t("booking.capReached"));
       return;
     }
     setPicked((prev) =>
@@ -171,11 +178,14 @@ export default function StudentBookPage() {
     (g) => g.status === "rejected" || g.status === "cancelled"
   );
 
-  // Selection cap: at most 3 slots (3 hours) can be picked in one submission.
-  // Doesn't matter if they're consecutive or split across days.
-  const MAX_PICKS = 3;
-  const remainingPicks = MAX_PICKS - picked.length;
-  const atCap = picked.length >= MAX_PICKS;
+  // Selection cap: at most 3 hours (180 minutes) can be picked in one submission.
+  // Slot count varies — could be 6 × 30-min, 3 × 60-min, or any mix.
+  const MAX_MINUTES = 180;
+  const totalMinutes = picked.reduce(
+    (sum, s) => sum + slotMinutes(s.start_time, s.end_time),
+    0
+  );
+  const atCap = totalMinutes >= MAX_MINUTES;
 
   if (slotsLoading || bookingsLoading) {
     return <p className="text-gray-500">{t("common.loading")}</p>;
@@ -187,7 +197,13 @@ export default function StudentBookPage() {
       ? a.start_time.localeCompare(b.start_time)
       : a.date.localeCompare(b.date)
   );
-  const totalHours = picked.length;
+  // Format the total picked duration as a compact string (e.g. "1.5h", "2h").
+  const totalDurationStr =
+    totalMinutes < 60
+      ? `${totalMinutes}m`
+      : totalMinutes % 60 === 0
+        ? `${totalMinutes / 60}h`
+        : `${Math.floor(totalMinutes / 60)}.5h`;
 
   return (
     <div className="space-y-6">
@@ -257,7 +273,7 @@ export default function StudentBookPage() {
         <Card>
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold text-gray-800">
-              {t("booking.lessonSummary", { hours: totalHours })}
+              {t("booking.lessonSummary", { duration: totalDurationStr })}
             </h3>
             <button
               type="button"

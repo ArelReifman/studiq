@@ -8,8 +8,22 @@
  *
  * Used by the approvals page and the teacher schedule's "upcoming lessons"
  * section so that a 2-hour booking shows as "11:30–13:30 · דני (2h)" rather
- * than two stacked one-hour rows.
+ * than two stacked rows.
  */
+
+/**
+ * Formats a duration as a compact string: "30m", "1h", "1.5h", "2h", etc.
+ * Works with any slot granularity (30-min or 60-min blocks).
+ */
+export function formatDuration(startTime: string, endTime: string): string {
+  const [sh = 0, sm = 0] = startTime.split(":").map(Number);
+  const [eh = 0, em = 0] = endTime.split(":").map(Number);
+  const mins = eh * 60 + em - (sh * 60 + sm);
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const rem = mins % 60;
+  return rem === 0 ? `${h}h` : `${h}.5h`;
+}
 
 export interface BookingLike {
   id: string;
@@ -40,7 +54,7 @@ export interface BookingGroup<T extends BookingLike = BookingLike> {
   student_note: string | null;
   teacher_note: string | null;
   bookings: T[];
-  /** Number of one-hour blocks merged. Equivalent to bookings.length. */
+  /** Number of booking slots merged. Use formatDuration(start_time, end_time) for display. */
   hours: number;
 }
 

@@ -6,7 +6,7 @@ import { Check, X, Mail, Clock, MessageSquare, CalendarClock, UserPlus, AlertTri
 import { api } from "@/lib/api";
 import { useT } from "@/i18n";
 import { Card } from "@/components/ui/card";
-import { groupConsecutiveBookings } from "@/lib/booking-grouping";
+import { groupConsecutiveBookings, formatDuration } from "@/lib/booking-grouping";
 
 interface PendingProfile {
   id: string;
@@ -183,7 +183,7 @@ export default function ApprovalsPage() {
                       {formatBookingDate(g.date)} · {g.start_time}–{g.end_time}
                       {isMulti && (
                         <span className="ms-2 text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">
-                          {t("approvals.hoursCount", { count: g.hours })}
+                          {formatDuration(g.start_time, g.end_time)}
                         </span>
                       )}
                     </div>
@@ -279,7 +279,7 @@ export default function ApprovalsPage() {
                       {formatBookingDate(g.date)} · {g.start_time}–{g.end_time}
                       {isMulti && (
                         <span className="ms-2 text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">
-                          {t("approvals.hoursCount", { count: g.hours })}
+                          {formatDuration(g.start_time, g.end_time)}
                         </span>
                       )}
                     </div>

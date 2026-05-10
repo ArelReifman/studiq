@@ -8,7 +8,7 @@ import { useT } from "@/i18n";
 import { Card } from "@/components/ui/card";
 import { Calendar, TimeSlotGrid, type TimeSlot } from "@/components/calendar/calendar";
 import { Plus, CalendarCheck, MessageSquare, X, CalendarDays, CheckCircle2, AlertCircle } from "lucide-react";
-import { groupConsecutiveBookings } from "@/lib/booking-grouping";
+import { groupConsecutiveBookings, formatDuration } from "@/lib/booking-grouping";
 
 interface Slot extends TimeSlot {
   date: string;
@@ -382,7 +382,7 @@ export default function TeacherSchedulePage() {
                       </span>
                       {g.hours > 1 && (
                         <span className="text-xs text-gray-500">
-                          ({t("approvals.hoursCount", { count: g.hours })})
+                          ({formatDuration(g.start_time, g.end_time)})
                         </span>
                       )}
                       <span className="text-gray-700">·</span>
@@ -511,7 +511,7 @@ export default function TeacherSchedulePage() {
                     </span>
                     {g.hours > 1 && (
                       <span className="text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">
-                        {t("approvals.hoursCount", { count: g.hours })}
+                        {formatDuration(g.start_time, g.end_time)}
                       </span>
                     )}
                     {isCancelRequest && (
@@ -584,7 +584,7 @@ export default function TeacherSchedulePage() {
                       </span>
                       {g.hours > 1 && (
                         <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">
-                          {t("approvals.hoursCount", { count: g.hours })}
+                          {formatDuration(g.start_time, g.end_time)}
                         </span>
                       )}
                     </div>
