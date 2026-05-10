@@ -300,6 +300,9 @@
   "teacher.cancelLesson": "ביטול",
   "teacher.confirmCancelLesson": "לבטל את השיעור הזה? לא ניתן לבטל את הפעולה.",
   "teacher.cancelPending": "התלמיד ביקש ביטול",
+  "teacher.pastLessons": "שיעורים שהתקיימו",
+  "teacher.attended": "התקיים",
+  "teacher.noShow": "לא התקיים",
 
   "day.sunday": "ראשון",
   "day.monday": "שני",

@@ -21,6 +21,8 @@ export interface BookingLike {
   status: string;
   student_note: string | null;
   teacher_note?: string | null;
+  /** Whether the lesson actually took place. Null until teacher marks it. */
+  attendance?: "attended" | "no_show" | null;
   created_at: string;
 }
 

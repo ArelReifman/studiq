@@ -74,6 +74,11 @@ export const bookingStatusEnum = pgEnum("booking_status", [
   "cancel_requested",
   "cancelled",
 ]);
+// Whether the lesson actually happened. Null = not marked yet.
+export const lessonAttendanceEnum = pgEnum("lesson_attendance", [
+  "attended",
+  "no_show",
+]);
 export const dayOfWeekEnum = pgEnum("day_of_week", [
   "sunday",
   "monday",
@@ -636,6 +641,7 @@ export const lessonBookings = pgTable(
     student_note: text("student_note"),
     teacher_note: text("teacher_note"),
     gcal_event_id: text("gcal_event_id"), // Google Calendar event ID, set on approval
+    attendance: lessonAttendanceEnum("attendance"), // Null until teacher marks
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

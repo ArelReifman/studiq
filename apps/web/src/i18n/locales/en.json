@@ -300,6 +300,9 @@
   "teacher.cancelLesson": "Cancel",
   "teacher.confirmCancelLesson": "Cancel this lesson? This cannot be undone.",
   "teacher.cancelPending": "Cancellation requested",
+  "teacher.pastLessons": "Past lessons",
+  "teacher.attended": "Took place",
+  "teacher.noShow": "Didn't take place",
 
   "day.sunday": "Sunday",
   "day.monday": "Monday",

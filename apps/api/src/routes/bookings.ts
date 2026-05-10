@@ -264,6 +264,7 @@ export const bookingRoutes = new Hono()
         status: lessonBookings.status,
         student_note: lessonBookings.student_note,
         teacher_note: lessonBookings.teacher_note,
+        attendance: lessonBookings.attendance,
         created_at: lessonBookings.created_at,
         student_name: profiles.full_name,
         student_id: lessonBookings.student_id,
@@ -274,6 +275,44 @@ export const bookingRoutes = new Hono()
       .orderBy(desc(lessonBookings.created_at));
     return c.json(bookings);
   })
+
+  // ── Teacher: mark whether a lesson actually took place
+  // Pass attendance: null to unset.
+  .patch(
+    "/:id/attendance",
+    requireRole("teacher"),
+    zValidator("param", uuidParamSchema),
+    zValidator(
+      "json",
+      z.object({
+        attendance: z.enum(["attended", "no_show"]).nullable(),
+      })
+    ),
+    async (c) => {
+      const teacherId = c.get("userId");
+      const bookingId = c.req.valid("param").id;
+      const { attendance } = c.req.valid("json");
+
+      const [updated] = await db
+        .update(lessonBookings)
+        .set({ attendance, updated_at: new Date() })
+        .where(
+          and(
+            eq(lessonBookings.id, bookingId),
+            eq(lessonBookings.teacher_id, teacherId),
+            // Only approved (or cancel_requested, since the lesson did happen
+            // before the cancel request was raised) lessons can be marked.
+            inArray(lessonBookings.status, ["approved", "cancel_requested"])
+          )
+        )
+        .returning();
+
+      if (!updated) {
+        return c.json({ error: "Booking not found or not markable" }, 404);
+      }
+      return c.json(updated);
+    }
+  )
 
   // ── Teacher: count of items needing teacher action (badge)
   // Includes both new booking requests AND cancellation requests.
