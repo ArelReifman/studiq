@@ -35,14 +35,14 @@ export async function createCalendarEvent(booking: {
   end_time: string;
   student_id: string;
   teacher_id: string;
-}): Promise<void> {
+}): Promise<string | null> {
   const [tokens] = await db
     .select()
     .from(teacherGoogleTokens)
     .where(eq(teacherGoogleTokens.teacher_id, booking.teacher_id))
     .limit(1);
 
-  if (!tokens) return;
+  if (!tokens) return null;
 
   const [studentProfile] = await db
     .select({ email: profiles.email, full_name: profiles.full_name })
@@ -50,7 +50,7 @@ export async function createCalendarEvent(booking: {
     .where(eq(profiles.id, booking.student_id))
     .limit(1);
 
-  if (!studentProfile) return;
+  if (!studentProfile) return null;
 
   let accessToken = tokens.access_token;
   if (new Date(tokens.expires_at) <= new Date()) {
@@ -64,6 +64,7 @@ export async function createCalendarEvent(booking: {
     attendees: [{ email: studentProfile.email }],
     reminders: { useDefault: true },
     guestsCanSeeOtherGuests: false,
+    colorId: "2", // Sage
   };
 
   const res = await fetch(
@@ -80,5 +81,41 @@ export async function createCalendarEvent(booking: {
 
   if (!res.ok) {
     console.error("[GoogleCalendar] Failed to create event:", await res.text());
+    return null;
+  }
+
+  const data = (await res.json()) as { id: string };
+  return data.id ?? null;
+}
+
+export async function deleteCalendarEvent(
+  teacherId: string,
+  gcalEventId: string
+): Promise<void> {
+  const [tokens] = await db
+    .select()
+    .from(teacherGoogleTokens)
+    .where(eq(teacherGoogleTokens.teacher_id, teacherId))
+    .limit(1);
+
+  if (!tokens) return;
+
+  let accessToken = tokens.access_token;
+  if (new Date(tokens.expires_at) <= new Date()) {
+    accessToken = await refreshAccessToken(teacherId, tokens.refresh_token);
+  }
+
+  // sendUpdates=all → Google emails the student a cancellation notice and
+  // removes the event from their calendar if they had accepted the invite.
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${gcalEventId}?sendUpdates=all`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }
+  );
+
+  if (!res.ok && res.status !== 404 && res.status !== 410) {
+    console.error("[GoogleCalendar] Failed to delete event:", await res.text());
   }
 }
