@@ -90,9 +90,11 @@ async function main() {
         groupsSkipped++;
         continue;
       }
-      // If they already all share the same gcal_event_id, nothing to do.
+      // If they already share ONE non-null gcal_event_id, nothing to do.
+      // If they all share `null` (gcal creation failed at approval time),
+      // we still need to create the merged event — don't skip.
       const ids = new Set(run.map((r) => r.gcal_event_id));
-      if (ids.size === 1) {
+      if (ids.size === 1 && !ids.has(null)) {
         groupsSkipped++;
         continue;
       }
