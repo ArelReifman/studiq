@@ -14,7 +14,7 @@
  *
  * Run: bun run apps/api/scripts/consolidate-gcal-events.ts
  */
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { db } from "../src/db/client.js";
 import { lessonBookings } from "../src/db/schema.js";
 import {
@@ -48,10 +48,10 @@ async function main() {
     })
     .from(lessonBookings)
     .where(
-      and(
-        inArray(lessonBookings.status, ["approved", "cancel_requested"]),
-        isNotNull(lessonBookings.gcal_event_id)
-      )
+      // Include rows without gcal_event_id too — an approval that originally
+      // failed to create an event still belongs in the consecutive group and
+      // should be folded into the merged event.
+      inArray(lessonBookings.status, ["approved", "cancel_requested"])
     )) as Row[];
 
   // Group by (teacher, student, date), then sort by start_time and split
