@@ -94,13 +94,24 @@ export default function TeacherDashboard() {
   const tomorrow = getTomorrowStr();
 
   // ── Action items ────────────────────────────────────────────────────────────
-  const pendingRequests = useMemo(
+  const pendingRequestGroups = useMemo(
     () =>
-      bookings.filter(
-        (b) => b.status === "pending" || b.status === "cancel_requested"
+      groupConsecutiveBookings(
+        bookings.filter((b) => b.status === "pending")
       ),
     [bookings]
   );
+
+  const cancelRequestGroups = useMemo(
+    () =>
+      groupConsecutiveBookings(
+        bookings.filter((b) => b.status === "cancel_requested")
+      ),
+    [bookings]
+  );
+
+  const pendingRequestsCount =
+    pendingRequestGroups.length + cancelRequestGroups.length;
 
   const attendanceNeeded = useMemo(
     () =>
@@ -138,7 +149,7 @@ export default function TeacherDashboard() {
   );
 
   const totalActionItems =
-    pendingRequests.length +
+    pendingRequestsCount +
     attendanceNeeded.length +
     studentsNeedingAttention.length;
   const totalWithSubmissions = totalActionItems + submissions.length;
@@ -168,7 +179,7 @@ export default function TeacherDashboard() {
         ) : (
           <div className="space-y-2">
             {/* Pending lesson / cancel requests */}
-            {pendingRequests.length > 0 && (
+            {pendingRequestsCount > 0 && (
               <Link
                 href="/teacher/approvals"
                 className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 hover:bg-amber-100 transition-colors"
@@ -179,10 +190,10 @@ export default function TeacherDashboard() {
                     className="text-amber-600 flex-shrink-0"
                   />
                   <span className="text-sm text-amber-900 font-medium">
-                    {pendingRequests.length === 1
+                    {pendingRequestsCount === 1
                       ? t("teacher.pendingRequestsSingle")
                       : t("teacher.pendingRequestsPlural", {
-                          count: pendingRequests.length,
+                          count: pendingRequestsCount,
                         })}
                   </span>
                 </div>

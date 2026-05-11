@@ -70,7 +70,7 @@ export default function ApprovalsPage() {
     [cancelRequests]
   );
   const totalPending =
-    pendingRegs.length + pendingBookings.length + cancelRequests.length;
+    pendingRegs.length + pendingGroups.length + cancelGroups.length;
 
   // ── Registration approval ─────────────────────────────────────
   const approveReg = useMutation({
@@ -110,9 +110,15 @@ export default function ApprovalsPage() {
       action: "approve" | "reject";
       note?: string;
     }) => {
-      await Promise.all(
+      const results = await Promise.allSettled(
         ids.map((id) => api.patch(`/bookings/${id}`, { status, note }))
       );
+      const failed = results.find(
+        (result): result is PromiseRejectedResult => result.status === "rejected"
+      );
+      if (failed) {
+        throw failed.reason;
+      }
     },
     onMutate: ({ groupKey, action }) =>
       setActionState((s) => ({ ...s, [groupKey]: action })),

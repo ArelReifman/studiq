@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import { useT } from "@/i18n";
 import { LanguageToggle } from "@/components/ui/language-toggle";
 import { cn } from "@/lib/utils";
+import { groupConsecutiveBookings } from "@/lib/booking-grouping";
 import { LayoutDashboard, CalendarClock, LogOut, BookOpen, Menu, X, UserCheck } from "lucide-react";
 import { useRealtimeSync } from "@/hooks/use-realtime-sync";
 import { Logo } from "@/components/brand/logo";
@@ -25,6 +26,24 @@ export default function TeacherLayout({
   useRealtimeSync();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+
+  interface PendingBookingRow {
+    id: string;
+    date: string;
+    start_time: string;
+    end_time: string;
+    status:
+      | "pending"
+      | "approved"
+      | "rejected"
+      | "cancel_requested"
+      | "cancelled";
+    student_note: string | null;
+    teacher_note: string | null;
+    created_at: string;
+    student_name: string;
+    student_id: string;
+  }
 
   // Sum of unreviewed difficulties across all students. Reuses the same
   // ["students"] query the dashboard fetches, so React Query dedupes — no
@@ -52,9 +71,17 @@ export default function TeacherLayout({
     let cancelled = false;
     Promise.all([
       api.get<{ count: number }>("/approvals/count").catch(() => ({ count: 0 })),
-      api.get<{ count: number }>("/bookings/requests/count").catch(() => ({ count: 0 })),
-    ]).then(([reg, book]) => {
-      if (!cancelled) setPendingCount(reg.count + book.count);
+      api.get<PendingBookingRow[]>("/bookings/requests").catch(() => []),
+    ]).then(([reg, bookings]) => {
+      const pendingGroups = groupConsecutiveBookings(
+        bookings.filter((b) => b.status === "pending")
+      );
+      const cancelGroups = groupConsecutiveBookings(
+        bookings.filter((b) => b.status === "cancel_requested")
+      );
+      if (!cancelled) {
+        setPendingCount(reg.count + pendingGroups.length + cancelGroups.length);
+      }
     });
     return () => {
       cancelled = true;

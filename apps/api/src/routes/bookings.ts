@@ -21,10 +21,21 @@ import { createCalendarEvent, deleteCalendarEvent } from "../services/google-cal
 import { getIsraelToday, isSlotInPastIsrael } from "../lib/time.js";
 import { uuidParamSchema } from "../lib/validators.js";
 
-const bookSchema = z.object({
-  availability_id: z.string().uuid(),
-  note: z.string().max(500).optional(),
-});
+const bookSchema = z
+  .object({
+    availability_id: z.string().uuid().optional(),
+    availability_ids: z.array(z.string().uuid()).optional(),
+    note: z.string().max(500).optional(),
+  })
+  .refine(
+    (body) =>
+      Boolean(body.availability_id) ||
+      (body.availability_ids && body.availability_ids.length > 0),
+    {
+      message: "availability_id or availability_ids is required",
+      path: ["availability_ids"],
+    }
+  );
 
 const respondSchema = z.object({
   status: z.enum(["approved", "rejected", "cancelled"]),
@@ -121,69 +132,90 @@ export const bookingRoutes = new Hono()
 
     if (!student) return c.json({ error: "Student not found" }, 404);
 
-    const [slot] = await db
+    const availabilityIds = body.availability_ids?.length
+      ? Array.from(new Set(body.availability_ids))
+      : body.availability_id
+        ? [body.availability_id]
+        : [];
+
+    if (availabilityIds.length === 0) {
+      return c.json({ error: "availability_id or availability_ids is required" }, 400);
+    }
+
+    const slots = await db
       .select()
       .from(teacherAvailability)
       .where(
         and(
-          eq(teacherAvailability.id, body.availability_id),
+          inArray(teacherAvailability.id, availabilityIds),
           eq(teacherAvailability.teacher_id, student.teacher_id),
           eq(teacherAvailability.is_active, true),
           isNotNull(teacherAvailability.date)
         )
       )
-      .limit(1);
+      .orderBy(teacherAvailability.date, teacherAvailability.start_time);
 
-    if (!slot || !slot.date) {
-      return c.json({ error: "Slot not found" }, 404);
+    if (slots.length !== availabilityIds.length) {
+      return c.json({ error: "One or more slots not found" }, 404);
     }
 
-    // Block past — in Israel time. Includes today's already-passed slots.
-    if (isSlotInPastIsrael(slot.date, slot.start_time)) {
-      return c.json({ error: "This time has already passed" }, 400);
+    const bookingDate = slots[0]?.date;
+    if (!bookingDate || slots.some((slot) => slot.date !== bookingDate)) {
+      return c.json({ error: "All selected slots must be on the same date" }, 400);
     }
 
-    // Block double-booking on the same slot (any non-final status)
-    const [existing] = await db
-      .select()
+    for (let i = 1; i < slots.length; i++) {
+      if (slots[i]!.start_time !== slots[i - 1]!.end_time) {
+        return c.json({ error: "Selected slots must be consecutive" }, 400);
+      }
+    }
+
+    if (slots.some((slot) => isSlotInPastIsrael(slot.date!, slot.start_time))) {
+      return c.json({ error: "One or more selected slots are in the past" }, 400);
+    }
+
+    const takenRows = await db
+      .select({ availability_id: lessonBookings.availability_id })
       .from(lessonBookings)
       .where(
         and(
-          eq(lessonBookings.availability_id, slot.id),
+          inArray(lessonBookings.availability_id, slots.map((slot) => slot.id)),
           inArray(lessonBookings.status, [
             "pending",
             "approved",
             "cancel_requested",
           ])
         )
-      )
-      .limit(1);
+      );
 
-    if (existing) {
-      return c.json({ error: "This slot is already taken" }, 409);
+    if (takenRows.length > 0) {
+      return c.json({ error: "One or more selected slots are already taken" }, 409);
     }
 
-    const [booking] = await db
+    const insertedBookings = await db
       .insert(lessonBookings)
-      .values({
-        student_id: studentId,
-        teacher_id: student.teacher_id,
-        availability_id: slot.id,
-        date: slot.date,
-        start_time: slot.start_time,
-        end_time: slot.end_time,
-        student_note: body.note,
-      })
+      .values(
+        slots.map((slot) => ({
+          student_id: studentId,
+          teacher_id: student.teacher_id,
+          availability_id: slot.id,
+          date: slot.date!,
+          start_time: slot.start_time,
+          end_time: slot.end_time,
+          student_note: body.note,
+        }))
+      )
       .returning();
 
-    // Telegram: coalesce N parallel bookings into ONE ping per consecutive
-    // group. The head of the group (earliest start_time) is the only one that
-    // sends — others stay silent. Must run before c.json() because Vercel
-    // freezes deferred work after the response.
+    const booking = insertedBookings[0];
+    if (!booking) {
+      return c.json({ error: "Booking creation failed" }, 500);
+    }
+
     const group = await findConsecutiveGroup({
-      bookingId: booking!.id,
+      bookingId: booking.id,
       studentId,
-      date: slot.date,
+      date: booking.date,
       statuses: ["pending"],
       timeColumn: "created_at",
     });
@@ -201,12 +233,12 @@ export const bookingRoutes = new Hono()
           : "";
         const durationLabel = ` · ${formatDurationLabel(group.start_time, group.end_time)}`;
         await notifyTelegram(
-          `📅 <b>New lesson request</b>\n${escapeTelegramHtml(studentName)} · ${slot.date} · ${group.start_time}–${group.end_time}${durationLabel}${noteLine}`
+          `📅 <b>New lesson request</b>\n${escapeTelegramHtml(studentName)} · ${booking.date} · ${group.start_time}–${group.end_time}${durationLabel}${noteLine}`
         );
       })();
     }
 
-    return c.json(booking, 201);
+    return c.json(insertedBookings, 201);
   })
 
   // ── Student: my bookings

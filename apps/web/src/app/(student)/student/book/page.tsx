@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { useT } from "@/i18n";
 import { Card } from "@/components/ui/card";
 import { Calendar, TimeSlotGrid, type TimeSlot } from "@/components/calendar/calendar";
-import { Send, X, Plus } from "lucide-react";
+import { Send, X } from "lucide-react";
 import { groupConsecutiveBookings, type BookingLike } from "@/lib/booking-grouping";
 
 // Compute minutes between two "HH:mm" strings.
@@ -14,6 +14,31 @@ function slotMinutes(startTime: string, endTime: string): number {
   const [sh = 0, sm = 0] = startTime.split(":").map(Number);
   const [eh = 0, em = 0] = endTime.split(":").map(Number);
   return eh * 60 + em - (sh * 60 + sm);
+}
+
+// Find N consecutive slots starting from startSlot for the given duration.
+// Returns the slots in order, or null if not enough consecutive slots exist.
+function findConsecutiveSlotsForDuration(
+  startSlot: Slot,
+  durationMinutes: number,
+  allSlots: Slot[]
+): Slot[] | null {
+  const slotsNeeded = durationMinutes / 30;
+  if (slotsNeeded < 1) return null;
+
+  const result: Slot[] = [startSlot];
+  let currentEndTime = startSlot.end_time;
+
+  for (let i = 1; i < slotsNeeded; i++) {
+    const next = allSlots.find(
+      (s) => s.date === startSlot.date && s.start_time === currentEndTime
+    );
+    if (!next) return null; // Gap or end of day reached
+    result.push(next);
+    currentEndTime = next.end_time;
+  }
+
+  return result;
 }
 
 interface Slot extends TimeSlot {
@@ -45,7 +70,8 @@ export default function StudentBookPage() {
   const qc = useQueryClient();
 
   const [selectedDate, setSelectedDate] = useState<string | undefined>();
-  const [picked, setPicked] = useState<Slot[]>([]);
+  const [selectedStartSlot, setSelectedStartSlot] = useState<Slot | null>(null);
+  const [selectedDuration, setSelectedDuration] = useState(60);
   const [note, setNote] = useState("");
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,70 +101,55 @@ export default function StudentBookPage() {
     [slots, selectedDate]
   );
 
-  const pickedIds = useMemo(() => new Set(picked.map((s) => s.id)), [picked]);
-
-  // Find a slot adjacent to the latest pick — same date, start equals end of pick.
-  const latestPicked = useMemo(() => {
-    if (picked.length === 0) return null;
-    return [...picked].sort((a, b) =>
-      a.date === b.date
-        ? a.start_time.localeCompare(b.start_time)
-        : a.date.localeCompare(b.date)
-    ).pop()!;
-  }, [picked]);
-
-  const adjacentSlot = useMemo(() => {
-    if (!latestPicked) return null;
-    return (
-      slots.find(
-        (s) =>
-          s.date === latestPicked.date &&
-          s.start_time === latestPicked.end_time &&
-          !pickedIds.has(s.id)
-      ) ?? null
+  // Calculate which consecutive slots are needed for the selected duration.
+  const calculatedSlots = useMemo(() => {
+    if (!selectedStartSlot) return null;
+    return findConsecutiveSlotsForDuration(
+      selectedStartSlot,
+      selectedDuration,
+      slotsForSelectedDate
     );
-  }, [slots, latestPicked, pickedIds]);
+  }, [selectedStartSlot, selectedDuration, slotsForSelectedDate]);
 
-  function toggleSlot(slot: Slot) {
+  // Error if not enough consecutive slots available.
+  const calculatedSlotsError = useMemo(() => {
+    if (!selectedStartSlot) return null;
+    if (calculatedSlots === null) {
+      const durationHours = selectedDuration / 60;
+      return `Not enough consecutive slots available for ${durationHours}h starting at ${selectedStartSlot.start_time}`;
+    }
+    return null;
+  }, [selectedStartSlot, selectedDuration, calculatedSlots]);
+
+  function selectStartSlot(slot: Slot) {
     setSuccess(false);
     setError(null);
-    const alreadyPicked = picked.find((s) => s.id === slot.id);
-    // Removing is always allowed; adding is blocked once the per-submission
-    // cap is reached.
-    if (!alreadyPicked && atCap) {
-      setError(t("booking.capReached"));
-      return;
-    }
-    setPicked((prev) =>
-      prev.find((s) => s.id === slot.id)
-        ? prev.filter((s) => s.id !== slot.id)
-        : [...prev, slot]
-    );
+    setSelectedStartSlot(slot);
+  }
+
+  function onDurationChange(duration: number) {
+    setSuccess(false);
+    setError(null);
+    setSelectedDuration(duration);
   }
 
   function clearAll() {
-    setPicked([]);
+    setSelectedStartSlot(null);
+    setSelectedDuration(60);
     setNote("");
     setError(null);
   }
 
   const submitMutation = useMutation({
     mutationFn: async () => {
-      // Send all bookings in parallel — each is independent on the server side.
-      const results = await Promise.allSettled(
-        picked.map((s) =>
-          api.post("/bookings", {
-            availability_id: s.id,
-            note: note || undefined,
-          })
-        )
-      );
-      const failures = results.filter((r) => r.status === "rejected");
-      if (failures.length > 0) {
-        throw new Error(
-          t("booking.partialFailure", { count: failures.length })
-        );
+      if (!calculatedSlots || calculatedSlots.length === 0) {
+        throw new Error("Please select a start time and duration.");
       }
+
+      await api.post("/bookings", {
+        availability_ids: calculatedSlots.map((s) => s.id),
+        note: note || undefined,
+      });
     },
     onSuccess: () => {
       setSuccess(true);
@@ -178,32 +189,19 @@ export default function StudentBookPage() {
     (g) => g.status === "rejected" || g.status === "cancelled"
   );
 
-  // Selection cap: at most 3 hours (180 minutes) can be picked in one submission.
-  // Slot count varies — could be 6 × 30-min, 3 × 60-min, or any mix.
-  const MAX_MINUTES = 180;
-  const totalMinutes = picked.reduce(
-    (sum, s) => sum + slotMinutes(s.start_time, s.end_time),
-    0
-  );
-  const atCap = totalMinutes >= MAX_MINUTES;
-
   if (slotsLoading || bookingsLoading) {
     return <p className="text-gray-500">{t("common.loading")}</p>;
   }
 
-  // Sort picks for display (date asc, time asc)
-  const pickedSorted = [...picked].sort((a, b) =>
-    a.date === b.date
-      ? a.start_time.localeCompare(b.start_time)
-      : a.date.localeCompare(b.date)
-  );
-  // Format the total picked duration as a compact string (e.g. "1.5h", "2h").
-  const totalDurationStr =
-    totalMinutes < 60
-      ? `${totalMinutes}m`
-      : totalMinutes % 60 === 0
-        ? `${totalMinutes / 60}h`
-        : `${Math.floor(totalMinutes / 60)}.5h`;
+  // Format duration as string (e.g. "1h", "1.5h")
+  const durationStr =
+    selectedDuration < 60
+      ? `${selectedDuration}m`
+      : selectedDuration % 60 === 0
+        ? `${selectedDuration / 60}h`
+        : `${Math.floor(selectedDuration / 60)}.5h`;
+
+  const endTime = calculatedSlots ? calculatedSlots[calculatedSlots.length - 1]?.end_time : null;
 
   return (
     <div className="space-y-6">
@@ -247,34 +245,19 @@ export default function StudentBookPage() {
               <TimeSlotGrid
                 date={selectedDate}
                 slots={slotsForSelectedDate}
-                selectedSlotIds={pickedIds}
-                onSelectSlot={(s) => toggleSlot(s as Slot)}
+                selectedSlotIds={selectedStartSlot ? new Set([selectedStartSlot.id]) : new Set()}
+                onSelectSlot={(s) => selectStartSlot(s as Slot)}
               />
-
-              {adjacentSlot && (
-                <button
-                  type="button"
-                  onClick={() => toggleSlot(adjacentSlot)}
-                  className="mt-3 w-full flex items-center justify-center gap-1.5 border border-dashed border-brand-300 text-brand-700 hover:bg-brand-50 rounded-lg py-2 text-xs font-medium transition-colors"
-                >
-                  <Plus size={14} />
-                  {t("booking.addConsecutive", {
-                    time: `${adjacentSlot.start_time}–${adjacentSlot.end_time}`,
-                  })}
-                </button>
-              )}
             </>
           )}
         </Card>
       </div>
 
-      {/* Selection summary + submit */}
-      {picked.length > 0 && (
+      {/* Duration selector + submission */}
+      {selectedStartSlot && (
         <Card>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-gray-800">
-              {t("booking.lessonSummary", { duration: totalDurationStr })}
-            </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-gray-800">Choose lesson duration</h3>
             <button
               type="button"
               onClick={clearAll}
@@ -284,47 +267,70 @@ export default function StudentBookPage() {
             </button>
           </div>
 
-          <div className="flex flex-wrap gap-2 mb-3">
-            {pickedSorted.map((s) => (
-              <span
-                key={s.id}
-                className="inline-flex items-center gap-1.5 bg-brand-50 border border-brand-200 text-brand-800 rounded-full ps-3 pe-1 py-1 text-sm"
-              >
-                <span className="font-medium">{formatDate(s.date)}</span>
-                <span className="text-gray-500">·</span>
-                <span className="font-mono">
-                  {s.start_time}–{s.end_time}
+          {/* Duration selection */}
+          <div className="space-y-2 mb-4">
+            {[60, 90, 120, 150, 180].map((duration) => (
+              <label key={duration} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                <input
+                  type="radio"
+                  name="duration"
+                  value={duration}
+                  checked={selectedDuration === duration}
+                  onChange={() => onDurationChange(duration)}
+                  className="w-4 h-4 text-brand-600"
+                />
+                <span className="text-sm text-gray-700">
+                  {duration} minutes {duration % 60 === 0 ? `(${duration / 60}h)` : `(${Math.floor(duration / 60)}.5h)`}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => toggleSlot(s)}
-                  className="w-5 h-5 rounded-full hover:bg-brand-100 flex items-center justify-center"
-                  aria-label="remove"
-                >
-                  <X size={12} />
-                </button>
-              </span>
+              </label>
             ))}
           </div>
 
+          {/* Display selected time */}
+          {calculatedSlots && endTime && (
+            <div className="bg-brand-50 border border-brand-200 rounded-lg p-3 mb-4">
+              <p className="text-sm text-gray-700">
+                <span className="font-semibold">{formatDate(selectedStartSlot.date)}</span>
+                <span className="text-gray-500 mx-2">·</span>
+                <span className="font-mono text-brand-700">
+                  {selectedStartSlot.start_time}–{endTime}
+                </span>
+                <span className="text-gray-500 mx-2">·</span>
+                <span className="text-brand-700 font-medium">{durationStr}</span>
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                {calculatedSlots.length} slots
+              </p>
+            </div>
+          )}
+
+          {/* Error message */}
+          {calculatedSlotsError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-700">
+              {calculatedSlotsError}
+            </div>
+          )}
+
+          {/* Student note */}
           <input
             type="text"
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder={t("student.addNote")}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
 
+          {/* Submit button */}
           <button
             type="button"
             onClick={() => submitMutation.mutate()}
-            disabled={submitMutation.isPending}
+            disabled={submitMutation.isPending || !calculatedSlots}
             className="w-full flex items-center justify-center gap-2 bg-brand-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send size={14} />
             {submitMutation.isPending
               ? t("student.sending")
-              : t("booking.sendRequestN", { count: picked.length })}
+              : t("booking.sendRequest")}
           </button>
         </Card>
       )}
