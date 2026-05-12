@@ -16,6 +16,9 @@
   "common.nextMonth": "חודש הבא",
   "common.todayLabel": "היום",
   "common.remove": "הסרה",
+  "common.showMore": "הצג עוד",
+  "common.showLess": "הצג פחות",
+  "booking.cancelledLessons": "שיעורים שבוטלו",
   "courses.subTopicsCount": "{count} נושאי משנה",
   "studentDetail.learningMap": "מפת למידה",
 

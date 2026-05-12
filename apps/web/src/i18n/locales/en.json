@@ -16,6 +16,9 @@
   "common.nextMonth": "Next month",
   "common.todayLabel": "today",
   "common.remove": "Remove",
+  "common.showMore": "Show more",
+  "common.showLess": "Show less",
+  "booking.cancelledLessons": "Cancelled lessons",
   "courses.subTopicsCount": "{count} sub-topics",
   "studentDetail.learningMap": "Learning map",
 
