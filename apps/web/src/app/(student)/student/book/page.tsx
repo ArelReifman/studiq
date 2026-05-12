@@ -5,8 +5,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useT } from "@/i18n";
 import { Card } from "@/components/ui/card";
-import { Calendar, TimeSlotGrid, type TimeSlot } from "@/components/calendar/calendar";
-import { Send, X, Plus } from "lucide-react";
+import { Calendar, type TimeSlot } from "@/components/calendar/calendar";
+import { Send, X, Clock } from "lucide-react";
 import { groupConsecutiveBookings, type BookingLike } from "@/lib/booking-grouping";
 
 interface Slot extends TimeSlot {
@@ -24,13 +24,48 @@ interface Booking {
   created_at: string;
 }
 
+// All supported lesson durations in minutes (each unit = one 30-min slot).
+const DURATIONS = [60, 90, 120, 150, 180] as const;
+type Duration = (typeof DURATIONS)[number];
+
+function timeToMin(t: string): number {
+  const [h = 0, m = 0] = t.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function addMinutes(t: string, mins: number): string {
+  const total = timeToMin(t) + mins;
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
 function formatDate(s: string): string {
-  const d = new Date(s + "T00:00:00");
-  return d.toLocaleDateString(undefined, {
+  return new Date(s + "T00:00:00").toLocaleDateString(undefined, {
     weekday: "short",
     month: "short",
     day: "numeric",
   });
+}
+
+/**
+ * Try to build a chain of consecutive 30-min slots starting at `startTime`
+ * that covers `durationMin` minutes in total.
+ * Returns the ordered chain, or null if any gap is found.
+ */
+function buildLessonChain(
+  startTime: string,
+  durationMin: number,
+  slots: Slot[]
+): Slot[] | null {
+  const numSlots = durationMin / 30;
+  let cursor = startTime;
+  const chain: Slot[] = [];
+  for (let i = 0; i < numSlots; i++) {
+    const slot = slots.find((s) => s.start_time === cursor);
+    if (!slot) return null;
+    chain.push(slot);
+    cursor = slot.end_time;
+  }
+  return chain;
 }
 
 export default function StudentBookPage() {
@@ -38,7 +73,8 @@ export default function StudentBookPage() {
   const qc = useQueryClient();
 
   const [selectedDate, setSelectedDate] = useState<string | undefined>();
-  const [picked, setPicked] = useState<Slot[]>([]);
+  const [selectedStartTime, setSelectedStartTime] = useState<string | undefined>();
+  const [duration, setDuration] = useState<Duration>(60);
   const [note, setNote] = useState("");
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +94,8 @@ export default function StudentBookPage() {
     [slots]
   );
 
-  const slotsForSelectedDate = useMemo(
+  // All 30-min slots on the selected date, sorted by start time.
+  const slotsForDate = useMemo(
     () =>
       selectedDate
         ? slots
@@ -68,133 +105,31 @@ export default function StudentBookPage() {
     [slots, selectedDate]
   );
 
-  const pickedIds = useMemo(() => new Set(picked.map((s) => s.id)), [picked]);
+  // For each slot on the selected date, determine whether it can start a lesson
+  // of the currently chosen duration (i.e. enough consecutive slots follow it).
+  const startTimeOptions = useMemo(
+    () =>
+      slotsForDate.map((slot) => ({
+        slot,
+        chain: buildLessonChain(slot.start_time, duration, slotsForDate),
+      })),
+    [slotsForDate, duration]
+  );
 
-  // Find a slot adjacent to the latest pick — same date, start equals end of pick.
-  const latestPicked = useMemo(() => {
-    if (picked.length === 0) return null;
-    return [...picked].sort((a, b) =>
-      a.date === b.date
-        ? a.start_time.localeCompare(b.start_time)
-        : a.date.localeCompare(b.date)
-    ).pop()!;
-  }, [picked]);
+  // The consecutive chain backing the current (startTime, duration) selection.
+  const selectedChain = useMemo(
+    () =>
+      selectedStartTime
+        ? buildLessonChain(selectedStartTime, duration, slotsForDate)
+        : null,
+    [selectedStartTime, duration, slotsForDate]
+  );
 
-  const adjacentSlot = useMemo(() => {
-    if (!latestPicked) return null;
-    return (
-      slots.find(
-        (s) =>
-          s.date === latestPicked.date &&
-          s.start_time === latestPicked.end_time &&
-          !pickedIds.has(s.id)
-      ) ?? null
-    );
-  }, [slots, latestPicked, pickedIds]);
+  const lessonEndTime = selectedStartTime
+    ? addMinutes(selectedStartTime, duration)
+    : undefined;
 
-  // Number of consecutive chains that will be submitted as separate lessons.
-  // e.g. 3 consecutive 30-min slots = 1 chain; 2 slots on different days = 2 chains.
-  const chainCount = useMemo(() => {
-    const sorted = [...picked].sort((a, b) =>
-      a.date === b.date
-        ? a.start_time.localeCompare(b.start_time)
-        : a.date.localeCompare(b.date)
-    );
-    let count = 0;
-    let prevSlot: Slot | null = null;
-    for (const slot of sorted) {
-      if (!prevSlot || prevSlot.date !== slot.date || prevSlot.end_time !== slot.start_time) {
-        count++;
-      }
-      prevSlot = slot;
-    }
-    return count;
-  }, [picked]);
-
-  function toggleSlot(slot: Slot) {
-    setSuccess(false);
-    setError(null);
-    const alreadyPicked = picked.find((s) => s.id === slot.id);
-    // Removing is always allowed; adding is blocked once the per-submission
-    // cap is reached.
-    if (!alreadyPicked && atCap) {
-      setError(t("booking.capReached", { max: MAX_PICKS }));
-      return;
-    }
-    setPicked((prev) =>
-      prev.find((s) => s.id === slot.id)
-        ? prev.filter((s) => s.id !== slot.id)
-        : [...prev, slot]
-    );
-  }
-
-  function clearAll() {
-    setPicked([]);
-    setNote("");
-    setError(null);
-  }
-
-  const submitMutation = useMutation({
-    mutationFn: async () => {
-      // Group picked slots into consecutive chains per date, then send one
-      // POST /bookings/batch per chain so each lesson is a single logical
-      // booking (one Telegram ping, one gcal event on approval).
-      const sorted = [...picked].sort((a, b) =>
-        a.date === b.date
-          ? a.start_time.localeCompare(b.start_time)
-          : a.date.localeCompare(b.date)
-      );
-
-      const chains: Slot[][] = [];
-      for (const slot of sorted) {
-        const last = chains[chains.length - 1];
-        const lastSlot = last?.[last.length - 1];
-        if (
-          lastSlot &&
-          lastSlot.date === slot.date &&
-          lastSlot.end_time === slot.start_time
-        ) {
-          last.push(slot);
-        } else {
-          chains.push([slot]);
-        }
-      }
-
-      const results = await Promise.allSettled(
-        chains.map((chain) =>
-          api.post("/bookings/batch", {
-            availability_ids: chain.map((s) => s.id),
-            note: note || undefined,
-          })
-        )
-      );
-      const failures = results.filter((r) => r.status === "rejected");
-      if (failures.length > 0) {
-        throw new Error(
-          t("booking.partialFailure", { count: failures.length })
-        );
-      }
-    },
-    onSuccess: () => {
-      setSuccess(true);
-      clearAll();
-      qc.invalidateQueries({ queryKey: ["booking-slots"] });
-      qc.invalidateQueries({ queryKey: ["my-bookings"] });
-    },
-    onError: (e: Error) => setError(e.message),
-  });
-
-  const cancelMutation = useMutation({
-    mutationFn: (id: string) => api.delete(`/bookings/${id}`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["my-bookings"] });
-      qc.invalidateQueries({ queryKey: ["booking-slots"] });
-    },
-  });
-
-  // Group consecutive bookings (e.g. 11:30+12:30 → "11:30–13:30").
-  // The student's own bookings don't carry student_id/name, so synthesize
-  // constants — all rows belong to the same student by definition.
+  // Group student's own bookings into consecutive lessons for display.
   const groupedBookings = useMemo(() => {
     const augmented: BookingLike[] = bookings.map((b) => ({
       ...b,
@@ -213,29 +148,72 @@ export default function StudentBookPage() {
     (g) => g.status === "rejected" || g.status === "cancelled"
   );
 
-  // Selection cap: at most 3 slots (3 hours) can be picked in one submission.
-  // Doesn't matter if they're consecutive or split across days.
-  const MAX_PICKS = 3;
-  const remainingPicks = MAX_PICKS - picked.length;
-  const atCap = picked.length >= MAX_PICKS;
+  // ── Mutations ─────────────────────────────────────────────────────────────
+
+  const submitMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedChain || selectedChain.length === 0) {
+        throw new Error(t("booking.noSlotsForDate"));
+      }
+      await api.post("/bookings/batch", {
+        availability_ids: selectedChain.map((s) => s.id),
+        note: note || undefined,
+      });
+    },
+    onSuccess: () => {
+      setSuccess(true);
+      setSelectedStartTime(undefined);
+      setNote("");
+      setError(null);
+      qc.invalidateQueries({ queryKey: ["booking-slots"] });
+      qc.invalidateQueries({ queryKey: ["my-bookings"] });
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/bookings/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["my-bookings"] });
+      qc.invalidateQueries({ queryKey: ["booking-slots"] });
+    },
+  });
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  function handleSelectDate(d: string) {
+    setSelectedDate(d);
+    setSelectedStartTime(undefined);
+    setError(null);
+    setSuccess(false);
+  }
+
+  function handleChangeDuration(d: Duration) {
+    setDuration(d);
+    setSelectedStartTime(undefined); // start time may no longer be valid
+    setError(null);
+  }
+
+  function handleSelectStartTime(st: string) {
+    setSelectedStartTime(st);
+    setError(null);
+    setSuccess(false);
+  }
+
+  // ── Duration labels ───────────────────────────────────────────────────────
+  // Returns "שעה / 1.5 שעות / שעתיים …" for Hebrew, "1h / 1.5h …" for English.
+  // We derive this from approvals.hoursCount which already handles floats.
+  function durationLabel(mins: number): string {
+    return t("approvals.hoursCount", { count: mins / 60 });
+  }
+
+  // ── Loading ───────────────────────────────────────────────────────────────
 
   if (slotsLoading || bookingsLoading) {
     return <p className="text-gray-500">{t("common.loading")}</p>;
   }
 
-  // Sort picks for display (date asc, time asc)
-  const pickedSorted = [...picked].sort((a, b) =>
-    a.date === b.date
-      ? a.start_time.localeCompare(b.start_time)
-      : a.date.localeCompare(b.date)
-  );
-
-  // Actual total duration in hours (float): 30-min slot = 0.5, 60-min = 1.0, etc.
-  const totalHours = picked.reduce((sum, s) => {
-    const [sh = 0, sm = 0] = s.start_time.split(":").map(Number);
-    const [eh = 0, em = 0] = s.end_time.split(":").map(Number);
-    return sum + (eh * 60 + em - sh * 60 - sm) / 60;
-  }, 0);
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6">
@@ -255,88 +233,133 @@ export default function StudentBookPage() {
         </div>
       )}
 
-
-      {/* Calendar + Time picker */}
+      {/* Calendar + Lesson picker */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left: Calendar */}
         <Card>
           <Calendar
             activeDates={activeDates}
             selectedDate={selectedDate}
-            onSelectDate={(d) => setSelectedDate(d)}
+            onSelectDate={handleSelectDate}
           />
           <p className="text-xs text-gray-400 text-center mt-3">
-            {t("booking.calendarHint")}
+            {t("booking.pickDateFirst")}
           </p>
         </Card>
 
+        {/* Right: Duration + Start time */}
         <Card>
           {!selectedDate ? (
-            <div className="text-center text-sm text-gray-400 py-12">
-              {t("booking.pickDateFirst")}
+            <div className="flex flex-col items-center justify-center py-14 text-center">
+              <Clock size={28} className="text-gray-300 mb-3" />
+              <p className="text-sm text-gray-400">{t("booking.pickDateFirst")}</p>
             </div>
           ) : (
-            <>
-              <TimeSlotGrid
-                date={selectedDate}
-                slots={slotsForSelectedDate}
-                selectedSlotIds={pickedIds}
-                onSelectSlot={(s) => toggleSlot(s as Slot)}
-              />
+            <div className="space-y-5">
+              {/* Duration selector */}
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">
+                  {t("booking.duration")}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {DURATIONS.map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => handleChangeDuration(d)}
+                      className={
+                        duration === d
+                          ? "px-4 py-1.5 rounded-full text-sm font-semibold bg-brand-600 text-white shadow-sm"
+                          : "px-4 py-1.5 rounded-full text-sm font-medium border border-gray-200 text-gray-600 hover:border-brand-300 hover:text-brand-700 transition-colors"
+                      }
+                    >
+                      {durationLabel(d)}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-              {adjacentSlot && (
-                <button
-                  type="button"
-                  onClick={() => toggleSlot(adjacentSlot)}
-                  className="mt-3 w-full flex items-center justify-center gap-1.5 border border-dashed border-brand-300 text-brand-700 hover:bg-brand-50 rounded-lg py-2 text-xs font-medium transition-colors"
-                >
-                  <Plus size={14} />
-                  {t("booking.addConsecutive", {
-                    time: `${adjacentSlot.start_time}–${adjacentSlot.end_time}`,
-                  })}
-                </button>
-              )}
-            </>
+              {/* Start time picker */}
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">
+                  {t("booking.startTime")}
+                </p>
+
+                {startTimeOptions.length === 0 ? (
+                  <p className="text-sm text-gray-400 py-4 text-center">
+                    {t("booking.noSlotsForDate")}
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2">
+                    {startTimeOptions.map(({ slot, chain }) => {
+                      const disabled = chain === null;
+                      const selected = selectedStartTime === slot.start_time;
+                      return (
+                        <button
+                          key={slot.id}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => handleSelectStartTime(slot.start_time)}
+                          className={
+                            disabled
+                              ? "py-2.5 rounded-lg text-sm text-gray-300 border border-gray-100 cursor-not-allowed select-none"
+                              : selected
+                                ? "py-2.5 rounded-lg text-sm font-semibold bg-brand-600 text-white border border-brand-600 shadow-sm"
+                                : "py-2.5 rounded-lg text-sm font-medium border border-gray-200 text-gray-700 hover:border-brand-300 hover:bg-brand-50 transition-colors"
+                          }
+                        >
+                          {slot.start_time}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Warning when all start times are greyed out for this duration */}
+                {startTimeOptions.length > 0 &&
+                  startTimeOptions.every(({ chain }) => chain === null) && (
+                    <p className="text-xs text-amber-600 mt-2">
+                      {t("booking.noSlotsForDuration", { min: duration })}
+                    </p>
+                  )}
+              </div>
+            </div>
           )}
         </Card>
       </div>
 
-      {/* Selection summary + submit */}
-      {picked.length > 0 && (
+      {/* Summary + submit (only when a full lesson is selected) */}
+      {selectedStartTime && selectedChain && lessonEndTime && (
         <Card>
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-gray-800">
-              {t("booking.lessonSummary", { hours: totalHours })}
+              {t("booking.lessonSummary")}
             </h3>
             <button
               type="button"
-              onClick={clearAll}
+              onClick={() => {
+                setSelectedStartTime(undefined);
+                setNote("");
+                setError(null);
+              }}
               className="text-xs text-gray-500 hover:text-gray-700"
             >
               {t("booking.clearAll")}
             </button>
           </div>
 
-          <div className="flex flex-wrap gap-2 mb-3">
-            {pickedSorted.map((s) => (
-              <span
-                key={s.id}
-                className="inline-flex items-center gap-1.5 bg-brand-50 border border-brand-200 text-brand-800 rounded-full ps-3 pe-1 py-1 text-sm"
-              >
-                <span className="font-medium">{formatDate(s.date)}</span>
-                <span className="text-gray-500">·</span>
-                <span className="font-mono">
-                  {s.start_time}–{s.end_time}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => toggleSlot(s)}
-                  className="w-5 h-5 rounded-full hover:bg-brand-100 flex items-center justify-center"
-                  aria-label="remove"
-                >
-                  <X size={12} />
-                </button>
+          {/* Lesson pill */}
+          <div className="mb-4">
+            <span className="inline-flex items-center gap-2 bg-brand-50 border border-brand-200 text-brand-800 rounded-lg px-4 py-2.5 text-sm font-medium">
+              <Clock size={14} className="text-brand-500 flex-shrink-0" />
+              <span className="font-medium">{formatDate(selectedDate!)}</span>
+              <span className="text-brand-300">·</span>
+              <span className="font-mono font-semibold">
+                {selectedStartTime}–{lessonEndTime}
               </span>
-            ))}
+              <span className="text-brand-300">·</span>
+              <span className="font-semibold">{durationLabel(duration)}</span>
+            </span>
           </div>
 
           <input
@@ -356,7 +379,7 @@ export default function StudentBookPage() {
             <Send size={14} />
             {submitMutation.isPending
               ? t("student.sending")
-              : t("booking.sendRequestN", { count: chainCount })}
+              : t("booking.sendRequest")}
           </button>
         </Card>
       )}
@@ -385,7 +408,7 @@ export default function StudentBookPage() {
                 <div>
                   <p className="font-medium text-gray-800">
                     {formatDate(g.date)} · {g.start_time}–{g.end_time}
-                    {g.hours > 1 && (
+                    {g.hours > 0.5 && (
                       <span className="ms-2 text-xs text-gray-500">
                         ({t("approvals.hoursCount", { count: g.hours })})
                       </span>

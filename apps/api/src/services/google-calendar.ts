@@ -42,6 +42,7 @@ export async function createCalendarEvent(booking: {
     .where(eq(teacherGoogleTokens.teacher_id, booking.teacher_id))
     .limit(1);
 
+  // Teacher hasn't connected Google Calendar — skip silently.
   if (!tokens) return null;
 
   const [studentProfile] = await db
