@@ -433,7 +433,7 @@ export default function StudentBookPage() {
             {/* Active lessons */}
             {visibleActive.map((g) => (
               <div
-                key={g.key}
+                key={g.ids.join("-")}
                 className={
                   g.status === "pending"
                     ? "border border-orange-200 bg-orange-50 rounded-lg p-3 flex items-center justify-between"
@@ -524,7 +524,7 @@ export default function StudentBookPage() {
                   <div className="mt-1 space-y-1.5">
                     {cancelledGroups.map((g) => (
                       <div
-                        key={g.key}
+                        key={g.ids.join("-")}
                         className="border border-gray-100 rounded-lg p-3 opacity-55"
                       >
                         <p className="font-medium text-gray-700 text-sm">
