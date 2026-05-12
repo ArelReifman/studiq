@@ -49,8 +49,12 @@ async function getAccessToken(teacherId: string): Promise<string | null> {
  * Builds the Google Calendar event title and description.
  *
  * Google Calendar uses ONE shared event — both teacher and student see the same title.
- * Title:       "שיעור עם {studentName} - {courseName}"
- * Description: "לסטודנט: שיעור עם {teacherFirstName} - {courseName}"
+ * There is no API to set a different title per side (organizer vs attendee).
+ *
+ * Title (teacher + student both see):
+ *   "שיעור פרטי עם {studentName} - {courseName}"
+ * Description (student-facing context):
+ *   "לסטודנט: שיעור פרטי עם {teacherFirstName} - {courseName}"
  */
 function buildEventContent(
   studentName: string,
@@ -59,8 +63,8 @@ function buildEventContent(
 ): { summary: string; description: string } {
   const teacherFirst = teacherName.split(" ")[0] ?? teacherName;
   return {
-    summary: `שיעור עם ${studentName} - ${courseName}`,
-    description: `לסטודנט: שיעור עם ${teacherFirst} - ${courseName}`,
+    summary: `שיעור פרטי עם ${studentName} - ${courseName}`,
+    description: `לסטודנט: שיעור פרטי עם ${teacherFirst} - ${courseName}`,
   };
 }
 
