@@ -46,6 +46,16 @@ function formatDate(s: string): string {
   });
 }
 
+/** Convert a filtered Booking[] into BookingLike[] for groupConsecutiveBookings. */
+function toBookingLike(subset: Booking[]): BookingLike[] {
+  return subset.map((b) => ({
+    ...b,
+    student_id: "self",
+    student_name: "",
+    teacher_note: b.teacher_note,
+  }));
+}
+
 /**
  * Try to build a chain of consecutive 30-min slots starting at `startTime`
  * that covers `durationMin` minutes in total.
@@ -131,47 +141,33 @@ export default function StudentBookPage() {
     ? addMinutes(selectedStartTime, duration)
     : undefined;
 
-  // Group student's own bookings into consecutive lessons for display.
-  const groupedBookings = useMemo(() => {
-    const augmented: BookingLike[] = bookings.map((b) => ({
-      ...b,
-      student_id: "self",
-      student_name: "",
-      teacher_note: b.teacher_note,
-    }));
-    return groupConsecutiveBookings(augmented);
+  // Active groups: filter to active statuses FIRST, then group consecutive slots.
+  // This prevents cancelled slots in the middle from fragmenting active groups.
+  const activeGroups = useMemo(() => {
+    const active = bookings.filter(
+      (b) =>
+        b.status === "pending" ||
+        b.status === "approved" ||
+        b.status === "cancel_requested"
+    );
+    return groupConsecutiveBookings(toBookingLike(active)).sort((a, b) =>
+      a.date === b.date
+        ? a.start_time.localeCompare(b.start_time)
+        : a.date.localeCompare(b.date)
+    );
   }, [bookings]);
 
-  // Active = pending + approved + cancel_requested, sorted nearest date first.
-  const activeGroups = useMemo(
-    () =>
-      groupedBookings
-        .filter(
-          (g) =>
-            g.status === "pending" ||
-            g.status === "approved" ||
-            g.status === "cancel_requested"
-        )
-        .sort((a, b) =>
-          a.date === b.date
-            ? a.start_time.localeCompare(b.start_time)
-            : a.date.localeCompare(b.date)
-        ),
-    [groupedBookings]
-  );
-
-  // Cancelled / rejected — sorted most recent first.
-  const cancelledGroups = useMemo(
-    () =>
-      groupedBookings
-        .filter((g) => g.status === "rejected" || g.status === "cancelled")
-        .sort((a, b) =>
-          b.date === a.date
-            ? b.start_time.localeCompare(a.start_time)
-            : b.date.localeCompare(a.date)
-        ),
-    [groupedBookings]
-  );
+  // Cancelled groups: filter to cancelled/rejected FIRST, then group consecutive.
+  const cancelledGroups = useMemo(() => {
+    const cancelled = bookings.filter(
+      (b) => b.status === "cancelled" || b.status === "rejected"
+    );
+    return groupConsecutiveBookings(toBookingLike(cancelled)).sort((a, b) =>
+      b.date === a.date
+        ? b.start_time.localeCompare(a.start_time)
+        : b.date.localeCompare(a.date)
+    );
+  }, [bookings]);
 
   const PAGE_SIZE = 5;
   const visibleActive = showAllActive
