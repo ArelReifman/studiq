@@ -201,8 +201,11 @@ export default function StudentBookPage() {
     onError: (e: Error) => setError(e.message),
   });
 
+  // Cancels the whole lesson group in one request:
+  // ONE Telegram notification, ONE DB update, no partial-failure risk.
   const cancelMutation = useMutation({
-    mutationFn: (id: string) => api.delete(`/bookings/${id}`),
+    mutationFn: (ids: string[]) =>
+      api.post("/bookings/batch-cancel", { ids }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-bookings"] });
       qc.invalidateQueries({ queryKey: ["booking-slots"] });
@@ -475,7 +478,7 @@ export default function StudentBookPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      Promise.all(g.ids.map((id) => cancelMutation.mutateAsync(id)))
+                      cancelMutation.mutate(g.ids)
                     }
                     disabled={cancelMutation.isPending}
                     className="flex-shrink-0 ms-3 text-xs text-red-500 hover:text-red-700 flex items-center gap-1"

@@ -674,7 +674,87 @@ export const bookingRoutes = new Hono()
     }
   )
 
-  // ── Student: cancel a booking
+  // ── Student: batch cancel a whole consecutive lesson group
+  // Sends ONE Telegram notification for the full lesson span, never per-slot.
+  // Pending  → cancelled outright   (safe to free the slot immediately)
+  // Approved → cancel_requested     (teacher must confirm before slot frees)
+  // Already-cancel_requested slots are silently skipped (idempotent).
+  // Must be defined BEFORE /:id to avoid wildcard matching on "batch-cancel".
+  .post(
+    "/batch-cancel",
+    requireRole("student"),
+    zValidator("json", z.object({ ids: z.array(z.string().uuid()).min(1) })),
+    async (c) => {
+      const studentId = c.get("userId");
+      const { ids } = c.req.valid("json");
+
+      const rows = await db
+        .select()
+        .from(lessonBookings)
+        .where(
+          and(
+            inArray(lessonBookings.id, ids),
+            eq(lessonBookings.student_id, studentId)
+          )
+        );
+
+      if (rows.length !== ids.length) {
+        return c.json({ error: "One or more bookings not found" }, 404);
+      }
+
+      // Sort for consistent span display in notifications.
+      const sorted = [...rows].sort((a, b) =>
+        a.start_time.localeCompare(b.start_time)
+      );
+      const lessonStart = sorted[0]!.start_time;
+      const lessonEnd = sorted[sorted.length - 1]!.end_time;
+      const date = sorted[0]!.date ?? "";
+
+      const pendingIds = rows
+        .filter((b) => b.status === "pending")
+        .map((b) => b.id);
+      const approvedIds = rows
+        .filter((b) => b.status === "approved")
+        .map((b) => b.id);
+
+      if (pendingIds.length === 0 && approvedIds.length === 0) {
+        return c.json({ message: "Nothing to cancel" });
+      }
+
+      const [studentRow] = await db
+        .select({ name: profiles.full_name })
+        .from(profiles)
+        .where(eq(profiles.id, studentId))
+        .limit(1);
+      const studentName = studentRow?.name ?? "Student";
+
+      if (pendingIds.length > 0) {
+        await db
+          .update(lessonBookings)
+          .set({ status: "cancelled", updated_at: new Date() })
+          .where(inArray(lessonBookings.id, pendingIds));
+
+        void notifyTelegram(
+          `❌ <b>Booking cancelled</b>\n${escapeTelegramHtml(studentName)} · ${date} · ${lessonStart}–${lessonEnd}`
+        );
+      }
+
+      if (approvedIds.length > 0) {
+        await db
+          .update(lessonBookings)
+          .set({ status: "cancel_requested", updated_at: new Date() })
+          .where(inArray(lessonBookings.id, approvedIds));
+
+        void notifyTelegram(
+          `⚠️ <b>Cancellation requested</b>\n${escapeTelegramHtml(studentName)} wants to cancel ${date} · ${lessonStart}–${lessonEnd}`
+        );
+      }
+
+      return c.json({ message: "Cancellation processed" });
+    }
+  )
+
+  // ── Student: cancel a single booking slot (kept for backwards compatibility)
   // Pending  → cancelled outright (it was never approved, no harm)
   // Approved → cancel_requested (teacher must confirm before the slot frees)
   // cancel_requested → no-op (already pending teacher review)
