@@ -51,21 +51,44 @@ async function getAccessToken(teacherId: string): Promise<string | null> {
  * Google Calendar uses ONE shared event — both teacher and student see the same title.
  * There is no API to set a different title per side (organizer vs attendee).
  *
- * Title (teacher + student both see):
- *   "שיעור פרטי עם {studentName} - {courseName}"
- * Description (student-facing context):
- *   "לסטודנט: שיעור פרטי עם {teacherFirstName} - {courseName}"
+ * Title format (with fallbacks):
+ *   course + student  → "שיעור פרטי - {courseName} - {studentName}"
+ *   course only       → "שיעור פרטי - {courseName}"
+ *   student only      → "שיעור פרטי - {studentName}"
+ *   neither           → "שיעור פרטי"
+ *
+ * Description:
+ *   סטודנט: {studentName}
+ *   מורה: {teacherFirstName}
+ *   קורס: {courseName}
+ *   זמן שיעור: {startTime}–{endTime}
  */
-function buildEventContent(
-  studentName: string,
-  teacherName: string,
-  courseName: string
-): { summary: string; description: string } {
+function buildEventContent(opts: {
+  studentName: string;
+  teacherName: string;
+  courseName: string;
+  startTime: string;
+  endTime: string;
+}): { summary: string; description: string } {
+  const { studentName, teacherName, courseName, startTime, endTime } = opts;
   const teacherFirst = teacherName.split(" ")[0] ?? teacherName;
-  return {
-    summary: `שיעור פרטי עם ${studentName} - ${courseName}`,
-    description: `לסטודנט: שיעור פרטי עם ${teacherFirst} - ${courseName}`,
-  };
+
+  // Title: "שיעור פרטי - {course} - {student}" with graceful fallbacks
+  const hasCourse = !!courseName;
+  const hasStudent = !!studentName;
+  let summary = "שיעור פרטי";
+  if (hasCourse && hasStudent) summary = `שיעור פרטי - ${courseName} - ${studentName}`;
+  else if (hasCourse) summary = `שיעור פרטי - ${courseName}`;
+  else if (hasStudent) summary = `שיעור פרטי - ${studentName}`;
+
+  // Description: structured block visible in the event details
+  const descLines: string[] = [];
+  if (hasStudent) descLines.push(`סטודנט: ${studentName}`);
+  descLines.push(`מורה: ${teacherFirst}`);
+  if (hasCourse) descLines.push(`קורס: ${courseName}`);
+  descLines.push(`זמן שיעור: ${startTime}–${endTime}`);
+
+  return { summary, description: descLines.join("\n") };
 }
 
 export async function createCalendarEvent(booking: {
@@ -90,13 +113,15 @@ export async function createCalendarEvent(booking: {
 
   if (!studentProfile) return null;
 
-  const courseName = booking.course_name ?? "שיעור פרטי";
+  const courseName = booking.course_name ?? "";
   const teacherName = booking.teacher_name ?? "";
-  const { summary, description } = buildEventContent(
-    studentProfile.full_name,
+  const { summary, description } = buildEventContent({
+    studentName: studentProfile.full_name,
     teacherName,
-    courseName
-  );
+    courseName,
+    startTime: booking.start_time,
+    endTime: booking.end_time,
+  });
 
   const event = {
     summary,

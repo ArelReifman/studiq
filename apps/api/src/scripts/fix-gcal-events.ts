@@ -131,7 +131,7 @@ function buildGroups(bookings: BookingRow[]): LessonGroup[] {
         lesson_end: b.end_time,
         student_name: b.student_name,
         teacher_name: b.teacher_name,
-        course_name: b.course_name ?? "שיעור פרטי",
+        course_name: b.course_name ?? "",
         slots: [b],
         gcal_ids: b.gcal_event_id ? [b.gcal_event_id] : [],
         status: "OK",
@@ -150,10 +150,22 @@ function buildGroups(bookings: BookingRow[]): LessonGroup[] {
 
 function buildTitle(g: LessonGroup): { summary: string; description: string } {
   const teacherFirst = g.teacher_name.split(" ")[0] ?? g.teacher_name;
-  return {
-    summary: `שיעור עם ${g.student_name} - ${g.course_name}`,
-    description: `לסטודנט: שיעור עם ${teacherFirst} - ${g.course_name}`,
-  };
+  const hasCourse  = !!g.course_name;
+  const hasStudent = !!g.student_name;
+
+  // "שיעור פרטי - {course} - {student}" with graceful fallbacks
+  let summary = "שיעור פרטי";
+  if (hasCourse && hasStudent) summary = `שיעור פרטי - ${g.course_name} - ${g.student_name}`;
+  else if (hasCourse)  summary = `שיעור פרטי - ${g.course_name}`;
+  else if (hasStudent) summary = `שיעור פרטי - ${g.student_name}`;
+
+  const descLines: string[] = [];
+  if (hasStudent) descLines.push(`סטודנט: ${g.student_name}`);
+  descLines.push(`מורה: ${teacherFirst}`);
+  if (hasCourse) descLines.push(`קורס: ${g.course_name}`);
+  descLines.push(`זמן שיעור: ${g.lesson_start}–${g.lesson_end}`);
+
+  return { summary, description: descLines.join("\n") };
 }
 
 async function main() {
