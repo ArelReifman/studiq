@@ -9,13 +9,6 @@ import { Calendar, type TimeSlot } from "@/components/calendar/calendar";
 import { Send, X, Clock } from "lucide-react";
 import { groupConsecutiveBookings, type BookingLike } from "@/lib/booking-grouping";
 
-// Compute minutes between two "HH:mm" strings.
-function slotMinutes(startTime: string, endTime: string): number {
-  const [sh = 0, sm = 0] = startTime.split(":").map(Number);
-  const [eh = 0, em = 0] = endTime.split(":").map(Number);
-  return eh * 60 + em - (sh * 60 + sm);
-}
-
 interface Slot extends TimeSlot {
   date: string;
 }
@@ -53,6 +46,16 @@ function formatDate(s: string): string {
   });
 }
 
+/** Convert a filtered Booking[] into BookingLike[] for groupConsecutiveBookings. */
+function toBookingLike(subset: Booking[]): BookingLike[] {
+  return subset.map((b) => ({
+    ...b,
+    student_id: "self",
+    student_name: "",
+    teacher_note: b.teacher_note,
+  }));
+}
+
 /**
  * Try to build a chain of consecutive 30-min slots starting at `startTime`
  * that covers `durationMin` minutes in total.
@@ -85,6 +88,8 @@ export default function StudentBookPage() {
   const [note, setNote] = useState("");
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showAllActive, setShowAllActive] = useState(false);
+  const [showCancelled, setShowCancelled] = useState(false);
 
   const { data: slots = [], isLoading: slotsLoading } = useQuery<Slot[]>({
     queryKey: ["booking-slots"],
@@ -136,24 +141,38 @@ export default function StudentBookPage() {
     ? addMinutes(selectedStartTime, duration)
     : undefined;
 
-  // Group student's own bookings into consecutive lessons for display.
-  const groupedBookings = useMemo(() => {
-    const augmented: BookingLike[] = bookings.map((b) => ({
-      ...b,
-      student_id: "self",
-      student_name: "",
-      teacher_note: b.teacher_note,
-    }));
-    return groupConsecutiveBookings(augmented);
+  // Active groups: filter to active statuses FIRST, then group consecutive slots.
+  // This prevents cancelled slots in the middle from fragmenting active groups.
+  const activeGroups = useMemo(() => {
+    const active = bookings.filter(
+      (b) =>
+        b.status === "pending" ||
+        b.status === "approved" ||
+        b.status === "cancel_requested"
+    );
+    return groupConsecutiveBookings(toBookingLike(active)).sort((a, b) =>
+      a.date === b.date
+        ? a.start_time.localeCompare(b.start_time)
+        : a.date.localeCompare(b.date)
+    );
   }, [bookings]);
 
-  const pending = groupedBookings.filter((g) => g.status === "pending");
-  const approved = groupedBookings.filter(
-    (g) => g.status === "approved" || g.status === "cancel_requested"
-  );
-  const past = groupedBookings.filter(
-    (g) => g.status === "rejected" || g.status === "cancelled"
-  );
+  // Cancelled groups: filter to cancelled/rejected FIRST, then group consecutive.
+  const cancelledGroups = useMemo(() => {
+    const cancelled = bookings.filter(
+      (b) => b.status === "cancelled" || b.status === "rejected"
+    );
+    return groupConsecutiveBookings(toBookingLike(cancelled)).sort((a, b) =>
+      b.date === a.date
+        ? b.start_time.localeCompare(a.start_time)
+        : b.date.localeCompare(a.date)
+    );
+  }, [bookings]);
+
+  const PAGE_SIZE = 5;
+  const visibleActive = showAllActive
+    ? activeGroups
+    : activeGroups.slice(0, PAGE_SIZE);
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
@@ -178,8 +197,11 @@ export default function StudentBookPage() {
     onError: (e: Error) => setError(e.message),
   });
 
+  // Cancels the whole lesson group in one request:
+  // ONE Telegram notification, ONE DB update, no partial-failure risk.
   const cancelMutation = useMutation({
-    mutationFn: (id: string) => api.delete(`/bookings/${id}`),
+    mutationFn: (ids: string[]) =>
+      api.post("/bookings/batch-cancel", { ids }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-bookings"] });
       qc.invalidateQueries({ queryKey: ["booking-slots"] });
@@ -393,30 +415,40 @@ export default function StudentBookPage() {
 
       {/* My bookings */}
       <Card>
-        <h2 className="text-lg font-semibold text-gray-700 mb-4">
-          {t("student.myBookings")}
-        </h2>
+        <div className="flex items-center gap-2 mb-4">
+          <h2 className="text-lg font-semibold text-gray-700">
+            {t("student.myBookings")}
+          </h2>
+          {activeGroups.length > 0 && (
+            <span className="text-xs bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded-full font-medium">
+              {activeGroups.length}
+            </span>
+          )}
+        </div>
 
         {bookings.length === 0 ? (
           <p className="text-sm text-gray-400">{t("student.noBookings")}</p>
         ) : (
           <div className="space-y-2">
-            {[...pending, ...approved, ...past].map((g) => (
+            {/* Active lessons */}
+            {visibleActive.map((g) => (
               <div
-                key={g.key}
+                key={g.ids.join("-")}
                 className={
                   g.status === "pending"
                     ? "border border-orange-200 bg-orange-50 rounded-lg p-3 flex items-center justify-between"
                     : g.status === "approved"
                       ? "border border-green-200 bg-green-50 rounded-lg p-3 flex items-center justify-between"
-                      : "border border-gray-100 rounded-lg p-3 flex items-center justify-between opacity-60"
+                      : "border border-amber-200 bg-amber-50 rounded-lg p-3 flex items-center justify-between"
                 }
               >
-                <div>
-                  <p className="font-medium text-gray-800">
-                    {formatDate(g.date)} · {g.start_time}–{g.end_time}
-                    {g.hours > 0.5 && (
-                      <span className="ms-2 text-xs text-gray-500">
+                <div className="min-w-0">
+                  <p className="font-medium text-gray-800 text-sm">
+                    {formatDate(g.date)}
+                    {" · "}
+                    <span dir="ltr">{g.start_time}–{g.end_time}</span>
+                    {g.hours >= 1 && (
+                      <span className="ms-1.5 text-xs text-gray-500">
                         ({t("approvals.hoursCount", { count: g.hours })})
                       </span>
                     )}
@@ -427,9 +459,7 @@ export default function StudentBookPage() {
                         ? "text-xs text-orange-600"
                         : g.status === "approved"
                           ? "text-xs text-green-700"
-                          : g.status === "cancel_requested"
-                            ? "text-xs text-red-600"
-                            : "text-xs text-gray-500"
+                          : "text-xs text-amber-600"
                     }
                   >
                     {t(`booking.${g.status}`)}
@@ -442,18 +472,80 @@ export default function StudentBookPage() {
                 </div>
                 {(g.status === "pending" || g.status === "approved") && (
                   <button
+                    type="button"
                     onClick={() =>
-                      Promise.all(g.ids.map((id) => cancelMutation.mutateAsync(id)))
+                      cancelMutation.mutate(g.ids)
                     }
                     disabled={cancelMutation.isPending}
-                    className="text-sm text-red-500 hover:text-red-700 flex items-center gap-1"
+                    className="flex-shrink-0 ms-3 text-xs text-red-500 hover:text-red-700 flex items-center gap-1"
                   >
-                    <X size={14} />
+                    <X size={13} />
                     {t("student.cancelBooking")}
                   </button>
                 )}
               </div>
             ))}
+
+            {/* Show more / less */}
+            {activeGroups.length > PAGE_SIZE && (
+              <button
+                type="button"
+                onClick={() => setShowAllActive((v) => !v)}
+                className="w-full text-xs text-brand-600 hover:text-brand-800 py-1.5 border border-dashed border-brand-200 rounded-lg hover:bg-brand-50 transition-colors"
+              >
+                {showAllActive
+                  ? t("common.showLess")
+                  : `${t("common.showMore")} (${activeGroups.length - PAGE_SIZE})`}
+              </button>
+            )}
+
+            {/* Empty active state */}
+            {activeGroups.length === 0 && cancelledGroups.length > 0 && (
+              <p className="text-sm text-gray-400 py-1">{t("student.noBookings")}</p>
+            )}
+
+            {/* Cancelled / rejected — collapsible */}
+            {cancelledGroups.length > 0 && (
+              <div className={activeGroups.length > 0 ? "pt-2 border-t border-gray-100" : ""}>
+                <button
+                  type="button"
+                  onClick={() => setShowCancelled((v) => !v)}
+                  className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-600 py-1 w-full text-start"
+                >
+                  <span className={`transition-transform duration-150 ${showCancelled ? "rotate-90" : ""}`}>
+                    ▶
+                  </span>
+                  {t("booking.cancelledLessons")}
+                  <span className="bg-gray-100 text-gray-500 rounded-full px-1.5 py-0.5 font-medium">
+                    {cancelledGroups.length}
+                  </span>
+                </button>
+                {showCancelled && (
+                  <div className="mt-1 space-y-1.5">
+                    {cancelledGroups.map((g) => (
+                      <div
+                        key={g.ids.join("-")}
+                        className="border border-gray-100 rounded-lg p-3 opacity-55"
+                      >
+                        <p className="font-medium text-gray-700 text-sm">
+                          {formatDate(g.date)}
+                          {" · "}
+                          <span dir="ltr">{g.start_time}–{g.end_time}</span>
+                          {g.hours >= 1 && (
+                            <span className="ms-1.5 text-xs text-gray-400">
+                              ({t("approvals.hoursCount", { count: g.hours })})
+                            </span>
+                          )}
+                        </p>
+                        <span className="text-xs text-gray-400">
+                          {t(`booking.${g.status}`)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </Card>

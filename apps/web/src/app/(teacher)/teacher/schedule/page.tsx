@@ -62,6 +62,9 @@ export default function TeacherSchedulePage() {
   const [endTime, setEndTime] = useState("15:00");
   const [error, setError] = useState<string | null>(null);
   const [gcalBanner, setGcalBanner] = useState<"connected" | "error" | null>(null);
+  const [showAllUpcoming, setShowAllUpcoming] = useState(false);
+  const [showCancelledTeacher, setShowCancelledTeacher] = useState(false);
+  const [showAllPast, setShowAllPast] = useState(false);
 
   // Show a banner if Google Calendar OAuth redirected back here
   useEffect(() => {
@@ -144,6 +147,29 @@ export default function TeacherSchedulePage() {
       ),
     [recentPast]
   );
+
+  const UPCOMING_PAGE = 5;
+  const visibleUpcoming = showAllUpcoming
+    ? upcomingGroups
+    : upcomingGroups.slice(0, UPCOMING_PAGE);
+
+  // Teacher-cancelled lessons — for the collapsible section.
+  const cancelledTeacherGroups = useMemo(
+    () =>
+      groupConsecutiveBookings(
+        bookings.filter((b) => b.status === "cancelled")
+      ).sort((a, b) =>
+        b.date === a.date
+          ? b.start_time.localeCompare(a.start_time)
+          : b.date.localeCompare(a.date)
+      ),
+    [bookings]
+  );
+
+  const PAST_PAGE = 5;
+  const visiblePast = showAllPast
+    ? recentPastGroups
+    : recentPastGroups.slice(0, PAST_PAGE);
 
   const bookedDates = useMemo(
     () => new Set(upcomingActive.map((b) => b.date)),
@@ -478,67 +504,126 @@ export default function TeacherSchedulePage() {
         </div>
 
         {upcomingGroups.length === 0 ? (
-          <p className="text-sm text-gray-400 py-6 text-center">
+          <p className="text-sm text-gray-400 py-4 text-center">
             {t("teacher.noUpcomingLessons")}
           </p>
         ) : (
           <div className="space-y-2">
-            {upcomingGroups.map((g) => {
+            {visibleUpcoming.map((g) => {
               const isCancelRequest = g.status === "cancel_requested";
               return (
-              <div
-                key={g.key}
-                className={
-                  isCancelRequest
-                    ? "flex items-start justify-between gap-3 border border-red-200 bg-red-50 rounded-lg p-3 transition-colors"
-                    : "flex items-start justify-between gap-3 border border-gray-100 rounded-lg p-3 hover:border-brand-200 transition-colors"
-                }
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <span className="font-mono text-sm text-gray-700">
-                      {formatDate(g.date)}
-                    </span>
-                    <span className="font-mono text-sm font-semibold text-brand-700">
-                      {g.start_time}–{g.end_time}
-                    </span>
-                    <span className="font-medium text-gray-800">
-                      {g.student_name}
-                    </span>
-                    {g.hours > 1 && (
-                      <span className="text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">
-                        {formatDuration(g.start_time, g.end_time)}
+                <div
+                  key={g.key}
+                  className={
+                    isCancelRequest
+                      ? "flex items-start justify-between gap-3 border border-red-200 bg-red-50 rounded-lg p-3 transition-colors"
+                      : "flex items-start justify-between gap-3 border border-gray-100 rounded-lg p-3 hover:border-brand-200 transition-colors"
+                  }
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm text-gray-700">
+                        {formatDate(g.date)}
                       </span>
-                    )}
-                    {isCancelRequest && (
-                      <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
-                        {t("teacher.cancelPending")}
+                      <span className="font-mono text-sm font-semibold text-brand-700" dir="ltr">
+                        {g.start_time}–{g.end_time}
                       </span>
+                      <span className="font-medium text-gray-800">
+                        {g.student_name}
+                      </span>
+                      {g.hours >= 1 && (
+                        <span className="text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">
+                          {formatDuration(g.start_time, g.end_time)}
+                        </span>
+                      )}
+                      {isCancelRequest && (
+                        <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
+                          {t("teacher.cancelPending")}
+                        </span>
+                      )}
+                    </div>
+                    {g.student_note && (
+                      <div className="flex items-start gap-1.5 mt-1 text-xs text-gray-500">
+                        <MessageSquare size={11} className="flex-shrink-0 mt-0.5" />
+                        <span className="italic">{g.student_note}</span>
+                      </div>
                     )}
                   </div>
-                  {g.student_note && (
-                    <div className="flex items-start gap-1.5 mt-1.5 text-xs text-gray-500">
-                      <MessageSquare size={11} className="flex-shrink-0 mt-0.5" />
-                      <span className="italic">{g.student_note}</span>
-                    </div>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm(t("teacher.confirmCancelLesson"))) {
+                        cancelLessonMutation.mutate({ ids: g.ids });
+                      }
+                    }}
+                    disabled={cancelLessonMutation.isPending}
+                    className="flex-shrink-0 inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded-md px-2 py-1 transition-colors disabled:opacity-50"
+                  >
+                    <X size={13} />
+                    {t("teacher.cancelLesson")}
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (confirm(t("teacher.confirmCancelLesson"))) {
-                      cancelLessonMutation.mutate({ ids: g.ids });
-                    }
-                  }}
-                  disabled={cancelLessonMutation.isPending}
-                  className="flex-shrink-0 inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded-md px-2 py-1 transition-colors disabled:opacity-50"
-                >
-                  <X size={13} />
-                  {t("teacher.cancelLesson")}
-                </button>
-              </div>
               );
             })}
+
+            {/* Show more / less */}
+            {upcomingGroups.length > UPCOMING_PAGE && (
+              <button
+                type="button"
+                onClick={() => setShowAllUpcoming((v) => !v)}
+                className="w-full text-xs text-brand-600 hover:text-brand-800 py-1.5 border border-dashed border-brand-200 rounded-lg hover:bg-brand-50 transition-colors"
+              >
+                {showAllUpcoming
+                  ? t("common.showLess")
+                  : `${t("common.showMore")} (${upcomingGroups.length - UPCOMING_PAGE})`}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Cancelled lessons — collapsible */}
+        {cancelledTeacherGroups.length > 0 && (
+          <div className={`${upcomingGroups.length > 0 ? "mt-3 pt-3" : "mt-1"} border-t border-gray-100`}>
+            <button
+              type="button"
+              onClick={() => setShowCancelledTeacher((v) => !v)}
+              className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-600 py-1 w-full text-start"
+            >
+              <span className={`transition-transform duration-150 ${showCancelledTeacher ? "rotate-90" : ""}`}>
+                ▶
+              </span>
+              {t("booking.cancelledLessons")}
+              <span className="bg-gray-100 text-gray-500 rounded-full px-1.5 py-0.5 font-medium">
+                {cancelledTeacherGroups.length}
+              </span>
+            </button>
+            {showCancelledTeacher && (
+              <div className="mt-1 space-y-1.5">
+                {cancelledTeacherGroups.map((g) => (
+                  <div
+                    key={g.key}
+                    className="border border-gray-100 rounded-lg p-3 opacity-55"
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm text-gray-600">
+                        {formatDate(g.date)}
+                      </span>
+                      <span className="font-mono text-sm text-gray-600" dir="ltr">
+                        {g.start_time}–{g.end_time}
+                      </span>
+                      <span className="text-sm text-gray-600">
+                        {g.student_name}
+                      </span>
+                      {g.hours >= 1 && (
+                        <span className="text-xs text-gray-400">
+                          {formatDuration(g.start_time, g.end_time)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </Card>
@@ -557,7 +642,7 @@ export default function TeacherSchedulePage() {
           </div>
 
           <div className="space-y-2">
-            {recentPastGroups.map((g) => {
+            {visiblePast.map((g) => {
               // All bookings in a group are marked together, so the first
               // booking's attendance is canonical for the whole group.
               const attendance =
@@ -628,6 +713,19 @@ export default function TeacherSchedulePage() {
                 </div>
               );
             })}
+
+            {/* Show more / less for past lessons */}
+            {recentPastGroups.length > PAST_PAGE && (
+              <button
+                type="button"
+                onClick={() => setShowAllPast((v) => !v)}
+                className="w-full text-xs text-gray-500 hover:text-gray-700 py-1.5 border border-dashed border-gray-200 rounded-lg hover:bg-gray-50 transition-colors mt-1"
+              >
+                {showAllPast
+                  ? t("common.showLess")
+                  : `${t("common.showMore")} (${recentPastGroups.length - PAST_PAGE})`}
+              </button>
+            )}
           </div>
         </Card>
       )}
