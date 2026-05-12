@@ -9,6 +9,7 @@ import {
   students,
   profiles,
   teachers,
+  courses,
 } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { notifyTelegram, escapeTelegramHtml } from "../lib/notify.js";
@@ -536,12 +537,31 @@ export const bookingRoutes = new Hono()
         try {
           const lessonStart = sorted[0]!.start_time;
           const lessonEnd = sorted[sorted.length - 1]!.end_time;
+          const studentId = sorted[0]!.student_id;
+
+          // Look up course name (students.primary_course_id → courses.name)
+          // and teacher name for the event title/description.
+          const [courseRow] = await db
+            .select({ course_name: courses.name })
+            .from(students)
+            .leftJoin(courses, eq(students.primary_course_id, courses.id))
+            .where(eq(students.id, studentId))
+            .limit(1);
+
+          const [teacherRow] = await db
+            .select({ teacher_name: profiles.full_name })
+            .from(profiles)
+            .where(eq(profiles.id, teacherId))
+            .limit(1);
+
           const eventId = await createCalendarEvent({
             date: sorted[0]!.date ?? "",
             start_time: lessonStart,
             end_time: lessonEnd,
-            student_id: sorted[0]!.student_id,
+            student_id: studentId,
             teacher_id: teacherId,
+            ...(courseRow?.course_name ? { course_name: courseRow.course_name } : {}),
+            ...(teacherRow?.teacher_name ? { teacher_name: teacherRow.teacher_name } : {}),
           });
           if (eventId) {
             await db
@@ -630,12 +650,28 @@ export const bookingRoutes = new Hono()
       // Silently skipped if the teacher hasn't connected Google Calendar.
       if (body.status === "approved") {
         void (async () => {
+          // Look up course name and teacher name for the event title/description.
+          const [courseRow] = await db
+            .select({ course_name: courses.name })
+            .from(students)
+            .leftJoin(courses, eq(students.primary_course_id, courses.id))
+            .where(eq(students.id, updated.student_id))
+            .limit(1);
+
+          const [teacherRow] = await db
+            .select({ teacher_name: profiles.full_name })
+            .from(profiles)
+            .where(eq(profiles.id, teacherId))
+            .limit(1);
+
           const eventId = await createCalendarEvent({
             date: updated.date,
             start_time: updated.start_time,
             end_time: updated.end_time,
             student_id: updated.student_id,
             teacher_id: teacherId,
+            ...(courseRow?.course_name ? { course_name: courseRow.course_name } : {}),
+            ...(teacherRow?.teacher_name ? { teacher_name: teacherRow.teacher_name } : {}),
           });
           if (eventId) {
             await db
