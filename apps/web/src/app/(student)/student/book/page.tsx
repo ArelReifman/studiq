@@ -9,13 +9,6 @@ import { Calendar, type TimeSlot } from "@/components/calendar/calendar";
 import { Send, X, Clock } from "lucide-react";
 import { groupConsecutiveBookings, type BookingLike } from "@/lib/booking-grouping";
 
-// Compute minutes between two "HH:mm" strings.
-function slotMinutes(startTime: string, endTime: string): number {
-  const [sh = 0, sm = 0] = startTime.split(":").map(Number);
-  const [eh = 0, em = 0] = endTime.split(":").map(Number);
-  return eh * 60 + em - (sh * 60 + sm);
-}
-
 interface Slot extends TimeSlot {
   date: string;
 }
