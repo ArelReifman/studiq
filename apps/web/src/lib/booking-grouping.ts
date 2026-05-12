@@ -16,6 +16,18 @@ function timeToMin(hhmm: string): number {
   return h * 60 + m;
 }
 
+/**
+ * Formats a duration as a compact string: "30m", "1h", "1.5h", "2h", etc.
+ * Works with any slot granularity (30-min or 60-min blocks).
+ */
+export function formatDuration(startTime: string, endTime: string): string {
+  const mins = timeToMin(endTime) - timeToMin(startTime);
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const rem = mins % 60;
+  return rem === 0 ? `${h}h` : `${h}.5h`;
+}
+
 export interface BookingLike {
   id: string;
   student_id: string;

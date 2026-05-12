@@ -9,7 +9,7 @@ import { api } from "@/lib/api";
 import { useT } from "@/i18n";
 import { LanguageToggle } from "@/components/ui/language-toggle";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, CalendarClock, LogOut, BookOpen, Menu, X, UserCheck } from "lucide-react";
+import { LayoutDashboard, CalendarClock, LogOut, BookOpen, Menu, X, UserCheck, Users } from "lucide-react";
 import { useRealtimeSync } from "@/hooks/use-realtime-sync";
 import { Logo } from "@/components/brand/logo";
 
@@ -70,6 +70,7 @@ export default function TeacherLayout({
       badgeTone: "danger" as const,
     },
     { href: "/teacher/approvals", label: t("approvals.navLabel"), icon: UserCheck, badge: pendingCount },
+    { href: "/teacher/students", label: t("teacher.students"), icon: Users },
     { href: "/teacher/courses", label: t("teacher.courses"), icon: BookOpen },
     { href: "/teacher/schedule", label: t("teacher.schedule"), icon: CalendarClock },
   ];

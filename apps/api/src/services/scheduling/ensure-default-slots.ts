@@ -6,14 +6,14 @@ import { getIsraelToday } from "../../lib/time.js";
 /**
  * Default availability policy.
  *
- * Sunday–Thursday, 11:30–21:00, 1-hour slots.
+ * Sunday–Thursday, 11:00–20:00, 30-minute slots.
  * Friday + Saturday are intentionally left out so the teacher can open them
  * manually on a per-date basis.
  */
 const DEFAULT_DAYS = new Set([0, 1, 2, 3, 4]); // 0=Sun ... 4=Thu
 const DEFAULT_START = "11:00";
 const DEFAULT_END = "20:00";
-const DEFAULT_SLOT_MINUTES = 60;
+const DEFAULT_SLOT_MINUTES = 30;
 const WEEKS_AHEAD = 4;
 
 function pad(n: number): string {

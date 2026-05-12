@@ -6,7 +6,7 @@ import { Check, X, Mail, Clock, MessageSquare, CalendarClock, UserPlus, AlertTri
 import { api } from "@/lib/api";
 import { useT } from "@/i18n";
 import { Card } from "@/components/ui/card";
-import { groupConsecutiveBookings } from "@/lib/booking-grouping";
+import { groupConsecutiveBookings, formatDuration } from "@/lib/booking-grouping";
 
 interface PendingProfile {
   id: string;
