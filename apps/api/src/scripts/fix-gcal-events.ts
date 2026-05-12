@@ -148,21 +148,29 @@ function buildGroups(bookings: BookingRow[]): LessonGroup[] {
   return groups;
 }
 
+/** Collapse runs of whitespace to a single space and trim edges. */
+function normalizeName(name: string): string {
+  return name.replace(/\s+/g, " ").trim();
+}
+
 function buildTitle(g: LessonGroup): { summary: string; description: string } {
-  const teacherFirst = g.teacher_name.split(" ")[0] ?? g.teacher_name;
-  const hasCourse  = !!g.course_name;
-  const hasStudent = !!g.student_name;
+  const studentName = normalizeName(g.student_name);
+  const teacherName = normalizeName(g.teacher_name);
+  const teacherFirst = teacherName.split(" ")[0] ?? teacherName;
+  const courseName  = g.course_name; // already trimmed from DB
+  const hasCourse  = !!courseName;
+  const hasStudent = !!studentName;
 
   // "שיעור פרטי - {course} - {student}" with graceful fallbacks
   let summary = "שיעור פרטי";
-  if (hasCourse && hasStudent) summary = `שיעור פרטי - ${g.course_name} - ${g.student_name}`;
-  else if (hasCourse)  summary = `שיעור פרטי - ${g.course_name}`;
-  else if (hasStudent) summary = `שיעור פרטי - ${g.student_name}`;
+  if (hasCourse && hasStudent) summary = `שיעור פרטי - ${courseName} - ${studentName}`;
+  else if (hasCourse)  summary = `שיעור פרטי - ${courseName}`;
+  else if (hasStudent) summary = `שיעור פרטי - ${studentName}`;
 
   const descLines: string[] = [];
-  if (hasStudent) descLines.push(`סטודנט: ${g.student_name}`);
+  if (hasStudent) descLines.push(`סטודנט: ${studentName}`);
   descLines.push(`מורה: ${teacherFirst}`);
-  if (hasCourse) descLines.push(`קורס: ${g.course_name}`);
+  if (hasCourse) descLines.push(`קורס: ${courseName}`);
   descLines.push(`זמן שיעור: ${g.lesson_start}–${g.lesson_end}`);
 
   return { summary, description: descLines.join("\n") };
@@ -230,12 +238,40 @@ async function main() {
   // ── Apply ───────────────────────────────────────────────────────────────────
   console.log("\n=== APPLYING CHANGES ===\n");
 
+  // Dedup: if the same gcal_event_id appears in multiple OK groups (e.g. two
+  // non-consecutive 30-min slots that both point to the same calendar event),
+  // we must only PATCH it once.  We keep whichever group has the earliest
+  // lesson_start and latest lesson_end so the span is as wide as possible.
+  const dedupedOk = new Map<string, LessonGroup>();
+  const duplicateGcalIds: string[] = [];
+
+  for (const g of ok) {
+    const id = g.gcal_ids[0]!;
+    const existing = dedupedOk.get(id);
+    if (!existing) {
+      dedupedOk.set(id, g);
+    } else {
+      duplicateGcalIds.push(id);
+      // Merge spans: take the earliest start and latest end.
+      const mergedStart = existing.lesson_start < g.lesson_start ? existing.lesson_start : g.lesson_start;
+      const mergedEnd   = existing.lesson_end   > g.lesson_end   ? existing.lesson_end   : g.lesson_end;
+      dedupedOk.set(id, { ...existing, lesson_start: mergedStart, lesson_end: mergedEnd });
+      log(`DEDUP: gcal_event_id ${id} appears in multiple groups — merging span to ${mergedStart}–${mergedEnd}`);
+    }
+  }
+
+  if (duplicateGcalIds.length > 0) {
+    log(`Found ${duplicateGcalIds.length} duplicate gcal_event_id(s): ${duplicateGcalIds.join(", ")}`);
+  }
+
+  const groupsToUpdate = [...dedupedOk.values(), ...needsMerge];
+
   let updated = 0;
   let merged = 0;
   let deleted = 0;
   const errors: string[] = [];
 
-  for (const g of [...ok, ...needsMerge]) {
+  for (const g of groupsToUpdate) {
     if (!teachersWithTokens.has(g.teacher_id)) {
       log(`WARN: no GCal token for teacher ${g.teacher_id} — skipping group ${g.date} ${g.lesson_start}`);
       continue;
