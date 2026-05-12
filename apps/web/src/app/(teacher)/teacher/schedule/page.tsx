@@ -64,6 +64,7 @@ export default function TeacherSchedulePage() {
   const [gcalBanner, setGcalBanner] = useState<"connected" | "error" | null>(null);
   const [showAllUpcoming, setShowAllUpcoming] = useState(false);
   const [showCancelledTeacher, setShowCancelledTeacher] = useState(false);
+  const [showAllPast, setShowAllPast] = useState(false);
 
   // Show a banner if Google Calendar OAuth redirected back here
   useEffect(() => {
@@ -164,6 +165,11 @@ export default function TeacherSchedulePage() {
       ),
     [bookings]
   );
+
+  const PAST_PAGE = 5;
+  const visiblePast = showAllPast
+    ? recentPastGroups
+    : recentPastGroups.slice(0, PAST_PAGE);
 
   const bookedDates = useMemo(
     () => new Set(upcomingActive.map((b) => b.date)),
@@ -636,7 +642,7 @@ export default function TeacherSchedulePage() {
           </div>
 
           <div className="space-y-2">
-            {recentPastGroups.map((g) => {
+            {visiblePast.map((g) => {
               // All bookings in a group are marked together, so the first
               // booking's attendance is canonical for the whole group.
               const attendance =
@@ -707,6 +713,19 @@ export default function TeacherSchedulePage() {
                 </div>
               );
             })}
+
+            {/* Show more / less for past lessons */}
+            {recentPastGroups.length > PAST_PAGE && (
+              <button
+                type="button"
+                onClick={() => setShowAllPast((v) => !v)}
+                className="w-full text-xs text-gray-500 hover:text-gray-700 py-1.5 border border-dashed border-gray-200 rounded-lg hover:bg-gray-50 transition-colors mt-1"
+              >
+                {showAllPast
+                  ? t("common.showLess")
+                  : `${t("common.showMore")} (${recentPastGroups.length - PAST_PAGE})`}
+              </button>
+            )}
           </div>
         </Card>
       )}
