@@ -7,18 +7,21 @@
  * student) starts a new group.
  *
  * Used by the approvals page and the teacher schedule's "upcoming lessons"
- * section so that a 2-hour booking shows as "11:30–13:30 · דני (2h)" rather
- * than two stacked rows.
+ * section so that a 90-min booking shows as "11:30–13:00 · דני (1.5h)" rather
+ * than three stacked 30-min rows.
  */
+
+function timeToMin(hhmm: string): number {
+  const [h = 0, m = 0] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
 
 /**
  * Formats a duration as a compact string: "30m", "1h", "1.5h", "2h", etc.
  * Works with any slot granularity (30-min or 60-min blocks).
  */
 export function formatDuration(startTime: string, endTime: string): string {
-  const [sh = 0, sm = 0] = startTime.split(":").map(Number);
-  const [eh = 0, em = 0] = endTime.split(":").map(Number);
-  const mins = eh * 60 + em - (sh * 60 + sm);
+  const mins = timeToMin(endTime) - timeToMin(startTime);
   if (mins < 60) return `${mins}m`;
   const h = Math.floor(mins / 60);
   const rem = mins % 60;
@@ -54,7 +57,11 @@ export interface BookingGroup<T extends BookingLike = BookingLike> {
   student_note: string | null;
   teacher_note: string | null;
   bookings: T[];
-  /** Number of booking slots merged. Use formatDuration(start_time, end_time) for display. */
+  /**
+   * Actual lesson duration in hours (float).
+   * 30 min = 0.5, 1 hour = 1.0, 90 min = 1.5, 2 hours = 2.0, etc.
+   * Derived from start_time..end_time of the full group, NOT bookings.length.
+   */
   hours: number;
 }
 
@@ -81,7 +88,8 @@ export function groupConsecutiveBookings<T extends BookingLike>(
       last.ids.push(b.id);
       last.bookings.push(b);
       last.end_time = b.end_time;
-      last.hours = last.bookings.length;
+      // Recompute actual duration (minutes → hours) from the full span.
+      last.hours = (timeToMin(b.end_time) - timeToMin(last.start_time)) / 60;
       if (b.teacher_note) last.teacher_note = b.teacher_note;
     } else {
       groups.push({
@@ -96,7 +104,7 @@ export function groupConsecutiveBookings<T extends BookingLike>(
         student_note: b.student_note,
         teacher_note: b.teacher_note ?? null,
         bookings: [b],
-        hours: 1,
+        hours: (timeToMin(b.end_time) - timeToMin(b.start_time)) / 60,
       });
     }
   }

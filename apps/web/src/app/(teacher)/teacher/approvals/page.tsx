@@ -69,8 +69,9 @@ export default function ApprovalsPage() {
     () => groupConsecutiveBookings(cancelRequests),
     [cancelRequests]
   );
+  // Count groups (lessons), not individual 30-min slots.
   const totalPending =
-    pendingRegs.length + pendingBookings.length + cancelRequests.length;
+    pendingRegs.length + pendingGroups.length + cancelGroups.length;
 
   // ── Registration approval ─────────────────────────────────────
   const approveReg = useMutation({
@@ -110,9 +111,8 @@ export default function ApprovalsPage() {
       action: "approve" | "reject";
       note?: string;
     }) => {
-      await Promise.all(
-        ids.map((id) => api.patch(`/bookings/${id}`, { status, note }))
-      );
+      // One atomic request for the whole group → one gcal event on approval
+      await api.patch("/bookings/batch-status", { ids, status, note });
     },
     onMutate: ({ groupKey, action }) =>
       setActionState((s) => ({ ...s, [groupKey]: action })),
@@ -171,21 +171,37 @@ export default function ApprovalsPage() {
 
           {pendingGroups.map((g) => {
             const busy = actionState[g.key];
-            const isMulti = g.hours > 1;
             return (
               <Card key={g.key}>
                 <div className="flex items-start justify-between gap-4 mb-3">
                   <div className="min-w-0">
-                    <div className="font-semibold text-gray-900 truncate">
+                    <div className="font-semibold text-gray-900 truncate mb-1">
                       {g.student_name}
                     </div>
-                    <div className="text-sm text-gray-600 mt-0.5">
-                      {formatBookingDate(g.date)} · {g.start_time}–{g.end_time}
-                      {isMulti && (
-                        <span className="ms-2 text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">
-                          {formatDuration(g.start_time, g.end_time)}
-                        </span>
-                      )}
+                    {/* Date — pure Hebrew, RTL */}
+                    <div className="flex items-baseline gap-1.5 text-sm text-gray-600">
+                      <span className="text-xs text-gray-400 shrink-0">
+                        {t("approvals.labelDate")}:
+                      </span>
+                      <span dir="rtl">{formatBookingDate(g.date)}</span>
+                    </div>
+                    {/* Time range — LTR so 17:30–19:00 renders correctly */}
+                    <div className="flex items-baseline gap-1.5 text-sm text-gray-600 mt-0.5">
+                      <span className="text-xs text-gray-400 shrink-0">
+                        {t("approvals.labelTime")}:
+                      </span>
+                      <span dir="ltr" className="font-mono">
+                        {g.start_time}–{g.end_time}
+                      </span>
+                    </div>
+                    {/* Duration */}
+                    <div className="flex items-baseline gap-1.5 text-sm text-gray-600 mt-0.5">
+                      <span className="text-xs text-gray-400 shrink-0">
+                        {t("approvals.labelDuration")}:
+                      </span>
+                      <span className="text-xs font-medium text-brand-700">
+                        {t("approvals.hoursCount", { count: g.hours })}
+                      </span>
                     </div>
                   </div>
                   <span className="text-[11px] text-gray-400 whitespace-nowrap">
@@ -267,23 +283,39 @@ export default function ApprovalsPage() {
 
           {cancelGroups.map((g) => {
             const busy = actionState[g.key];
-            const isMulti = g.hours > 1;
             return (
               <Card key={g.key}>
                 <div className="flex items-start justify-between gap-4 mb-3">
                   <div className="min-w-0">
-                    <div className="font-semibold text-gray-900 truncate">
+                    <div className="font-semibold text-gray-900 truncate mb-1">
                       {g.student_name}
                     </div>
-                    <div className="text-sm text-gray-600 mt-0.5">
-                      {formatBookingDate(g.date)} · {g.start_time}–{g.end_time}
-                      {isMulti && (
-                        <span className="ms-2 text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">
-                          {formatDuration(g.start_time, g.end_time)}
-                        </span>
-                      )}
+                    {/* Date — pure Hebrew, RTL */}
+                    <div className="flex items-baseline gap-1.5 text-sm text-gray-600">
+                      <span className="text-xs text-gray-400 shrink-0">
+                        {t("approvals.labelDate")}:
+                      </span>
+                      <span dir="rtl">{formatBookingDate(g.date)}</span>
                     </div>
-                    <p className="text-xs text-red-600 mt-1">
+                    {/* Time range — LTR so 17:30–19:00 renders correctly */}
+                    <div className="flex items-baseline gap-1.5 text-sm text-gray-600 mt-0.5">
+                      <span className="text-xs text-gray-400 shrink-0">
+                        {t("approvals.labelTime")}:
+                      </span>
+                      <span dir="ltr" className="font-mono">
+                        {g.start_time}–{g.end_time}
+                      </span>
+                    </div>
+                    {/* Duration */}
+                    <div className="flex items-baseline gap-1.5 text-sm text-gray-600 mt-0.5">
+                      <span className="text-xs text-gray-400 shrink-0">
+                        {t("approvals.labelDuration")}:
+                      </span>
+                      <span className="text-xs font-medium text-brand-700">
+                        {t("approvals.hoursCount", { count: g.hours })}
+                      </span>
+                    </div>
+                    <p className="text-xs text-red-600 mt-1.5">
                       {t("approvals.studentRequestedCancel")}
                     </p>
                   </div>

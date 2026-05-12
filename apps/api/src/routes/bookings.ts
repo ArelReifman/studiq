@@ -17,12 +17,40 @@ import { createCalendarEvent, deleteCalendarEvent } from "../services/google-cal
 import { getIsraelToday, isSlotInPastIsrael } from "../lib/time.js";
 import { uuidParamSchema } from "../lib/validators.js";
 
+// ── Time helpers ─────────────────────────────────────────────────────────────
+
+function timeToMin(hhmm: string): number {
+  const [h = 0, m = 0] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function formatDurationMin(min: number): string {
+  if (min < 60) return `${min}m`;
+  if (min % 60 === 0) return `${min / 60}h`;
+  return `${Math.floor(min / 60)}.5h`;
+}
+
+// ── Validation schemas ────────────────────────────────────────────────────────
+
 const bookSchema = z.object({
   availability_id: z.string().uuid(),
   note: z.string().max(500).optional(),
 });
 
+/** Atomic batch booking: one or more consecutive slots = one lesson. */
+const batchBookSchema = z.object({
+  availability_ids: z.array(z.string().uuid()).min(1).max(6),
+  note: z.string().max(500).optional(),
+});
+
 const respondSchema = z.object({
+  status: z.enum(["approved", "rejected", "cancelled"]),
+  note: z.string().max(500).optional(),
+});
+
+/** Batch status update: approve / reject / cancel a whole consecutive lesson group. */
+const batchStatusSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1),
   status: z.enum(["approved", "rejected", "cancelled"]),
   note: z.string().max(500).optional(),
 });
@@ -315,11 +343,19 @@ export const bookingRoutes = new Hono()
   )
 
   // ── Teacher: count of items needing teacher action (badge)
-  // Includes both new booking requests AND cancellation requests.
+  // Counts lesson GROUPS, not individual 30-min slots.
+  // A row is a "group head" when no sibling has end_time === this row's
+  // start_time (same student, date, status) — i.e. nothing feeds into it.
   .get("/requests/count", requireRole("teacher"), async (c) => {
     const teacherId = c.get("userId");
     const rows = await db
-      .select({ id: lessonBookings.id })
+      .select({
+        student_id: lessonBookings.student_id,
+        date: lessonBookings.date,
+        start_time: lessonBookings.start_time,
+        end_time: lessonBookings.end_time,
+        status: lessonBookings.status,
+      })
       .from(lessonBookings)
       .where(
         and(
@@ -327,8 +363,222 @@ export const bookingRoutes = new Hono()
           inArray(lessonBookings.status, ["pending", "cancel_requested"])
         )
       );
-    return c.json({ count: rows.length });
+
+    const prevEnds = new Set(
+      rows.map((r) => `${r.student_id}|${r.date}|${r.status}|${r.end_time}`)
+    );
+    const groupCount = rows.filter(
+      (r) =>
+        !prevEnds.has(`${r.student_id}|${r.date}|${r.status}|${r.start_time}`)
+    ).length;
+
+    return c.json({ count: groupCount });
   })
+
+  // ── Student: book multiple consecutive slots as one atomic lesson ─────────
+  // Validates: all slots found, same date, consecutive (no gaps), all free.
+  // Creates all booking rows and sends ONE Telegram notification.
+  .post("/batch", requireRole("student"), zValidator("json", batchBookSchema), async (c) => {
+    const studentId = c.get("userId");
+    const { availability_ids, note } = c.req.valid("json");
+
+    const [student] = await db
+      .select({ teacher_id: students.teacher_id })
+      .from(students)
+      .where(eq(students.id, studentId))
+      .limit(1);
+
+    if (!student) return c.json({ error: "Student not found" }, 404);
+
+    const slots = await db
+      .select()
+      .from(teacherAvailability)
+      .where(
+        and(
+          inArray(teacherAvailability.id, availability_ids),
+          eq(teacherAvailability.teacher_id, student.teacher_id),
+          eq(teacherAvailability.is_active, true),
+          isNotNull(teacherAvailability.date)
+        )
+      );
+
+    if (slots.length !== availability_ids.length) {
+      return c.json({ error: "One or more slots not found" }, 404);
+    }
+
+    const sorted = [...slots].sort((a, b) =>
+      a.start_time.localeCompare(b.start_time)
+    );
+    const date = sorted[0]!.date!;
+
+    if (!sorted.every((s) => s.date === date)) {
+      return c.json({ error: "All slots must be on the same date" }, 400);
+    }
+
+    if (isSlotInPastIsrael(date, sorted[0]!.start_time)) {
+      return c.json({ error: "This time has already passed" }, 400);
+    }
+
+    for (let i = 0; i < sorted.length - 1; i++) {
+      if (sorted[i]!.end_time !== sorted[i + 1]!.start_time) {
+        return c.json({ error: "Slots must be consecutive with no gaps" }, 400);
+      }
+    }
+
+    const slotIds = sorted.map((s) => s.id);
+    const takenRows = await db
+      .select({ availability_id: lessonBookings.availability_id })
+      .from(lessonBookings)
+      .where(
+        and(
+          inArray(lessonBookings.availability_id, slotIds),
+          inArray(lessonBookings.status, ["approved", "pending", "cancel_requested"])
+        )
+      );
+
+    if (takenRows.length > 0) {
+      return c.json({ error: "One or more slots are already taken" }, 409);
+    }
+
+    const created = await db
+      .insert(lessonBookings)
+      .values(
+        sorted.map((slot) => ({
+          student_id: studentId,
+          teacher_id: student.teacher_id,
+          availability_id: slot.id,
+          date: slot.date!,
+          start_time: slot.start_time,
+          end_time: slot.end_time,
+          student_note: note ?? null,
+        }))
+      )
+      .returning();
+
+    // ONE Telegram notification for the whole lesson
+    const groupStart = sorted[0]!.start_time;
+    const groupEnd = sorted[sorted.length - 1]!.end_time;
+    const totalMin = timeToMin(groupEnd) - timeToMin(groupStart);
+
+    void (async () => {
+      const [studentRow] = await db
+        .select({ name: profiles.full_name })
+        .from(profiles)
+        .where(eq(profiles.id, studentId))
+        .limit(1);
+      const studentName = studentRow?.name ?? "Student";
+      const noteLine = note ? `\n📝 ${escapeTelegramHtml(note)}` : "";
+      await notifyTelegram(
+        `📅 <b>New lesson request</b>\n${escapeTelegramHtml(studentName)} · ${date} · ${groupStart}–${groupEnd} · ${formatDurationMin(totalMin)}${noteLine}`
+      );
+    })();
+
+    return c.json(created, 201);
+  })
+
+  // ── Teacher: batch approve / reject / cancel for a whole consecutive lesson ─
+  // Acts on every booking row in the group atomically.
+  // On approval: creates ONE Google Calendar event spanning the full lesson.
+  // On cancellation: deletes the shared gcal event and sends ONE Telegram ping.
+  // Must be defined BEFORE /:id to avoid wildcard matching on "batch-status".
+  .patch(
+    "/batch-status",
+    requireRole("teacher"),
+    zValidator("json", batchStatusSchema),
+    async (c) => {
+      const teacherId = c.get("userId");
+      const { ids, status, note } = c.req.valid("json");
+
+      const bookings = await db
+        .select()
+        .from(lessonBookings)
+        .where(
+          and(
+            inArray(lessonBookings.id, ids),
+            eq(lessonBookings.teacher_id, teacherId)
+          )
+        );
+
+      if (bookings.length !== ids.length) {
+        return c.json({ error: "One or more bookings not found" }, 404);
+      }
+
+      const allowedFromStatuses: ("pending" | "approved" | "cancel_requested")[] =
+        status === "cancelled"
+          ? ["pending", "approved", "cancel_requested"]
+          : status === "approved"
+            ? ["pending", "cancel_requested"]
+            : ["pending"];
+
+      const allTransitionable = bookings.every((b) =>
+        (allowedFromStatuses as string[]).includes(b.status)
+      );
+      if (!allTransitionable) {
+        return c.json(
+          { error: "One or more bookings are not in a transitionable state" },
+          409
+        );
+      }
+
+      const updated = await db
+        .update(lessonBookings)
+        .set({ status, teacher_note: note ?? null, updated_at: new Date() })
+        .where(inArray(lessonBookings.id, ids))
+        .returning();
+
+      const sorted = [...updated].sort((a, b) =>
+        a.start_time.localeCompare(b.start_time)
+      );
+
+      if (status === "approved") {
+        // Create ONE gcal event spanning the full lesson.
+        // Wrapped in try/catch: a gcal failure must never roll back the approval.
+        try {
+          const lessonStart = sorted[0]!.start_time;
+          const lessonEnd = sorted[sorted.length - 1]!.end_time;
+          const eventId = await createCalendarEvent({
+            date: sorted[0]!.date ?? "",
+            start_time: lessonStart,
+            end_time: lessonEnd,
+            student_id: sorted[0]!.student_id,
+            teacher_id: teacherId,
+          });
+          if (eventId) {
+            await db
+              .update(lessonBookings)
+              .set({ gcal_event_id: eventId })
+              .where(inArray(lessonBookings.id, ids));
+          }
+        } catch (err) {
+          console.error("[batch-status] gcal event creation failed (booking approved):", err);
+        }
+      }
+
+      if (status === "cancelled") {
+        const gcalId = updated.find((b) => b.gcal_event_id)?.gcal_event_id;
+        if (gcalId) {
+          void deleteCalendarEvent(teacherId, gcalId);
+        }
+
+        void (async () => {
+          const [studentRow] = await db
+            .select({ name: profiles.full_name })
+            .from(profiles)
+            .where(eq(profiles.id, sorted[0]!.student_id))
+            .limit(1);
+          const studentName = studentRow?.name ?? "Student";
+          const totalMin =
+            timeToMin(sorted[sorted.length - 1]!.end_time) -
+            timeToMin(sorted[0]!.start_time);
+          await notifyTelegram(
+            `🚫 <b>Lesson cancelled by you</b>\n${escapeTelegramHtml(studentName)} · ${sorted[0]!.date} · ${sorted[0]!.start_time}–${sorted[sorted.length - 1]!.end_time} · ${formatDurationMin(totalMin)}`
+          );
+        })();
+      }
+
+      return c.json(updated);
+    }
+  )
 
   // ── Teacher: approve / reject (from pending) or cancel (from pending|approved)
   .patch(
