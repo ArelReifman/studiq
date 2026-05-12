@@ -96,8 +96,10 @@ export default function TeacherDashboard() {
   // ── Action items ────────────────────────────────────────────────────────────
   const pendingRequests = useMemo(
     () =>
-      bookings.filter(
-        (b) => b.status === "pending" || b.status === "cancel_requested"
+      groupConsecutiveBookings(
+        bookings.filter(
+          (b) => b.status === "pending" || b.status === "cancel_requested"
+        )
       ),
     [bookings]
   );
