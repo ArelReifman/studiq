@@ -92,6 +92,25 @@ export default function StudentBookPage() {
     );
   }, [slots, latestPicked, pickedIds]);
 
+  // Number of consecutive chains that will be submitted as separate lessons.
+  // e.g. 3 consecutive 30-min slots = 1 chain; 2 slots on different days = 2 chains.
+  const chainCount = useMemo(() => {
+    const sorted = [...picked].sort((a, b) =>
+      a.date === b.date
+        ? a.start_time.localeCompare(b.start_time)
+        : a.date.localeCompare(b.date)
+    );
+    let count = 0;
+    let prevSlot: Slot | null = null;
+    for (const slot of sorted) {
+      if (!prevSlot || prevSlot.date !== slot.date || prevSlot.end_time !== slot.start_time) {
+        count++;
+      }
+      prevSlot = slot;
+    }
+    return count;
+  }, [picked]);
+
   function toggleSlot(slot: Slot) {
     setSuccess(false);
     setError(null);
@@ -117,11 +136,34 @@ export default function StudentBookPage() {
 
   const submitMutation = useMutation({
     mutationFn: async () => {
-      // Send all bookings in parallel — each is independent on the server side.
+      // Group picked slots into consecutive chains per date, then send one
+      // POST /bookings/batch per chain so each lesson is a single logical
+      // booking (one Telegram ping, one gcal event on approval).
+      const sorted = [...picked].sort((a, b) =>
+        a.date === b.date
+          ? a.start_time.localeCompare(b.start_time)
+          : a.date.localeCompare(b.date)
+      );
+
+      const chains: Slot[][] = [];
+      for (const slot of sorted) {
+        const last = chains[chains.length - 1];
+        const lastSlot = last?.[last.length - 1];
+        if (
+          lastSlot &&
+          lastSlot.date === slot.date &&
+          lastSlot.end_time === slot.start_time
+        ) {
+          last.push(slot);
+        } else {
+          chains.push([slot]);
+        }
+      }
+
       const results = await Promise.allSettled(
-        picked.map((s) =>
-          api.post("/bookings", {
-            availability_id: s.id,
+        chains.map((chain) =>
+          api.post("/bookings/batch", {
+            availability_ids: chain.map((s) => s.id),
             note: note || undefined,
           })
         )
@@ -187,7 +229,13 @@ export default function StudentBookPage() {
       ? a.start_time.localeCompare(b.start_time)
       : a.date.localeCompare(b.date)
   );
-  const totalHours = picked.length;
+
+  // Actual total duration in hours (float): 30-min slot = 0.5, 60-min = 1.0, etc.
+  const totalHours = picked.reduce((sum, s) => {
+    const [sh = 0, sm = 0] = s.start_time.split(":").map(Number);
+    const [eh = 0, em = 0] = s.end_time.split(":").map(Number);
+    return sum + (eh * 60 + em - sh * 60 - sm) / 60;
+  }, 0);
 
   return (
     <div className="space-y-6">
@@ -308,7 +356,7 @@ export default function StudentBookPage() {
             <Send size={14} />
             {submitMutation.isPending
               ? t("student.sending")
-              : t("booking.sendRequestN", { count: picked.length })}
+              : t("booking.sendRequestN", { count: chainCount })}
           </button>
         </Card>
       )}

@@ -69,8 +69,9 @@ export default function ApprovalsPage() {
     () => groupConsecutiveBookings(cancelRequests),
     [cancelRequests]
   );
+  // Count groups (lessons), not individual 30-min slots.
   const totalPending =
-    pendingRegs.length + pendingBookings.length + cancelRequests.length;
+    pendingRegs.length + pendingGroups.length + cancelGroups.length;
 
   // ── Registration approval ─────────────────────────────────────
   const approveReg = useMutation({
@@ -110,9 +111,8 @@ export default function ApprovalsPage() {
       action: "approve" | "reject";
       note?: string;
     }) => {
-      await Promise.all(
-        ids.map((id) => api.patch(`/bookings/${id}`, { status, note }))
-      );
+      // One atomic request for the whole group → one gcal event on approval
+      await api.patch("/bookings/batch-status", { ids, status, note });
     },
     onMutate: ({ groupKey, action }) =>
       setActionState((s) => ({ ...s, [groupKey]: action })),

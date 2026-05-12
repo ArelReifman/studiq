@@ -215,15 +215,11 @@ export default function TeacherSchedulePage() {
     },
   });
 
-  // Cancel an approved (or pending) lesson — fans out across every slot in the
-  // grouped range so a 2-hour booking is cancelled in one click.
+  // Cancel an approved (or pending) lesson — one atomic request for the whole
+  // group so a 2-hour booking gets one gcal deletion and one Telegram ping.
   const cancelLessonMutation = useMutation({
     mutationFn: async ({ ids }: { ids: string[] }) => {
-      await Promise.all(
-        ids.map((id) =>
-          api.patch(`/bookings/${id}`, { status: "cancelled" })
-        )
-      );
+      await api.patch("/bookings/batch-status", { ids, status: "cancelled" });
     },
     onError: (e: Error) => setError(e.message),
     onSuccess: () => {
@@ -474,9 +470,9 @@ export default function TeacherSchedulePage() {
           <h2 className="text-lg font-semibold text-gray-800">
             {t("teacher.upcomingLessons")}
           </h2>
-          {upcomingActive.length > 0 && (
+          {upcomingGroups.length > 0 && (
             <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
-              {upcomingActive.length}
+              {upcomingGroups.length}
             </span>
           )}
         </div>
