@@ -13,6 +13,7 @@ import type { LessonSession, DifficultyReport, StudentAiProfile, StudentReport }
 import { ArrowLeft, AlertTriangle, Sparkles, Trash2, MessageSquare, Map, ClipboardCheck, RotateCw, ArrowUp, CheckCircle2, ExternalLink, Check, FileBarChart2 } from "lucide-react";
 import { useT } from "@/i18n";
 import { CreateLessonModal } from "@/components/teacher/create-lesson-modal";
+import { LessonFormModal } from "@/components/teacher/LessonFormModal";
 import { LessonReviewModal } from "@/components/teacher/lesson-review-modal";
 import { StudentContextCard } from "@/components/teacher/student-context-card";
 import { StudentBriefingCard } from "@/components/teacher/student-briefing-card";
@@ -31,6 +32,7 @@ export default function StudentDetailPage() {
   const t = useT();
   const qc = useQueryClient();
   const [showCreateLesson, setShowCreateLesson] = useState(false);
+  const [showScheduleLesson, setShowScheduleLesson] = useState(false);
   const [reviewLesson, setReviewLesson] = useState<LessonSession | null>(null);
 
   const { data: student } = useQuery<StudentDetail>({
@@ -122,7 +124,7 @@ export default function StudentDetailPage() {
         <div>
           <h1 className="text-2xl font-bold">{student?.full_name}</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Link
             href={`/teacher/students/${id}/map`}
             className="inline-flex items-center gap-1.5 border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-lg px-3 py-2 text-sm font-medium"
@@ -130,6 +132,14 @@ export default function StudentDetailPage() {
             <Map size={15} />
             {t("studentDetail.learningMap")}
           </Link>
+          <button
+            type="button"
+            onClick={() => setShowScheduleLesson(true)}
+            className="inline-flex items-center gap-1.5 border border-brand-300 text-brand-700 hover:bg-brand-50 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
+          >
+            <CheckCircle2 size={15} />
+            {t("teacher.scheduleLesson")}
+          </button>
           <Button
             onClick={() => setShowCreateLesson(true)}
             className="shadow-brand-ring hover:shadow-brand-glow transition-shadow"
@@ -457,6 +467,19 @@ export default function StudentDetailPage() {
         <LessonReviewModal
           lesson={reviewLesson}
           onClose={() => setReviewLesson(null)}
+        />
+      )}
+
+      {/* Schedule a booking directly for this student */}
+      {showScheduleLesson && student && (
+        <LessonFormModal
+          mode="create"
+          initialStudentId={student.id}
+          initialStudentName={student.full_name}
+          onClose={() => setShowScheduleLesson(false)}
+          onSuccess={() => {
+            // Nothing extra needed — bookings list isn't on this page
+          }}
         />
       )}
     </div>

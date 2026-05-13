@@ -7,8 +7,9 @@ import { api } from "@/lib/api";
 import { useT } from "@/i18n";
 import { Card } from "@/components/ui/card";
 import { Calendar, TimeSlotGrid, type TimeSlot } from "@/components/calendar/calendar";
-import { Plus, CalendarCheck, MessageSquare, X, CalendarDays, CheckCircle2, AlertCircle } from "lucide-react";
-import { groupConsecutiveBookings, formatDuration } from "@/lib/booking-grouping";
+import { Plus, CalendarCheck, MessageSquare, X, CalendarDays, CheckCircle2, AlertCircle, Pencil } from "lucide-react";
+import { groupConsecutiveBookings, formatDuration, type BookingGroup } from "@/lib/booking-grouping";
+import { LessonFormModal, type EditableGroup } from "@/components/teacher/LessonFormModal";
 
 interface Slot extends TimeSlot {
   date: string;
@@ -65,6 +66,13 @@ export default function TeacherSchedulePage() {
   const [showAllUpcoming, setShowAllUpcoming] = useState(false);
   const [showCancelledTeacher, setShowCancelledTeacher] = useState(false);
   const [showAllPast, setShowAllPast] = useState(false);
+
+  // Lesson form modal state
+  const [lessonModal, setLessonModal] = useState<
+    | { mode: "create" }
+    | { mode: "edit"; group: EditableGroup }
+    | null
+  >(null);
 
   // Show a banner if Google Calendar OAuth redirected back here
   useEffect(() => {
@@ -295,8 +303,16 @@ export default function TeacherSchedulePage() {
           </p>
         </div>
 
-        {/* Google Calendar connect / disconnect */}
+        {/* Schedule lesson + Google Calendar connect / disconnect */}
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setLessonModal({ mode: "create" })}
+            className="flex items-center gap-1.5 text-sm text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5 font-medium transition-colors shadow-sm"
+          >
+            <Plus size={14} />
+            {t("teacher.scheduleLesson")}
+          </button>
           {gcalStatus?.connected ? (
             <>
               <span className="flex items-center gap-1.5 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-1.5">
@@ -549,19 +565,44 @@ export default function TeacherSchedulePage() {
                       </div>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (confirm(t("teacher.confirmCancelLesson"))) {
-                        cancelLessonMutation.mutate({ ids: g.ids });
-                      }
-                    }}
-                    disabled={cancelLessonMutation.isPending}
-                    className="flex-shrink-0 inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded-md px-2 py-1 transition-colors disabled:opacity-50"
-                  >
-                    <X size={13} />
-                    {t("teacher.cancelLesson")}
-                  </button>
+                  <div className="flex-shrink-0 flex items-center gap-1">
+                    {/* Edit — only for upcoming (not cancel_requested) lessons */}
+                    {!isCancelRequest && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLessonModal({
+                            mode: "edit",
+                            group: {
+                              ids: g.ids,
+                              student_id: g.student_id,
+                              student_name: g.student_name,
+                              date: g.date,
+                              start_time: g.start_time,
+                              end_time: g.end_time,
+                            },
+                          })
+                        }
+                        className="inline-flex items-center gap-1 text-xs text-brand-600 hover:text-brand-800 hover:bg-brand-50 rounded-md px-2 py-1 transition-colors"
+                      >
+                        <Pencil size={12} />
+                        {t("teacher.editLesson")}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm(t("teacher.confirmCancelLesson"))) {
+                          cancelLessonMutation.mutate({ ids: g.ids });
+                        }
+                      }}
+                      disabled={cancelLessonMutation.isPending}
+                      className="inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded-md px-2 py-1 transition-colors disabled:opacity-50"
+                    >
+                      <X size={13} />
+                      {t("teacher.cancelLesson")}
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -728,6 +769,18 @@ export default function TeacherSchedulePage() {
             )}
           </div>
         </Card>
+      )}
+
+      {/* Lesson form modal — create or edit */}
+      {lessonModal && (
+        <LessonFormModal
+          mode={lessonModal.mode}
+          existingGroup={lessonModal.mode === "edit" ? lessonModal.group : undefined}
+          onClose={() => setLessonModal(null)}
+          onSuccess={() => {
+            qc.invalidateQueries({ queryKey: ["my-bookings-as-teacher"] });
+          }}
+        />
       )}
     </div>
   );

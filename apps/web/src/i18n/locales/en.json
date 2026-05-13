@@ -563,5 +563,17 @@
   "teacher.todayLessons": "Today",
   "teacher.tomorrowLessons": "Tomorrow",
   "teacher.noTodayLessons": "No approved lessons today",
-  "teacher.noTomorrowLessons": "No approved lessons tomorrow"
+  "teacher.noTomorrowLessons": "No approved lessons tomorrow",
+  "teacher.scheduleLesson": "Schedule Lesson",
+  "teacher.editLesson": "Edit Lesson",
+  "teacher.scheduleLessonTitle": "Schedule a Lesson",
+  "teacher.editLessonTitle": "Edit Lesson",
+  "teacher.student": "Student",
+  "teacher.selectStudent": "Select a student",
+  "teacher.date": "Date",
+  "teacher.lessonDuration": "Duration",
+  "teacher.startTimeHint": "Must be on the hour or half-hour (XX:00 / XX:30)",
+  "teacher.saving": "Saving...",
+  "teacher.save": "Save",
+  "teacher.invalidStartTime": "Start time must be exactly on the hour or half-hour (XX:00 / XX:30)"
 }

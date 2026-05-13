@@ -563,5 +563,17 @@
   "teacher.todayLessons": "שיעורים היום",
   "teacher.tomorrowLessons": "שיעורים מחר",
   "teacher.noTodayLessons": "אין שיעורים מאושרים היום",
-  "teacher.noTomorrowLessons": "אין שיעורים מאושרים מחר"
+  "teacher.noTomorrowLessons": "אין שיעורים מאושרים מחר",
+  "teacher.scheduleLesson": "קביעת שיעור",
+  "teacher.editLesson": "עריכת שיעור",
+  "teacher.scheduleLessonTitle": "קביעת שיעור לתלמיד/ה",
+  "teacher.editLessonTitle": "עריכת שיעור",
+  "teacher.student": "תלמיד/ה",
+  "teacher.selectStudent": "בחר/י תלמיד/ה",
+  "teacher.date": "תאריך",
+  "teacher.lessonDuration": "משך השיעור",
+  "teacher.startTimeHint": "שעה עגולה או חצי שעה בלבד (XX:00 / XX:30)",
+  "teacher.saving": "שומר...",
+  "teacher.save": "שמירה",
+  "teacher.invalidStartTime": "שעת ההתחלה חייבת להיות בדיוק על שעה עגולה או חצי שעה (XX:00 / XX:30)"
 }
