@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and, desc, gte, lte, isNotNull, inArray } from "drizzle-orm";
+import { eq, and, desc, gte, lte, lt, gt, isNotNull, inArray, notInArray } from "drizzle-orm";
 import { db } from "../db/client.js";
 import {
   lessonBookings,
@@ -14,7 +14,7 @@ import {
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { notifyTelegram, escapeTelegramHtml } from "../lib/notify.js";
 import { ensureDefaultSlots } from "../services/scheduling/ensure-default-slots.js";
-import { createCalendarEvent, deleteCalendarEvent } from "../services/google-calendar.js";
+import { createCalendarEvent, deleteCalendarEvent, updateCalendarEvent } from "../services/google-calendar.js";
 import { getIsraelToday, isSlotInPastIsrael } from "../lib/time.js";
 import { uuidParamSchema } from "../lib/validators.js";
 
@@ -29,6 +29,14 @@ function formatDurationMin(min: number): string {
   if (min < 60) return `${min}m`;
   if (min % 60 === 0) return `${min / 60}h`;
   return `${Math.floor(min / 60)}.5h`;
+}
+
+/** Adds `min` minutes to an HH:MM string and returns the result as HH:MM. */
+function addMinutes(hhmm: string, min: number): string {
+  const total = timeToMin(hhmm) + min;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
 // ── Validation schemas ────────────────────────────────────────────────────────
@@ -59,6 +67,31 @@ const batchStatusSchema = z.object({
 const rangeSchema = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+
+/** Allowed lesson durations (multiples of one 30-min slot). */
+const ALLOWED_DURATIONS = [60, 90, 120, 150, 180] as const;
+type LessonDuration = (typeof ALLOWED_DURATIONS)[number];
+const durationSchema = z.union([
+  z.literal(60), z.literal(90), z.literal(120), z.literal(150), z.literal(180),
+]);
+
+/** Teacher creates an approved lesson directly for one of their students. */
+const teacherLessonCreateSchema = z.object({
+  student_id:        z.string().uuid(),
+  date:              z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  start_time:        z.string().regex(/^\d{2}:\d{2}$/),
+  duration_minutes:  durationSchema,
+  note:              z.string().max(500).optional(),
+});
+
+/** Teacher edits the date / time / duration of an existing lesson group. */
+const teacherLessonEditSchema = z.object({
+  booking_ids:       z.array(z.string().uuid()).min(1).max(6),
+  date:              z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  start_time:        z.string().regex(/^\d{2}:\d{2}$/),
+  duration_minutes:  durationSchema,
+  note:              z.string().max(500).optional(),
 });
 
 export const bookingRoutes = new Hono()
@@ -597,6 +630,369 @@ export const bookingRoutes = new Hono()
       }
 
       return c.json(updated);
+    }
+  )
+
+  // ── Teacher: create an approved lesson for a student ────────────────────────
+  // Teacher-initiated lessons bypass the availability slot system (availability_id=null)
+  // and are inserted directly as "approved" — no pending → approval step needed.
+  // ONE Google Calendar event is created immediately and its ID is stored on every slot.
+  // Must be defined BEFORE /:id to prevent the UUID-param wildcard from matching first.
+  .post(
+    "/teacher-lesson",
+    requireRole("teacher"),
+    zValidator("json", teacherLessonCreateSchema),
+    async (c) => {
+      const teacherId = c.get("userId");
+      const { student_id, date, start_time, duration_minutes, note } = c.req.valid("json");
+
+      // start_time must land on an exact half-hour boundary (HH:00 or HH:30)
+      if (timeToMin(start_time) % 30 !== 0) {
+        return c.json(
+          { error: "start_time must be on the hour or half-hour (HH:00 or HH:30)" },
+          400
+        );
+      }
+
+      // Student must belong to this teacher
+      const [student] = await db
+        .select({ id: students.id })
+        .from(students)
+        .where(and(eq(students.id, student_id), eq(students.teacher_id, teacherId)))
+        .limit(1);
+      if (!student) {
+        return c.json({ error: "Student not found or does not belong to you" }, 404);
+      }
+
+      // Build slot list: one 30-min slot per increment
+      const slotCount = duration_minutes / 30;
+      const slotTimes: { start_time: string; end_time: string }[] = [];
+      for (let i = 0; i < slotCount; i++) {
+        slotTimes.push({
+          start_time: addMinutes(start_time, i * 30),
+          end_time:   addMinutes(start_time, (i + 1) * 30),
+        });
+      }
+      const lessonEnd = slotTimes[slotTimes.length - 1]!.end_time;
+
+      // No overlapping active booking for the teacher
+      const [teacherConflict] = await db
+        .select({ id: lessonBookings.id })
+        .from(lessonBookings)
+        .where(
+          and(
+            eq(lessonBookings.teacher_id, teacherId),
+            eq(lessonBookings.date, date),
+            inArray(lessonBookings.status, ["approved", "pending", "cancel_requested"]),
+            lt(lessonBookings.start_time, lessonEnd),
+            gt(lessonBookings.end_time, start_time)
+          )
+        )
+        .limit(1);
+      if (teacherConflict) {
+        return c.json({ error: "Teacher has a conflicting booking at this time" }, 409);
+      }
+
+      // No overlapping active booking for the student
+      const [studentConflict] = await db
+        .select({ id: lessonBookings.id })
+        .from(lessonBookings)
+        .where(
+          and(
+            eq(lessonBookings.student_id, student_id),
+            eq(lessonBookings.date, date),
+            inArray(lessonBookings.status, ["approved", "pending", "cancel_requested"]),
+            lt(lessonBookings.start_time, lessonEnd),
+            gt(lessonBookings.end_time, start_time)
+          )
+        )
+        .limit(1);
+      if (studentConflict) {
+        return c.json({ error: "Student has a conflicting booking at this time" }, 409);
+      }
+
+      // Insert all slots as approved
+      const created = await db
+        .insert(lessonBookings)
+        .values(
+          slotTimes.map((s) => ({
+            student_id,
+            teacher_id:       teacherId,
+            availability_id:  null,
+            date,
+            start_time:       s.start_time,
+            end_time:         s.end_time,
+            status:           "approved" as const,
+            teacher_note:     note ?? null,
+          }))
+        )
+        .returning();
+
+      const createdIds = created.map((b) => b.id);
+
+      // Create ONE GCal event for the full span.
+      // A gcal failure must never roll back the already-committed booking.
+      try {
+        const [courseRow] = await db
+          .select({ course_name: courses.name })
+          .from(students)
+          .leftJoin(courses, eq(students.primary_course_id, courses.id))
+          .where(eq(students.id, student_id))
+          .limit(1);
+
+        const [teacherRow] = await db
+          .select({ teacher_name: profiles.full_name })
+          .from(profiles)
+          .where(eq(profiles.id, teacherId))
+          .limit(1);
+
+        const eventId = await createCalendarEvent({
+          date,
+          start_time,
+          end_time:    lessonEnd,
+          student_id,
+          teacher_id:  teacherId,
+          ...(courseRow?.course_name    ? { course_name:   courseRow.course_name    } : {}),
+          ...(teacherRow?.teacher_name  ? { teacher_name:  teacherRow.teacher_name  } : {}),
+        });
+
+        if (eventId) {
+          await db
+            .update(lessonBookings)
+            .set({ gcal_event_id: eventId, updated_at: new Date() })
+            .where(inArray(lessonBookings.id, createdIds));
+          created.forEach((b) => { b.gcal_event_id = eventId; });
+        }
+      } catch (err) {
+        console.error("[teacher-lesson POST] GCal event creation failed:", err);
+      }
+
+      return c.json(created, 201);
+    }
+  )
+
+  // ── Teacher: edit an existing lesson (date, time, or duration) ────────────
+  // Identifies the lesson by the array of booking IDs that make up the group.
+  //
+  // Slot-count unchanged  → update rows in-place (preserves attendance marks).
+  // Slot-count changed    → delete old rows, insert new ones.
+  //   gcal_event_id is carried forward to the new rows so no duplicate event
+  //   is ever created.
+  //
+  // GCal sync:
+  //   existing gcal_event_id → PATCH the event (updateCalendarEvent) — no new event.
+  //   no gcal_event_id       → createCalendarEvent and save ID on all slots.
+  .patch(
+    "/teacher-lesson",
+    requireRole("teacher"),
+    zValidator("json", teacherLessonEditSchema),
+    async (c) => {
+      const teacherId = c.get("userId");
+      const { booking_ids, date, start_time, duration_minutes, note } = c.req.valid("json");
+
+      if (timeToMin(start_time) % 30 !== 0) {
+        return c.json(
+          { error: "start_time must be on the hour or half-hour (HH:00 or HH:30)" },
+          400
+        );
+      }
+
+      // Fetch + ownership check
+      const existing = await db
+        .select()
+        .from(lessonBookings)
+        .where(
+          and(
+            inArray(lessonBookings.id, booking_ids),
+            eq(lessonBookings.teacher_id, teacherId)
+          )
+        );
+
+      if (existing.length !== booking_ids.length) {
+        return c.json({ error: "One or more bookings not found" }, 404);
+      }
+
+      // Block edit when student has raised a cancellation request
+      if (existing.some((b) => b.status === "cancel_requested")) {
+        return c.json(
+          { error: "Cannot edit a lesson with a pending cancellation request" },
+          409
+        );
+      }
+
+      const studentId     = existing[0]!.student_id;
+      const existingGcalId = existing.find((b) => b.gcal_event_id)?.gcal_event_id ?? null;
+
+      // Build new slot list
+      const slotCount = duration_minutes / 30;
+      const newSlotTimes: { start_time: string; end_time: string }[] = [];
+      for (let i = 0; i < slotCount; i++) {
+        newSlotTimes.push({
+          start_time: addMinutes(start_time, i * 30),
+          end_time:   addMinutes(start_time, (i + 1) * 30),
+        });
+      }
+      const lessonEnd = newSlotTimes[newSlotTimes.length - 1]!.end_time;
+
+      // Conflict checks — exclude the slots being replaced
+      const [teacherConflict] = await db
+        .select({ id: lessonBookings.id })
+        .from(lessonBookings)
+        .where(
+          and(
+            eq(lessonBookings.teacher_id, teacherId),
+            eq(lessonBookings.date, date),
+            inArray(lessonBookings.status, ["approved", "pending", "cancel_requested"]),
+            notInArray(lessonBookings.id, booking_ids),
+            lt(lessonBookings.start_time, lessonEnd),
+            gt(lessonBookings.end_time, start_time)
+          )
+        )
+        .limit(1);
+      if (teacherConflict) {
+        return c.json({ error: "Teacher has a conflicting booking at this time" }, 409);
+      }
+
+      const [studentConflict] = await db
+        .select({ id: lessonBookings.id })
+        .from(lessonBookings)
+        .where(
+          and(
+            eq(lessonBookings.student_id, studentId),
+            eq(lessonBookings.date, date),
+            inArray(lessonBookings.status, ["approved", "pending", "cancel_requested"]),
+            notInArray(lessonBookings.id, booking_ids),
+            lt(lessonBookings.start_time, lessonEnd),
+            gt(lessonBookings.end_time, start_time)
+          )
+        )
+        .limit(1);
+      if (studentConflict) {
+        return c.json({ error: "Student has a conflicting booking at this time" }, 409);
+      }
+
+      // ── DB update ─────────────────────────────────────────────────────────
+      let finalIds: string[];
+
+      const sortedExisting = [...existing].sort((a, b) =>
+        a.start_time.localeCompare(b.start_time)
+      );
+
+      if (sortedExisting.length === slotCount) {
+        // Same count: update each slot in-place (preserves attendance / IDs)
+        for (let i = 0; i < sortedExisting.length; i++) {
+          await db
+            .update(lessonBookings)
+            .set({
+              date,
+              start_time:   newSlotTimes[i]!.start_time,
+              end_time:     newSlotTimes[i]!.end_time,
+              teacher_note: note ?? null,
+              updated_at:   new Date(),
+            })
+            .where(eq(lessonBookings.id, sortedExisting[i]!.id));
+        }
+        finalIds = sortedExisting.map((b) => b.id);
+      } else {
+        // Different count: delete old rows, insert new ones.
+        // gcal_event_id is carried forward — no duplicate event will be created.
+        await db.delete(lessonBookings).where(inArray(lessonBookings.id, booking_ids));
+
+        const inserted = await db
+          .insert(lessonBookings)
+          .values(
+            newSlotTimes.map((s) => ({
+              student_id:      studentId,
+              teacher_id:      teacherId,
+              availability_id: null,
+              date,
+              start_time:      s.start_time,
+              end_time:        s.end_time,
+              status:          "approved" as const,
+              teacher_note:    note ?? null,
+              gcal_event_id:   existingGcalId,
+            }))
+          )
+          .returning();
+
+        finalIds = inserted.map((b) => b.id);
+      }
+
+      // ── GCal sync ──────────────────────────────────────────────────────────
+      try {
+        const [courseRow] = await db
+          .select({ course_name: courses.name })
+          .from(students)
+          .leftJoin(courses, eq(students.primary_course_id, courses.id))
+          .where(eq(students.id, studentId))
+          .limit(1);
+
+        const [teacherRow] = await db
+          .select({ teacher_name: profiles.full_name })
+          .from(profiles)
+          .where(eq(profiles.id, teacherId))
+          .limit(1);
+
+        if (existingGcalId) {
+          // Existing event → patch span + title. Never create a duplicate.
+          const courseName  = courseRow?.course_name ?? "";
+          const teacherName = (teacherRow?.teacher_name ?? "").replace(/\s+/g, " ").trim();
+          const teacherFirst = teacherName.split(" ")[0] ?? teacherName;
+
+          const [studentProfile] = await db
+            .select({ full_name: profiles.full_name })
+            .from(profiles)
+            .where(eq(profiles.id, studentId))
+            .limit(1);
+          const studentName = (studentProfile?.full_name ?? "").replace(/\s+/g, " ").trim();
+
+          let summary = "שיעור פרטי";
+          if (courseName && studentName) summary = `שיעור פרטי - ${courseName} - ${studentName}`;
+          else if (courseName)           summary = `שיעור פרטי - ${courseName}`;
+          else if (studentName)          summary = `שיעור פרטי - ${studentName}`;
+
+          const descLines: string[] = [];
+          if (studentName)  descLines.push(`סטודנט: ${studentName}`);
+          descLines.push(`מורה: ${teacherFirst}`);
+          if (courseName)   descLines.push(`קורס: ${courseName}`);
+          descLines.push(`זמן שיעור: ${start_time}–${lessonEnd}`);
+
+          await updateCalendarEvent(teacherId, existingGcalId, {
+            summary,
+            description: descLines.join("\n"),
+            date,
+            start_time,
+            end_time: lessonEnd,
+          });
+        } else {
+          // No event yet → create one and persist on all final slots
+          const eventId = await createCalendarEvent({
+            date,
+            start_time,
+            end_time:   lessonEnd,
+            student_id: studentId,
+            teacher_id: teacherId,
+            ...(courseRow?.course_name   ? { course_name:  courseRow.course_name   } : {}),
+            ...(teacherRow?.teacher_name ? { teacher_name: teacherRow.teacher_name } : {}),
+          });
+          if (eventId) {
+            await db
+              .update(lessonBookings)
+              .set({ gcal_event_id: eventId, updated_at: new Date() })
+              .where(inArray(lessonBookings.id, finalIds));
+          }
+        }
+      } catch (err) {
+        console.error("[teacher-lesson PATCH] GCal sync failed:", err);
+      }
+
+      // Return final state of all slots
+      const result = await db
+        .select()
+        .from(lessonBookings)
+        .where(inArray(lessonBookings.id, finalIds));
+
+      return c.json(result);
     }
   )
 
