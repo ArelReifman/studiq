@@ -349,21 +349,21 @@ export const bookingRoutes = new Hono()
         const groupEnd = recent[hi]!.end_time;
         const hours = hi - lo + 1;
 
-        void (async () => {
-          const [studentRow] = await db
-            .select({ name: profiles.full_name })
-            .from(profiles)
-            .where(eq(profiles.id, studentId))
-            .limit(1);
-          const studentName = studentRow?.name ?? "Student";
-          const noteLine = body.note
-            ? `\n📝 ${escapeTelegramHtml(body.note)}`
-            : "";
-          const durationLabel = hours > 1 ? ` · ${hours}h` : "";
-          await notifyTelegram(
-            `📅 <b>New lesson request</b>\n${escapeTelegramHtml(studentName)} · ${slot.date} · ${groupStart}–${groupEnd}${durationLabel}${noteLine}`
-          );
-        })();
+        // Awaited directly — Vercel closes the execution context immediately
+        // after the response is returned, so fire-and-forget is unreliable.
+        const [studentRow] = await db
+          .select({ name: profiles.full_name })
+          .from(profiles)
+          .where(eq(profiles.id, studentId))
+          .limit(1);
+        const studentName = studentRow?.name ?? "Student";
+        const noteLine = body.note
+          ? `\n📝 ${escapeTelegramHtml(body.note)}`
+          : "";
+        const durationLabel = hours > 1 ? ` · ${hours}h` : "";
+        await notifyTelegram(
+          `📅 <b>New lesson request</b>\n${escapeTelegramHtml(studentName)} · ${slot.date} · ${groupStart}–${groupEnd}${durationLabel}${noteLine}`
+        );
       }
     }
 
@@ -557,23 +557,23 @@ export const bookingRoutes = new Hono()
       )
       .returning();
 
-    // ONE Telegram notification for the whole lesson
+    // ONE Telegram notification for the whole lesson.
+    // Awaited before the response — Vercel closes the execution context
+    // immediately after c.json() returns, so fire-and-forget is unreliable.
     const groupStart = sorted[0]!.start_time;
     const groupEnd = sorted[sorted.length - 1]!.end_time;
     const totalMin = timeToMin(groupEnd) - timeToMin(groupStart);
 
-    void (async () => {
-      const [studentRow] = await db
-        .select({ name: profiles.full_name })
-        .from(profiles)
-        .where(eq(profiles.id, studentId))
-        .limit(1);
-      const studentName = studentRow?.name ?? "Student";
-      const noteLine = note ? `\n📝 ${escapeTelegramHtml(note)}` : "";
-      await notifyTelegram(
-        `📅 <b>New lesson request</b>\n${escapeTelegramHtml(studentName)} · ${date} · ${groupStart}–${groupEnd} · ${formatDurationMin(totalMin)}${noteLine}`
-      );
-    })();
+    const [studentRow] = await db
+      .select({ name: profiles.full_name })
+      .from(profiles)
+      .where(eq(profiles.id, studentId))
+      .limit(1);
+    const studentName = studentRow?.name ?? "Student";
+    const noteLine = note ? `\n📝 ${escapeTelegramHtml(note)}` : "";
+    await notifyTelegram(
+      `📅 <b>New lesson request</b>\n${escapeTelegramHtml(studentName)} · ${date} · ${groupStart}–${groupEnd} · ${formatDurationMin(totalMin)}${noteLine}`
+    );
 
     return c.json(created, 201);
   })
@@ -862,22 +862,22 @@ export const bookingRoutes = new Hono()
       // Telegram: one notification per teacher-created lesson.
       // Teacher-initiated lessons are inserted as "approved" immediately (no
       // pending→approval step), so this is the only notification point for them.
-      void (async () => {
-        try {
-          const [studentRow] = await db
-            .select({ name: profiles.full_name })
-            .from(profiles)
-            .where(eq(profiles.id, student_id))
-            .limit(1);
-          const studentName = studentRow?.name ?? "Student";
-          const courseTag = courseName ? ` · ${escapeTelegramHtml(courseName)}` : "";
-          await notifyTelegram(
-            `📚 <b>Lesson scheduled</b>\n${escapeTelegramHtml(studentName)} · ${date} · ${start_time}–${lessonEnd} · ${formatDurationMin(duration_minutes)}${courseTag}`
-          );
-        } catch (err) {
-          console.error("[teacher-lesson POST] Telegram notification failed:", err);
-        }
-      })();
+      // Awaited before the response — Vercel closes the execution context
+      // immediately after c.json() returns, so fire-and-forget is unreliable.
+      try {
+        const [studentRow] = await db
+          .select({ name: profiles.full_name })
+          .from(profiles)
+          .where(eq(profiles.id, student_id))
+          .limit(1);
+        const studentName = studentRow?.name ?? "Student";
+        const courseTag = courseName ? ` · ${escapeTelegramHtml(courseName)}` : "";
+        await notifyTelegram(
+          `📚 <b>Lesson scheduled</b>\n${escapeTelegramHtml(studentName)} · ${date} · ${start_time}–${lessonEnd} · ${formatDurationMin(duration_minutes)}${courseTag}`
+        );
+      } catch (err) {
+        console.error("[teacher-lesson POST] Telegram notification failed:", err);
+      }
 
       return c.json(created, 201);
     }
