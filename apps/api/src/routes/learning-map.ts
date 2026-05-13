@@ -325,6 +325,14 @@ export const learningMapRoutes = new Hono()
       lessons.length > 0 ||
       allMapTopics.some((t) => t.stats.lessons_total > 0 || t.stats.tasks_total > 0);
     if (!hasAnyActivity && roots.length > 0) {
+      // Step 1 — lock every topic in the response unconditionally.
+      // Without this, topics whose course_topics.is_locked is false in the DB
+      // would be returned as unlocked even though this student has no activity
+      // here yet. We override the DB state in-memory; no DB write happens.
+      for (const t of allMapTopics) {
+        t.locked = true;
+      }
+      // Step 2 — selectively open exactly the first entry point.
       const firstRoot = roots[0]!;
       firstRoot.locked = false;
       // If the first root is a parent (has children), also unlock its first child
