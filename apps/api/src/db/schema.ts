@@ -664,6 +664,10 @@ export const lessonBookings = pgTable(
     status: bookingStatusEnum("status").notNull().default("pending"),
     student_note: text("student_note"),
     teacher_note: text("teacher_note"),
+    // Which course this lesson belongs to. Nullable for backward compatibility —
+    // existing rows and student-initiated bookings stay NULL until Phase 2.2
+    // wires up the course selector in LessonFormModal.
+    course_id: uuid("course_id").references(() => courses.id, { onDelete: "set null" }),
     gcal_event_id: text("gcal_event_id"), // Google Calendar event ID, set on approval
     attendance: lessonAttendanceEnum("attendance"), // Null until teacher marks
     created_at: timestamp("created_at", { withTimezone: true })
@@ -678,6 +682,7 @@ export const lessonBookings = pgTable(
     index("idx_lesson_bookings_teacher_id").on(t.teacher_id),
     index("idx_lesson_bookings_status").on(t.status),
     index("idx_lesson_bookings_date").on(t.date),
+    index("idx_lesson_bookings_course_id").on(t.course_id),
   ]
 );
 
