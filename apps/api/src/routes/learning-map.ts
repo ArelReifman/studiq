@@ -313,9 +313,17 @@ export const learningMapRoutes = new Hono()
     // force the first root topic (and its first child, if any) to appear unlocked
     // in the response. This does NOT change is_locked in the DB — it's purely
     // a per-student, per-request computation.
-    const hasAnyActivity = allMapTopics.some(
-      (t) => t.stats.lessons_total > 0 || t.stats.tasks_total > 0
-    );
+    //
+    // NOTE: we also check `lessons.length > 0` directly, not just topic-level stats.
+    // Stats are aggregated only for lessons that have a topic_id (step 5 above skips
+    // lessons where topic_id is null). A student whose lesson_sessions exist but all
+    // lack a topic_id would therefore show stats.lessons_total === 0 for every topic,
+    // making the stats-only check incorrectly treat them as brand-new — and Option B
+    // would fire and unlock the first topic. Checking the raw lessons array first
+    // short-circuits that case correctly.
+    const hasAnyActivity =
+      lessons.length > 0 ||
+      allMapTopics.some((t) => t.stats.lessons_total > 0 || t.stats.tasks_total > 0);
     if (!hasAnyActivity && roots.length > 0) {
       const firstRoot = roots[0]!;
       firstRoot.locked = false;
