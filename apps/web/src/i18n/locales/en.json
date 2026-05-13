@@ -581,5 +581,12 @@
   "teacher.duration90": "1.5h",
   "teacher.duration120": "2h",
   "teacher.duration150": "2.5h",
-  "teacher.duration180": "3h"
+  "teacher.duration180": "3h",
+
+  "nav.openMenu": "Open menu",
+  "nav.closeMenu": "Close menu",
+
+  "error.generateReport": "Failed to generate report",
+  "error.markReviewed": "Action failed",
+  "error.updateProfile": "Failed to update profile"
 }

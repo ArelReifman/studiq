@@ -79,7 +79,7 @@ export function ProfileForm() {
       }
     },
     onError: (err: Error) => {
-      setError(err.message ?? "Failed to update");
+      setError(err.message ?? t("error.updateProfile"));
     },
   });
 
