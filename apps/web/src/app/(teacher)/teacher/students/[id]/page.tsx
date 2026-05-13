@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate, formatPercent } from "@/lib/utils";
 import type { LessonSession, DifficultyReport, StudentAiProfile, StudentReport } from "@studiq/types";
-import { ArrowLeft, AlertTriangle, Sparkles, Trash2, MessageSquare, Map, ClipboardCheck, RotateCw, ArrowUp, CheckCircle2, ExternalLink, Check, FileBarChart2 } from "lucide-react";
+import { ArrowLeft, AlertTriangle, Sparkles, Trash2, MessageSquare, Map, ClipboardCheck, RotateCw, ArrowUp, CheckCircle2, ExternalLink, Check, FileBarChart2, BookPlus } from "lucide-react";
 import { useT } from "@/i18n";
 import { CreateLessonModal } from "@/components/teacher/create-lesson-modal";
 import { LessonFormModal } from "@/components/teacher/LessonFormModal";
@@ -25,6 +25,12 @@ interface StudentDetail {
   email: string;
   background_note: string | null;
   next_session_briefing: string | null;
+  primary_course_id: string | null;
+}
+
+interface Course {
+  id: string;
+  name: string;
 }
 
 export default function StudentDetailPage() {
@@ -34,6 +40,10 @@ export default function StudentDetailPage() {
   const [showCreateLesson, setShowCreateLesson] = useState(false);
   const [showScheduleLesson, setShowScheduleLesson] = useState(false);
   const [reviewLesson, setReviewLesson] = useState<LessonSession | null>(null);
+  const [showAddCourse, setShowAddCourse] = useState(false);
+  const [addCourseError, setAddCourseError] = useState<string | null>(null);
+  const [addCourseSuccess, setAddCourseSuccess] = useState(false);
+  const [selectedCourseId, setSelectedCourseId] = useState("");
 
   const { data: student } = useQuery<StudentDetail>({
     queryKey: ["students", id],
@@ -58,6 +68,35 @@ export default function StudentDetailPage() {
   const { data: reports = [] } = useQuery<StudentReport[]>({
     queryKey: ["reports", { student_id: id }],
     queryFn: () => api.get(`/reports?student_id=${id}`),
+  });
+
+  const { data: allCourses = [] } = useQuery<Course[]>({
+    queryKey: ["courses"],
+    queryFn: () => api.get("/courses"),
+    enabled: showAddCourse,
+  });
+
+  const addCourse = useMutation({
+    mutationFn: (course_id: string) =>
+      api.post(`/students/${id}/courses`, { course_id }),
+    onSuccess: () => {
+      setAddCourseSuccess(true);
+      setAddCourseError(null);
+      qc.invalidateQueries({ queryKey: ["students", id] });
+      setTimeout(() => {
+        setShowAddCourse(false);
+        setAddCourseSuccess(false);
+        setSelectedCourseId("");
+      }, 1500);
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("409") || msg.toLowerCase().includes("already")) {
+        setAddCourseError(t("teacher.courseAlreadyAssigned"));
+      } else {
+        setAddCourseError(msg || t("error.updateProfile"));
+      }
+    },
   });
 
   const generateReport = useMutation({
@@ -132,6 +171,14 @@ export default function StudentDetailPage() {
             <Map size={15} />
             {t("studentDetail.learningMap")}
           </Link>
+          <button
+            type="button"
+            onClick={() => { setShowAddCourse(true); setAddCourseError(null); setAddCourseSuccess(false); }}
+            className="inline-flex items-center gap-1.5 border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
+          >
+            <BookPlus size={15} />
+            {t("teacher.addCourse")}
+          </button>
           <button
             type="button"
             onClick={() => setShowScheduleLesson(true)}
@@ -481,6 +528,59 @@ export default function StudentDetailPage() {
             // Nothing extra needed — bookings list isn't on this page
           }}
         />
+      )}
+
+      {/* Add / change course modal */}
+      {showAddCourse && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <h2 className="font-semibold text-base mb-4">
+              {t("teacher.addCourseTitle")}
+            </h2>
+            {addCourseSuccess ? (
+              <div className="flex items-center gap-2 text-emerald-600 text-sm py-4 justify-center">
+                <CheckCircle2 size={16} />
+                {t("teacher.addCourseSuccess")}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">
+                    {t("teacher.selectCourse")}
+                  </label>
+                  <select
+                    value={selectedCourseId}
+                    onChange={(e) => { setSelectedCourseId(e.target.value); setAddCourseError(null); }}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  >
+                    <option value="">{t("teacher.selectCourse")}</option>
+                    {allCourses.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                {addCourseError && (
+                  <p className="text-xs text-red-500">{addCourseError}</p>
+                )}
+                <div className="flex gap-2 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => { setShowAddCourse(false); setSelectedCourseId(""); setAddCourseError(null); }}
+                    className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg border border-gray-200 transition-colors"
+                  >
+                    {t("common.cancel")}
+                  </button>
+                  <Button
+                    onClick={() => selectedCourseId && addCourse.mutate(selectedCourseId)}
+                    disabled={!selectedCourseId || addCourse.isPending}
+                  >
+                    {addCourse.isPending ? "..." : t("teacher.addCourse")}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
