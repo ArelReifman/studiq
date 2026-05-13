@@ -575,5 +575,11 @@
   "teacher.startTimeHint": "Must be on the hour or half-hour (XX:00 / XX:30)",
   "teacher.saving": "Saving...",
   "teacher.save": "Save",
-  "teacher.invalidStartTime": "Start time must be exactly on the hour or half-hour (XX:00 / XX:30)"
+  "teacher.invalidStartTime": "Start time must be exactly on the hour or half-hour (XX:00 / XX:30)",
+  "teacher.selectTime": "Select a time",
+  "teacher.duration60": "1h",
+  "teacher.duration90": "1.5h",
+  "teacher.duration120": "2h",
+  "teacher.duration150": "2.5h",
+  "teacher.duration180": "3h"
 }

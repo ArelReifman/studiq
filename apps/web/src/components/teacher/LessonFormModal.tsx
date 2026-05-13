@@ -12,11 +12,24 @@ import { Button } from "@/components/ui/button";
 const DURATIONS = [60, 90, 120, 150, 180] as const;
 type Duration = (typeof DURATIONS)[number];
 
-function durationLabel(min: number): string {
-  if (min < 60) return `${min}m`;
-  if (min % 60 === 0) return `${min / 60}h`;
-  return `${Math.floor(min / 60)}.5h`;
+const DURATION_KEYS: Record<Duration, string> = {
+  60: "teacher.duration60",
+  90: "teacher.duration90",
+  120: "teacher.duration120",
+  150: "teacher.duration150",
+  180: "teacher.duration180",
+};
+
+function generateTimeSlots(): string[] {
+  const slots: string[] = [];
+  for (let h = 7; h <= 22; h++) {
+    slots.push(`${String(h).padStart(2, "0")}:00`);
+    if (h < 22) slots.push(`${String(h).padStart(2, "0")}:30`);
+  }
+  return slots;
 }
+
+const TIME_SLOTS = generateTimeSlots();
 
 function timeToMin(hhmm: string): number {
   const [h = 0, m = 0] = hhmm.split(":").map(Number);
@@ -189,7 +202,7 @@ export function LessonFormModal({
             type="button"
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 transition-colors rounded-md p-0.5 hover:bg-gray-100"
-            aria-label="Close"
+            aria-label={t("common.close")}
           >
             <X size={18} />
           </button>
@@ -244,15 +257,19 @@ export function LessonFormModal({
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
               {t("teacher.startTime")}
             </label>
-            <input
-              type="time"
+            <select
               required
-              step={1800}
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-200"
-            />
-            <p className="mt-1 text-xs text-gray-400">{t("teacher.startTimeHint")}</p>
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-200"
+            >
+              <option value="">{t("teacher.selectTime")}</option>
+              {TIME_SLOTS.map((slot) => (
+                <option key={slot} value={slot}>
+                  {slot}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Duration — pill toggle */}
@@ -272,7 +289,7 @@ export function LessonFormModal({
                       : "px-3 py-1.5 rounded-lg text-sm font-medium bg-white text-gray-700 border border-gray-200 hover:border-brand-300 hover:bg-brand-50 transition-colors"
                   }
                 >
-                  {durationLabel(d)}
+                  {t(DURATION_KEYS[d])}
                 </button>
               ))}
             </div>

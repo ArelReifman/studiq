@@ -575,5 +575,11 @@
   "teacher.startTimeHint": "שעה עגולה או חצי שעה בלבד (XX:00 / XX:30)",
   "teacher.saving": "שומר...",
   "teacher.save": "שמירה",
-  "teacher.invalidStartTime": "שעת ההתחלה חייבת להיות בדיוק על שעה עגולה או חצי שעה (XX:00 / XX:30)"
+  "teacher.invalidStartTime": "שעת ההתחלה חייבת להיות בדיוק על שעה עגולה או חצי שעה (XX:00 / XX:30)",
+  "teacher.selectTime": "בחר/י שעה",
+  "teacher.duration60": "שעה",
+  "teacher.duration90": "שעה וחצי",
+  "teacher.duration120": "שעתיים",
+  "teacher.duration150": "שעתיים וחצי",
+  "teacher.duration180": "שלוש שעות"
 }
