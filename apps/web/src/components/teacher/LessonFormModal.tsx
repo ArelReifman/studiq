@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { X, CalendarCheck } from "lucide-react";
+import { X, CalendarCheck, ChevronDown } from "lucide-react";
 import { api } from "@/lib/api";
 import { useT } from "@/i18n";
 import { Button } from "@/components/ui/button";
@@ -20,11 +20,12 @@ const DURATION_KEYS: Record<Duration, string> = {
   180: "teacher.duration180",
 };
 
+/** Valid start times: 10:00 – 21:00 in 30-min steps (23 options). */
 function generateTimeSlots(): string[] {
   const slots: string[] = [];
-  for (let h = 7; h <= 22; h++) {
+  for (let h = 10; h <= 21; h++) {
     slots.push(`${String(h).padStart(2, "0")}:00`);
-    if (h < 22) slots.push(`${String(h).padStart(2, "0")}:30`);
+    if (h < 21) slots.push(`${String(h).padStart(2, "0")}:30`);
   }
   return slots;
 }
@@ -75,6 +76,104 @@ export interface LessonFormModalProps {
   onClose: () => void;
   /** Called after a successful create or edit (before onClose). */
   onSuccess: () => void;
+}
+
+// ── TimeSelect ────────────────────────────────────────────────────────────────
+
+interface TimeSelectProps {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  /**
+   * An existing time that may be outside the 10:00–21:00 range (edit mode for
+   * old lessons). If supplied and out-of-range, shown as a separate selectable
+   * option so the form doesn't break.
+   */
+  legacySlot?: string;
+}
+
+function TimeSelect({ value, onChange, placeholder, legacySlot }: TimeSelectProps) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function onClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [open]);
+
+  const hasLegacy = Boolean(legacySlot && !TIME_SLOTS.includes(legacySlot));
+
+  return (
+    <div ref={containerRef} className="relative">
+      {/* Trigger */}
+      <button
+        type="button"
+        onClick={() => setOpen((prev: boolean) => !prev)}
+        className={[
+          "w-full flex items-center justify-between border rounded-lg px-3 py-2 text-sm bg-white",
+          "focus:outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-200 transition-colors",
+          value ? "text-gray-800 border-gray-200" : "text-gray-400 border-gray-200",
+        ].join(" ")}
+      >
+        <span>{value || placeholder}</span>
+        <ChevronDown
+          size={15}
+          className={`text-gray-400 transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute z-20 top-full mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+          <div className="max-h-52 overflow-y-auto p-2">
+            {/* Legacy out-of-range slot (edit mode for old lessons) */}
+            {hasLegacy && legacySlot && (
+              <div className="mb-1.5 pb-1.5 border-b border-amber-100">
+                <button
+                  type="button"
+                  onClick={() => { onChange(legacySlot); setOpen(false); }}
+                  className={[
+                    "w-full px-3 py-1.5 text-sm rounded-lg text-center transition-colors",
+                    value === legacySlot
+                      ? "bg-brand-600 text-white font-medium"
+                      : "text-amber-700 bg-amber-50 hover:bg-amber-100",
+                  ].join(" ")}
+                >
+                  {legacySlot}
+                </button>
+              </div>
+            )}
+
+            {/* Regular slots — 2 columns: HH:00 | HH:30 per row */}
+            <div className="grid grid-cols-2 gap-1">
+              {TIME_SLOTS.map((slot) => (
+                <button
+                  key={slot}
+                  type="button"
+                  onClick={() => { onChange(slot); setOpen(false); }}
+                  className={[
+                    "px-2 py-1.5 text-sm rounded-lg text-center transition-colors",
+                    value === slot
+                      ? "bg-brand-600 text-white font-medium"
+                      : "text-gray-700 hover:bg-brand-50 hover:text-brand-700",
+                  ].join(" ")}
+                >
+                  {slot}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -257,19 +356,12 @@ export function LessonFormModal({
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
               {t("teacher.startTime")}
             </label>
-            <select
-              required
+            <TimeSelect
               value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-200"
-            >
-              <option value="">{t("teacher.selectTime")}</option>
-              {TIME_SLOTS.map((slot) => (
-                <option key={slot} value={slot}>
-                  {slot}
-                </option>
-              ))}
-            </select>
+              onChange={setStartTime}
+              placeholder={t("teacher.selectTime")}
+              legacySlot={existingGroup?.start_time}
+            />
           </div>
 
           {/* Duration — pill toggle */}
