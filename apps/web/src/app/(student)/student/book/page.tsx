@@ -7,7 +7,7 @@ import { useT } from "@/i18n";
 import { Card } from "@/components/ui/card";
 import { Calendar, type TimeSlot } from "@/components/calendar/calendar";
 import { Send, X, Clock } from "lucide-react";
-import { groupConsecutiveBookings, type BookingLike } from "@/lib/booking-grouping";
+import { groupConsecutiveBookings, formatDurationI18n, type BookingLike } from "@/lib/booking-grouping";
 
 interface Slot extends TimeSlot {
   date: string;
@@ -230,10 +230,9 @@ export default function StudentBookPage() {
   }
 
   // ── Duration labels ───────────────────────────────────────────────────────
-  // Returns "שעה / 1.5 שעות / שעתיים …" for Hebrew, "1h / 1.5h …" for English.
-  // We derive this from approvals.hoursCount which already handles floats.
+  // Returns "שעה / שעה וחצי / שעתיים …" for Hebrew, "1h / 1.5h …" for English.
   function durationLabel(mins: number): string {
-    return t("approvals.hoursCount", { count: mins / 60 });
+    return formatDurationI18n(mins / 60, t);
   }
 
   // ── Loading ───────────────────────────────────────────────────────────────
@@ -449,7 +448,7 @@ export default function StudentBookPage() {
                     <span dir="ltr">{g.start_time}–{g.end_time}</span>
                     {g.hours >= 1 && (
                       <span className="ms-1.5 text-xs text-gray-500">
-                        ({t("approvals.hoursCount", { count: g.hours })})
+                        ({formatDurationI18n(g.hours, t)})
                       </span>
                     )}
                   </p>
@@ -533,7 +532,7 @@ export default function StudentBookPage() {
                           <span dir="ltr">{g.start_time}–{g.end_time}</span>
                           {g.hours >= 1 && (
                             <span className="ms-1.5 text-xs text-gray-400">
-                              ({t("approvals.hoursCount", { count: g.hours })})
+                              ({formatDurationI18n(g.hours, t)})
                             </span>
                           )}
                         </p>

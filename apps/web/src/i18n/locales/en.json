@@ -582,6 +582,7 @@
   "teacher.duration120": "2h",
   "teacher.duration150": "2.5h",
   "teacher.duration180": "3h",
+  "teacher.datePlaceholder": "DD/MM/YYYY",
 
   "nav.openMenu": "Open menu",
   "nav.closeMenu": "Close menu",
