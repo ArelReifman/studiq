@@ -6,7 +6,7 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { useT } from "@/i18n";
-import { groupConsecutiveBookings, formatDuration } from "@/lib/booking-grouping";
+import { groupConsecutiveBookings, formatDurationI18n } from "@/lib/booking-grouping";
 import {
   AlertTriangle,
   CalendarCheck,
@@ -292,7 +292,7 @@ export default function TeacherDashboard() {
                   </span>
                   {g.hours > 1 && (
                     <span className="text-xs text-gray-400 flex-shrink-0">
-                      {formatDuration(g.start_time, g.end_time)}
+                      {formatDurationI18n(g.hours, t)}
                     </span>
                   )}
                 </div>
@@ -330,7 +330,7 @@ export default function TeacherDashboard() {
                   </span>
                   {g.hours > 1 && (
                     <span className="text-xs text-gray-400 flex-shrink-0">
-                      {formatDuration(g.start_time, g.end_time)}
+                      {formatDurationI18n(g.hours, t)}
                     </span>
                   )}
                 </div>

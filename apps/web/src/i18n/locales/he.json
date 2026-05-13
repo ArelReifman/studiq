@@ -582,6 +582,7 @@
   "teacher.duration120": "שעתיים",
   "teacher.duration150": "שעתיים וחצי",
   "teacher.duration180": "שלוש שעות",
+  "teacher.datePlaceholder": "יום/חודש/שנה",
 
   "nav.openMenu": "פתיחת תפריט",
   "nav.closeMenu": "סגירת תפריט",

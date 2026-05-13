@@ -6,7 +6,7 @@ import { Check, X, Mail, Clock, MessageSquare, CalendarClock, UserPlus, AlertTri
 import { api } from "@/lib/api";
 import { useT } from "@/i18n";
 import { Card } from "@/components/ui/card";
-import { groupConsecutiveBookings, formatDuration } from "@/lib/booking-grouping";
+import { groupConsecutiveBookings, formatDurationI18n } from "@/lib/booking-grouping";
 
 interface PendingProfile {
   id: string;
@@ -200,7 +200,7 @@ export default function ApprovalsPage() {
                         {t("approvals.labelDuration")}:
                       </span>
                       <span className="text-xs font-medium text-brand-700">
-                        {t("approvals.hoursCount", { count: g.hours })}
+                        {formatDurationI18n(g.hours, t)}
                       </span>
                     </div>
                   </div>
@@ -312,7 +312,7 @@ export default function ApprovalsPage() {
                         {t("approvals.labelDuration")}:
                       </span>
                       <span className="text-xs font-medium text-brand-700">
-                        {t("approvals.hoursCount", { count: g.hours })}
+                        {formatDurationI18n(g.hours, t)}
                       </span>
                     </div>
                     <p className="text-xs text-red-600 mt-1.5">

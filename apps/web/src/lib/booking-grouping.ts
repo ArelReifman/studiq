@@ -17,8 +17,33 @@ function timeToMin(hhmm: string): number {
 }
 
 /**
+ * Maps an hours value to an i18n translation key.
+ * Covers the five standard lesson durations (60 / 90 / 120 / 150 / 180 min).
+ */
+const DURATION_KEY_MAP: Record<number, string> = {
+  1: "teacher.duration60",
+  1.5: "teacher.duration90",
+  2: "teacher.duration120",
+  2.5: "teacher.duration150",
+  3: "teacher.duration180",
+};
+
+/**
+ * Returns a localised duration label using the app's translation function.
+ * Accepts the `hours` field already present on a `BookingGroup`.
+ * Falls back to `${hours}h` for non-standard values.
+ */
+export function formatDurationI18n(
+  hours: number,
+  t: (key: string) => string
+): string {
+  const key = DURATION_KEY_MAP[hours];
+  return key ? t(key) : `${hours}h`;
+}
+
+/**
+ * @deprecated Use formatDurationI18n instead.
  * Formats a duration as a compact string: "30m", "1h", "1.5h", "2h", etc.
- * Works with any slot granularity (30-min or 60-min blocks).
  */
 export function formatDuration(startTime: string, endTime: string): string {
   const mins = timeToMin(endTime) - timeToMin(startTime);

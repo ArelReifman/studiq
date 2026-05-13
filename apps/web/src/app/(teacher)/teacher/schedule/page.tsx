@@ -8,7 +8,7 @@ import { useT } from "@/i18n";
 import { Card } from "@/components/ui/card";
 import { Calendar, TimeSlotGrid, type TimeSlot } from "@/components/calendar/calendar";
 import { Plus, CalendarCheck, MessageSquare, X, CalendarDays, CheckCircle2, AlertCircle, Pencil } from "lucide-react";
-import { groupConsecutiveBookings, formatDuration, type BookingGroup } from "@/lib/booking-grouping";
+import { groupConsecutiveBookings, formatDurationI18n, type BookingGroup } from "@/lib/booking-grouping";
 import { LessonFormModal, type EditableGroup } from "@/components/teacher/LessonFormModal";
 
 interface Slot extends TimeSlot {
@@ -420,7 +420,7 @@ export default function TeacherSchedulePage() {
                       </span>
                       {g.hours > 1 && (
                         <span className="text-xs text-gray-500">
-                          ({formatDuration(g.start_time, g.end_time)})
+                          ({formatDurationI18n(g.hours, t)})
                         </span>
                       )}
                       <span className="text-gray-700">·</span>
@@ -549,7 +549,7 @@ export default function TeacherSchedulePage() {
                       </span>
                       {g.hours >= 1 && (
                         <span className="text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">
-                          {formatDuration(g.start_time, g.end_time)}
+                          {formatDurationI18n(g.hours, t)}
                         </span>
                       )}
                       {isCancelRequest && (
@@ -657,7 +657,7 @@ export default function TeacherSchedulePage() {
                       </span>
                       {g.hours >= 1 && (
                         <span className="text-xs text-gray-400">
-                          {formatDuration(g.start_time, g.end_time)}
+                          {formatDurationI18n(g.hours, t)}
                         </span>
                       )}
                     </div>
@@ -706,7 +706,7 @@ export default function TeacherSchedulePage() {
                       </span>
                       {g.hours > 1 && (
                         <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">
-                          {formatDuration(g.start_time, g.end_time)}
+                          {formatDurationI18n(g.hours, t)}
                         </span>
                       )}
                     </div>
