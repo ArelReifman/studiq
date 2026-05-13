@@ -144,7 +144,7 @@ export default function ApprovalsPage() {
       </div>
 
       {isLoading && (
-        <div className="text-sm text-gray-400 py-12 text-center">Loading...</div>
+        <div className="text-sm text-gray-400 py-12 text-center">{t("common.loading")}</div>
       )}
 
       {!isLoading && totalPending === 0 && (

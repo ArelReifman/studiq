@@ -581,5 +581,12 @@
   "teacher.duration90": "שעה וחצי",
   "teacher.duration120": "שעתיים",
   "teacher.duration150": "שעתיים וחצי",
-  "teacher.duration180": "שלוש שעות"
+  "teacher.duration180": "שלוש שעות",
+
+  "nav.openMenu": "פתיחת תפריט",
+  "nav.closeMenu": "סגירת תפריט",
+
+  "error.generateReport": "יצירת הדוח נכשלה",
+  "error.markReviewed": "הפעולה נכשלה",
+  "error.updateProfile": "עדכון הפרופיל נכשל"
 }

@@ -63,7 +63,7 @@ export default function StudentDetailPage() {
   const generateReport = useMutation({
     mutationFn: () => api.post("/reports/generate", { student_id: id }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["reports", { student_id: id }] }),
-    onError: (err) => alert(err instanceof Error ? err.message : "Failed to generate report"),
+    onError: (err) => alert(err instanceof Error ? err.message : t("error.generateReport")),
   });
 
   // Mark a difficulty report reviewed. Optimistic — flip the row's
@@ -84,7 +84,7 @@ export default function StudentDetailPage() {
     },
     onError: (err, _vars, ctx) => {
       qc.setQueryData(["difficulties", { student_id: id }], ctx?.prev);
-      alert(err instanceof Error ? err.message : "Failed");
+      alert(err instanceof Error ? err.message : t("error.markReviewed"));
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ["difficulties"] });

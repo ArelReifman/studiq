@@ -93,7 +93,7 @@ export default function StudentLayout({
         <button
           onClick={() => setDrawerOpen(true)}
           className="p-2 -ms-2 rounded-lg hover:bg-gray-100"
-          aria-label="Open menu"
+          aria-label={t("nav.openMenu")}
         >
           <Menu size={22} />
         </button>
@@ -124,7 +124,7 @@ export default function StudentLayout({
         <button
           onClick={() => setDrawerOpen(false)}
           className="absolute top-3 end-3 p-2 rounded-lg hover:bg-gray-100"
-          aria-label="Close menu"
+          aria-label={t("nav.closeMenu")}
         >
           <X size={20} />
         </button>
