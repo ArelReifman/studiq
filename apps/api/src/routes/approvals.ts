@@ -16,7 +16,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { profiles, students, studentAiProfiles, courses } from "../db/schema.js";
+import { profiles, students, studentAiProfiles, studentCourses, courses } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { userIdParamSchema } from "../lib/validators.js";
 import { audit } from "../lib/audit.js";
@@ -128,6 +128,12 @@ export const approvalsRoutes = new Hono()
               primary_course_id: target.signup_course_id ?? null,
             });
             await tx.insert(studentAiProfiles).values({ student_id: userId });
+            if (target.signup_course_id) {
+              await tx
+                .insert(studentCourses)
+                .values({ student_id: userId, course_id: target.signup_course_id })
+                .onConflictDoNothing();
+            }
           }
         });
       } catch (err) {

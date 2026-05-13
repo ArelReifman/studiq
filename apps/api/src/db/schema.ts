@@ -317,6 +317,30 @@ export const courseTopics = pgTable(
   ]
 );
 
+// ─── Student → Course memberships ─────────────────────────────────────────────
+// Join table: which courses a student is enrolled in.
+// primary_course_id on students remains as the "active/default" course for
+// backward-compatible fallback in GCal and learning-map resolution.
+export const studentCourses = pgTable(
+  "student_courses",
+  {
+    student_id: uuid("student_id")
+      .notNull()
+      .references(() => students.id, { onDelete: "cascade" }),
+    course_id: uuid("course_id")
+      .notNull()
+      .references(() => courses.id, { onDelete: "cascade" }),
+    added_at: timestamp("added_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    is_active: boolean("is_active").notNull().default(true),
+  },
+  (t) => [
+    uniqueIndex("student_courses_pkey").on(t.student_id, t.course_id),
+    index("idx_student_courses_student_id").on(t.student_id),
+  ]
+);
+
 // ─── Per-student exam date overrides ─────────────────────────────────────────
 // Override row keyed by (student_id, course_id). When present, takes priority
 // over courses.exam_date in the learning-map computation. This is what lets
@@ -731,6 +755,18 @@ export const studentsRelations = relations(students, ({ one, many }) => ({
   ai_vectors: many(aiContextVectors),
   reports: many(studentReports),
   bookings: many(lessonBookings),
+  courses: many(studentCourses),
+}));
+
+export const studentCoursesRelations = relations(studentCourses, ({ one }) => ({
+  student: one(students, {
+    fields: [studentCourses.student_id],
+    references: [students.id],
+  }),
+  course: one(courses, {
+    fields: [studentCourses.course_id],
+    references: [courses.id],
+  }),
 }));
 
 export const lessonSessionsRelations = relations(

@@ -16,6 +16,7 @@ import {
   difficultyReports,
   studentInsights,
   studentCourseExamDates,
+  studentCourses,
   courses,
 } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
@@ -104,7 +105,14 @@ export const studentRoutes = new Hono()
 
     if (!student) return c.json({ error: "Student not found" }, 404);
 
-    return c.json(student);
+    const studentCoursesList = await db
+      .select({ id: courses.id, name: courses.name })
+      .from(studentCourses)
+      .innerJoin(courses, eq(courses.id, studentCourses.course_id))
+      .where(and(eq(studentCourses.student_id, studentId), eq(studentCourses.is_active, true)))
+      .orderBy(studentCourses.added_at);
+
+    return c.json({ ...student, courses: studentCoursesList });
   })
 
   // ── Background note (long-form static context, rarely changes) ────────────
@@ -499,8 +507,13 @@ export const studentRoutes = new Hono()
         .limit(1);
       if (!course) return c.json({ error: "Course not found" }, 404);
 
-      // Idempotent: already assigned → 409
-      if (student.primary_course_id === course_id) {
+      // Check if course already assigned (regardless of primary)
+      const [existingAssignment] = await db
+        .select({ student_id: studentCourses.student_id })
+        .from(studentCourses)
+        .where(and(eq(studentCourses.student_id, studentId), eq(studentCourses.course_id, course_id)))
+        .limit(1);
+      if (existingAssignment) {
         return c.json({ error: "Course already assigned to student" }, 409);
       }
 
@@ -509,6 +522,12 @@ export const studentRoutes = new Hono()
         .update(students)
         .set({ primary_course_id: course_id })
         .where(eq(students.id, studentId));
+
+      // Add to student_courses join table
+      await db
+        .insert(studentCourses)
+        .values({ student_id: studentId, course_id })
+        .onConflictDoNothing();
 
       return c.json({ student_id: studentId, course_id, course_name: course.name }, 201);
     }
