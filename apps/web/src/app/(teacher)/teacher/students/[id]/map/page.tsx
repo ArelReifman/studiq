@@ -21,6 +21,7 @@ interface StudentDetail {
   id: string;
   full_name: string;
   primary_course_id: string | null;
+  courses?: { id: string; name: string }[];
 }
 
 export default function TeacherLearningMapPage() {
@@ -52,15 +53,15 @@ export default function TeacherLearningMapPage() {
   });
 
   // Build the set of course IDs this student is associated with:
-  // - courses they have lessons for, PLUS
-  // - their primary_course_id (set at signup/approval or via add-course),
+  // - join-table courses[] from the student detail (primary source), PLUS
+  // - courses they have lessons for (fallback/safety), PLUS
+  // - their primary_course_id (backward-compat fallback),
   //   so a freshly-onboarded student sees their map even before the first lesson.
-  const studentCourseIds = new Set(
-    lessons.map((l) => l.course_id).filter((id): id is string => !!id)
-  );
-  if (student?.primary_course_id) {
-    studentCourseIds.add(student.primary_course_id);
-  }
+  const studentCourseIds = new Set([
+    ...(student?.courses?.map((c) => c.id) ?? []),
+    ...lessons.map((l) => l.course_id).filter((id): id is string => !!id),
+    ...(student?.primary_course_id ? [student.primary_course_id] : []),
+  ]);
   const courses = allCourses.filter((c) => studentCourseIds.has(c.id));
 
   // Default to first course if none selected

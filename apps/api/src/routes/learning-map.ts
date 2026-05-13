@@ -308,6 +308,24 @@ export const learningMapRoutes = new Hono()
     };
     sortTree(roots);
 
+    // Option B — per-student first-topic unlock:
+    // If this student has zero lesson activity in this course (brand-new assignment),
+    // force the first root topic (and its first child, if any) to appear unlocked
+    // in the response. This does NOT change is_locked in the DB — it's purely
+    // a per-student, per-request computation.
+    const hasAnyActivity = allMapTopics.some(
+      (t) => t.stats.lessons_total > 0 || t.stats.tasks_total > 0
+    );
+    if (!hasAnyActivity && roots.length > 0) {
+      const firstRoot = roots[0]!;
+      firstRoot.locked = false;
+      // If the first root is a parent (has children), also unlock its first child
+      // so the student has at least one actionable sub-topic visible.
+      if (firstRoot.children.length > 0) {
+        firstRoot.children[0]!.locked = false;
+      }
+    }
+
     // 9. Overall stats (top-level only)
     const overall = {
       total_topics: roots.length,
