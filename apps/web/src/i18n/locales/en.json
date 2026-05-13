@@ -255,7 +255,7 @@
   "teacher.noBookings": "No booking requests yet.",
   "teacher.approve": "Approve",
   "teacher.reject": "Reject",
-  "teacher.addNote": "Add a note (optional)",
+  "teacher.addNote": "Add note (optional)",
 
   "student.bookLesson": "Book a Lesson",
   "student.availableSlots": "Available Slots",

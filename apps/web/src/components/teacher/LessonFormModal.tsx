@@ -390,10 +390,7 @@ export function LessonFormModal({
           {/* Note */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              {t("teacher.addNote")}{" "}
-              <span className="text-gray-400 font-normal text-xs">
-                {t("common.optional")}
-              </span>
+              {t("teacher.addNote")}
             </label>
             <textarea
               value={note}
