@@ -583,6 +583,11 @@
   "teacher.duration150": "שעתיים וחצי",
   "teacher.duration180": "שלוש שעות",
   "teacher.datePlaceholder": "יום/חודש/שנה",
+  "teacher.addCourse": "הוספת קורס",
+  "teacher.addCourseTitle": "הוספת קורס לתלמיד/ה",
+  "teacher.courseAlreadyAssigned": "קורס זה כבר קיים לתלמיד/ה",
+  "teacher.addCourseSuccess": "הקורס נוסף בהצלחה",
+  "teacher.selectCourse": "בחר/י קורס",
 
   "nav.openMenu": "פתיחת תפריט",
   "nav.closeMenu": "סגירת תפריט",

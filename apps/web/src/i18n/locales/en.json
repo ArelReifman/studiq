@@ -583,6 +583,11 @@
   "teacher.duration150": "2.5h",
   "teacher.duration180": "3h",
   "teacher.datePlaceholder": "DD/MM/YYYY",
+  "teacher.addCourse": "Add course",
+  "teacher.addCourseTitle": "Add course to student",
+  "teacher.courseAlreadyAssigned": "This course is already assigned to this student",
+  "teacher.addCourseSuccess": "Course added successfully",
+  "teacher.selectCourse": "Select a course",
 
   "nav.openMenu": "Open menu",
   "nav.closeMenu": "Close menu",
