@@ -583,22 +583,28 @@ export const bookingRoutes = new Hono()
       .returning();
 
     // ONE Telegram notification for the whole lesson.
+    // Wrapped in try/catch: a notification failure must never roll back the
+    // already-committed booking rows or return a 500 to the student.
     // Awaited before the response — Vercel closes the execution context
     // immediately after c.json() returns, so fire-and-forget is unreliable.
-    const groupStart = sorted[0]!.start_time;
-    const groupEnd = sorted[sorted.length - 1]!.end_time;
-    const totalMin = timeToMin(groupEnd) - timeToMin(groupStart);
+    try {
+      const groupStart = sorted[0]!.start_time;
+      const groupEnd = sorted[sorted.length - 1]!.end_time;
+      const totalMin = timeToMin(groupEnd) - timeToMin(groupStart);
 
-    const [studentRow] = await db
-      .select({ name: profiles.full_name })
-      .from(profiles)
-      .where(eq(profiles.id, studentId))
-      .limit(1);
-    const studentName = studentRow?.name ?? "Student";
-    const noteLine = note ? `\n📝 ${escapeTelegramHtml(note)}` : "";
-    await notifyTelegram(
-      `📅 <b>New lesson request</b>\n${escapeTelegramHtml(studentName)} · ${date} · ${groupStart}–${groupEnd} · ${formatDurationMin(totalMin)}${noteLine}`
-    );
+      const [studentRow] = await db
+        .select({ name: profiles.full_name })
+        .from(profiles)
+        .where(eq(profiles.id, studentId))
+        .limit(1);
+      const studentName = studentRow?.name ?? "Student";
+      const noteLine = note ? `\n📝 ${escapeTelegramHtml(note)}` : "";
+      await notifyTelegram(
+        `📅 <b>New lesson request</b>\n${escapeTelegramHtml(studentName)} · ${date} · ${groupStart}–${groupEnd} · ${formatDurationMin(totalMin)}${noteLine}`
+      );
+    } catch (err) {
+      console.error("[batch] Telegram notification threw:", (err as Error).message);
+    }
 
     return c.json(created, 201);
   })
