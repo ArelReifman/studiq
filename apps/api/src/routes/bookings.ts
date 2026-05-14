@@ -82,11 +82,13 @@ async function resolveCourseName(
     return row?.name ?? "";
   }
 
-  // Path 3: sole entry in student_courses (no primary set, exactly one course)
+  // Path 3: sole active entry in student_courses (no primary set, exactly one
+  // active course). Archived courses (is_active = false) are excluded so they
+  // don't inflate the count and suppress name resolution for live courses.
   const sc = await db
     .select({ course_id: studentCourses.course_id })
     .from(studentCourses)
-    .where(eq(studentCourses.student_id, studentId));
+    .where(and(eq(studentCourses.student_id, studentId), eq(studentCourses.is_active, true)));
 
   if (sc.length === 1) {
     const [row] = await db
@@ -778,13 +780,16 @@ export const bookingRoutes = new Hono()
         if (!courseCheck) {
           return c.json({ error: "Course not found or does not belong to you" }, 404);
         }
+        // Only active enrollments are valid for new lessons. Archived courses
+        // (is_active = false) must not be bookable.
         const [scCheck] = await db
           .select({ course_id: studentCourses.course_id })
           .from(studentCourses)
           .where(
             and(
               eq(studentCourses.student_id, student_id),
-              eq(studentCourses.course_id, course_id)
+              eq(studentCourses.course_id, course_id),
+              eq(studentCourses.is_active, true)
             )
           )
           .limit(1);
@@ -978,13 +983,16 @@ export const bookingRoutes = new Hono()
         if (!courseCheck) {
           return c.json({ error: "Course not found or does not belong to you" }, 404);
         }
+        // Only active enrollments are valid when editing a lesson. Archived
+        // courses (is_active = false) must not be bookable.
         const [scCheck] = await db
           .select({ course_id: studentCourses.course_id })
           .from(studentCourses)
           .where(
             and(
               eq(studentCourses.student_id, studentId0),
-              eq(studentCourses.course_id, course_id)
+              eq(studentCourses.course_id, course_id),
+              eq(studentCourses.is_active, true)
             )
           )
           .limit(1);
