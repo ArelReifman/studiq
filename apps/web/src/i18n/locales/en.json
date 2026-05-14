@@ -576,6 +576,8 @@
   "teacher.saving": "Saving...",
   "teacher.save": "Save",
   "teacher.invalidStartTime": "Start time must be exactly on the hour or half-hour (XX:00 / XX:30)",
+  "teacher.pastDateError": "Cannot schedule a lesson on a past date",
+  "teacher.pastTimeError": "Cannot schedule a lesson at a time that has already passed",
   "teacher.selectTime": "Select a time",
   "teacher.duration60": "1h",
   "teacher.duration90": "1.5h",

@@ -32,6 +32,37 @@ function generateTimeSlots(): string[] {
 
 const TIME_SLOTS = generateTimeSlots();
 
+/**
+ * Returns the current date (YYYY-MM-DD) and wall-clock time (HH:mm) in the
+ * Israel timezone. Used client-side to filter past slots and block past saves.
+ * Mirrors the server's getIsraelToday() / getIsraelTimeHHMM() from time.ts.
+ */
+function getIsraelNow(): { date: string; time: string } {
+  const now = new Date();
+  const tz = "Asia/Jerusalem";
+
+  const dp = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const date = `${dp.find((p) => p.type === "year")!.value}-${dp.find((p) => p.type === "month")!.value}-${dp.find((p) => p.type === "day")!.value}`;
+
+  const tp = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+  const h = tp.find((p) => p.type === "hour")!.value;
+  const m = tp.find((p) => p.type === "minute")!.value;
+  // Intl can return "24:00" at the day boundary in some runtimes — normalise.
+  const time = `${h === "24" ? "00" : h}:${m}`;
+
+  return { date, time };
+}
+
 function timeToMin(hhmm: string): number {
   const [h = 0, m = 0] = hhmm.split(":").map(Number);
   return h * 60 + m;
@@ -90,9 +121,15 @@ interface TimeSelectProps {
    * option so the form doesn't break.
    */
   legacySlot?: string;
+  /**
+   * When the selected date is today, pass the current Israel HH:mm here.
+   * All slots at or before this time are hidden so the teacher can't pick a
+   * time that has already passed.
+   */
+  minTime?: string;
 }
 
-function TimeSelect({ value, onChange, placeholder, legacySlot }: TimeSelectProps) {
+function TimeSelect({ value, onChange, placeholder, legacySlot, minTime }: TimeSelectProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -107,6 +144,11 @@ function TimeSelect({ value, onChange, placeholder, legacySlot }: TimeSelectProp
     document.addEventListener("mousedown", onClickOutside);
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, [open]);
+
+  // When date is today, hide slots that are at or before the current Israel time.
+  const visibleSlots = minTime
+    ? TIME_SLOTS.filter((slot) => slot > minTime)
+    : TIME_SLOTS;
 
   const hasLegacy = Boolean(legacySlot && !TIME_SLOTS.includes(legacySlot));
 
@@ -153,7 +195,7 @@ function TimeSelect({ value, onChange, placeholder, legacySlot }: TimeSelectProp
 
             {/* Regular slots — 2 columns: HH:00 | HH:30 per row */}
             <div className="grid grid-cols-2 gap-1">
-              {TIME_SLOTS.map((slot) => (
+              {visibleSlots.map((slot) => (
                 <button
                   key={slot}
                   type="button"
@@ -255,6 +297,13 @@ export function LessonFormModal({
 
   const isPending = createMutation.isPending || editMutation.isPending;
 
+  // ── Israel time helpers ─────────────────────────────────────────────────────
+  // Computed fresh on each render so minTime stays accurate as the date
+  // field changes (and across midnight if the modal is left open).
+  const { date: israelToday, time: israelNow } = getIsraelNow();
+  // Show only future times when the teacher picks today's date.
+  const minTime = date === israelToday ? israelNow : undefined;
+
   // ── submit ──────────────────────────────────────────────────────────────────
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -264,6 +313,18 @@ export function LessonFormModal({
     const [, mm = ""] = startTime.split(":");
     if (mm !== "00" && mm !== "30") {
       setFormError(t("teacher.invalidStartTime"));
+      return;
+    }
+
+    // Validate date is not in the past
+    const { date: nowDate, time: nowTime } = getIsraelNow();
+    if (date < nowDate) {
+      setFormError(t("teacher.pastDateError"));
+      return;
+    }
+    // Validate start time is not in the past (relevant only when date is today)
+    if (date === nowDate && startTime <= nowTime) {
+      setFormError(t("teacher.pastTimeError"));
       return;
     }
 
@@ -346,6 +407,7 @@ export function LessonFormModal({
               type="date"
               required
               value={date}
+              min={israelToday}
               onChange={(e) => setDate(e.target.value)}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-200"
             />
@@ -362,6 +424,7 @@ export function LessonFormModal({
               onChange={setStartTime}
               placeholder={t("teacher.selectTime")}
               legacySlot={existingGroup?.start_time}
+              minTime={minTime}
             />
           </div>
 
