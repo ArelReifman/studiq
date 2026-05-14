@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
-import { useT } from "@/i18n";
+import { useT, useLocaleStore } from "@/i18n";
 import { Card } from "@/components/ui/card";
 import { Calendar, TimeSlotGrid, type TimeSlot } from "@/components/calendar/calendar";
 import { Plus, CalendarCheck, MessageSquare, X, CalendarDays, CheckCircle2, AlertCircle, Pencil } from "lucide-react";
@@ -38,8 +38,12 @@ interface BookingRow {
 
 type Attendance = "attended" | "no_show" | null;
 
-function formatDate(s: string): string {
-  return new Date(s + "T00:00:00").toLocaleDateString(undefined, {
+// Locale-aware date formatter. Passing `undefined` falls back to the browser
+// (iOS Safari) locale, which on mobile commonly differs from the in-app UI
+// language — producing "Sun 17 May" in a Hebrew UI. Passing the active app
+// locale forces the correct script ("יום א׳ 17 במאי" in Hebrew).
+function formatDate(s: string, locale: "he" | "en"): string {
+  return new Date(s + "T00:00:00").toLocaleDateString(locale, {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -55,6 +59,7 @@ function hasLessonEnded(date: string, endTime: string): boolean {
 
 export default function TeacherSchedulePage() {
   const t = useT();
+  const locale = useLocaleStore((s) => s.locale);
   const qc = useQueryClient();
   const searchParams = useSearchParams();
 
@@ -465,8 +470,12 @@ export default function TeacherSchedulePage() {
                 <p className="text-sm font-medium text-gray-700 mb-2">
                   {t("teacher.addSlotForDate")}
                 </p>
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
+                {/* On mobile (< sm), the two time inputs sit side by side and
+                    the Add button wraps to its own full-width row below — so
+                    the button never overlaps the end-time input on narrow
+                    screens. On sm+ it stays a single row as before. */}
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="flex-1 min-w-0">
                     <label className="block text-xs text-gray-500 mb-1">
                       {t("teacher.startTime")}
                     </label>
@@ -477,7 +486,7 @@ export default function TeacherSchedulePage() {
                       className="w-full border border-gray-200 rounded-lg px-2 py-2 text-sm"
                     />
                   </div>
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <label className="block text-xs text-gray-500 mb-1">
                       {t("teacher.endTime")}
                     </label>
@@ -491,7 +500,7 @@ export default function TeacherSchedulePage() {
                   <button
                     type="submit"
                     disabled={addMutation.isPending}
-                    className="flex items-center gap-1 bg-brand-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50"
+                    className="w-full sm:w-auto flex items-center justify-center gap-1 bg-brand-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50"
                   >
                     <Plus size={14} />
                     {t("teacher.add")}
@@ -541,7 +550,7 @@ export default function TeacherSchedulePage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm text-gray-700">
-                        {formatDate(g.date)}
+                        {formatDate(g.date, locale)}
                       </span>
                       <span className="font-mono text-sm font-semibold text-brand-700" dir="ltr">
                         {g.start_time}–{g.end_time}
@@ -650,7 +659,7 @@ export default function TeacherSchedulePage() {
                   >
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm text-gray-600">
-                        {formatDate(g.date)}
+                        {formatDate(g.date, locale)}
                       </span>
                       <span className="font-mono text-sm text-gray-600" dir="ltr">
                         {g.start_time}–{g.end_time}
@@ -699,7 +708,7 @@ export default function TeacherSchedulePage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-3 flex-wrap">
                       <span className="font-mono text-sm text-gray-700">
-                        {formatDate(g.date)}
+                        {formatDate(g.date, locale)}
                       </span>
                       <span className="font-mono text-sm font-semibold text-gray-700">
                         {g.start_time}–{g.end_time}
