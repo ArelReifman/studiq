@@ -389,10 +389,16 @@ export function LessonFormModal({
         aria-hidden="true"
       />
 
-      {/* Dialog */}
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md">
+      {/* Dialog
+          - max-h-[90vh] + flex-col + overflow-hidden keeps the modal inside
+            the viewport on short mobile screens (URL bar, landscape, etc.).
+            The form inside gets overflow-y-auto so long forms scroll
+            internally instead of being clipped.
+          - max-w-md keeps the desktop width; on mobile the modal occupies
+            full width minus the parent's p-4. */}
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100">
+        <div className="flex-shrink-0 flex items-center justify-between px-4 sm:px-6 pt-5 pb-4 border-b border-gray-100">
           <div className="flex items-center gap-2">
             <CalendarCheck size={18} className="text-brand-600" />
             <h2 className="text-base font-semibold text-gray-800">
@@ -411,8 +417,9 @@ export function LessonFormModal({
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+        {/* Form — scrolls internally on short screens; px-4 on mobile keeps
+            inputs from feeling cramped against the modal edges. */}
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-6 py-5 space-y-4">
           {/* Student */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -479,7 +486,21 @@ export function LessonFormModal({
               required
               value={date}
               min={israelToday}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={(e) => {
+                const newDate = e.target.value;
+                // Defense in depth: some mobile browsers (notably Safari iOS)
+                // don't reliably enforce the HTML `min` attribute on
+                // <input type="date">. Reject past dates client-side here,
+                // before they ever land in state. handleSubmit also re-checks
+                // as a final guard if anything slips through.
+                if (newDate && newDate < israelToday) {
+                  setFormError(t("teacher.pastDateError"));
+                  return;
+                }
+                // Clear any prior past-date error when a valid date is picked.
+                if (formError === t("teacher.pastDateError")) setFormError(null);
+                setDate(newDate);
+              }}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-200"
             />
             <p className="mt-1 text-xs text-gray-400">{t("teacher.datePlaceholder")}</p>
