@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and, sql, desc } from "drizzle-orm";
+import { eq, and, sql, desc, gte, inArray } from "drizzle-orm";
 import { createClient } from "@supabase/supabase-js";
 import { db } from "../db/client.js";
 import {
@@ -18,7 +18,9 @@ import {
   studentCourseExamDates,
   studentCourses,
   courses,
+  lessonBookings,
 } from "../db/schema.js";
+import { getIsraelToday } from "../lib/time.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { uuidParamSchema } from "../lib/validators.js";
 
@@ -530,14 +532,24 @@ export const studentRoutes = new Hono()
         .limit(1);
       if (!course) return c.json({ error: "Course not found" }, 404);
 
-      // Check if course already assigned (regardless of primary)
+      // Check if a student_courses row already exists (active or archived).
+      // • is_active = true  → already enrolled, nothing to do (409)
+      // • is_active = false → previously archived; reactivate in-place
       const [existingAssignment] = await db
-        .select({ student_id: studentCourses.student_id })
+        .select({ is_active: studentCourses.is_active })
         .from(studentCourses)
         .where(and(eq(studentCourses.student_id, studentId), eq(studentCourses.course_id, course_id)))
         .limit(1);
       if (existingAssignment) {
-        return c.json({ error: "Course already assigned to student" }, 409);
+        if (existingAssignment.is_active) {
+          return c.json({ error: "Course already assigned to student" }, 409);
+        }
+        // Reactivate the archived row instead of inserting a duplicate.
+        await db
+          .update(studentCourses)
+          .set({ is_active: true })
+          .where(and(eq(studentCourses.student_id, studentId), eq(studentCourses.course_id, course_id)));
+        return c.json({ student_id: studentId, course_id, course_name: course.name }, 200);
       }
 
       // Set primary_course_id only when the student has none yet.
@@ -561,6 +573,98 @@ export const studentRoutes = new Hono()
         .onConflictDoNothing();
 
       return c.json({ student_id: studentId, course_id, course_name: course.name }, 201);
+    }
+  )
+
+  // PATCH /students/:id/courses/:courseId/archive
+  // Soft-disables a course for a student by setting is_active = false.
+  // Does NOT delete any rows, lessons, or session history.
+  //
+  // 404 — student not found, or course not assigned to student.
+  // 409 — course is already archived.
+  // 409 — student has future active lessons for this course (unless ?force=true).
+  //        Body: { error: string, futureCount: number }
+  // 200 — success.
+  //
+  // Reactivation: POST /students/:id/courses with the same course_id will
+  // set is_active = true again.
+  .patch(
+    "/:id/courses/:courseId/archive",
+    zValidator(
+      "param",
+      z.object({ id: z.string().uuid(), courseId: z.string().uuid() })
+    ),
+    zValidator(
+      "query",
+      z.object({ force: z.enum(["true", "false"]).optional() })
+    ),
+    async (c) => {
+      const teacherId = c.get("userId");
+      const { id: studentId, courseId } = c.req.valid("param");
+      const force = c.req.valid("query").force === "true";
+
+      // Verify teacher owns the student
+      const [student] = await db
+        .select({ id: students.id })
+        .from(students)
+        .where(and(eq(students.id, studentId), eq(students.teacher_id, teacherId)))
+        .limit(1);
+      if (!student) return c.json({ error: "Student not found" }, 404);
+
+      // Verify the student_courses row exists
+      const [row] = await db
+        .select({ is_active: studentCourses.is_active })
+        .from(studentCourses)
+        .where(
+          and(
+            eq(studentCourses.student_id, studentId),
+            eq(studentCourses.course_id, courseId)
+          )
+        )
+        .limit(1);
+
+      if (!row) return c.json({ error: "Course not assigned to this student" }, 404);
+      if (!row.is_active) return c.json({ error: "Course is already archived" }, 409);
+
+      // Unless force=true, block if there are upcoming active lessons for this
+      // student/course combination. "Future" = date >= Israel today; "active" =
+      // status in approved / pending / cancel_requested.
+      if (!force) {
+        const today = getIsraelToday();
+        const futureBookings = await db
+          .select({ id: lessonBookings.id })
+          .from(lessonBookings)
+          .where(
+            and(
+              eq(lessonBookings.student_id, studentId),
+              eq(lessonBookings.course_id, courseId),
+              gte(lessonBookings.date, today),
+              inArray(lessonBookings.status, ["approved", "pending", "cancel_requested"])
+            )
+          );
+        if (futureBookings.length > 0) {
+          return c.json(
+            {
+              error: "Student has future active lessons for this course",
+              futureCount: futureBookings.length,
+            },
+            409
+          );
+        }
+      }
+
+      // Soft-archive: flip the flag. No rows are deleted.
+      await db
+        .update(studentCourses)
+        .set({ is_active: false })
+        .where(
+          and(
+            eq(studentCourses.student_id, studentId),
+            eq(studentCourses.course_id, courseId)
+          )
+        );
+
+      return c.json({ student_id: studentId, course_id: courseId, is_active: false });
     }
   )
 
