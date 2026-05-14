@@ -261,17 +261,19 @@ export function LessonFormModal({
   });
 
   // ── student courses — used for course picker ────────────────────────────────
-  // Fetch the student detail to get their enrolled courses. The query is
-  // enabled as soon as we have a studentId (immediately in edit mode and on
-  // create-from-student-page; after the teacher picks a student in open-select
-  // create mode). React Query caches by studentId, so re-opening the modal is
-  // essentially free (cache hit).
+  // Fetch the student detail to get their enrolled courses.
+  // refetchOnMount: "always" overrides the global default of false — we need
+  // fresh data every time the modal opens because the global React Query config
+  // (providers.tsx) disables refetch-on-mount to avoid loading flashes on page
+  // navigation, but the course list must reflect the latest DB state.
   const { data: studentDetail } = useQuery<{
     courses?: { id: string; name: string }[];
   }>({
     queryKey: ["students", studentId],
     queryFn: () => api.get(`/students/${studentId}`),
     enabled: !!studentId,
+    refetchOnMount: "always",
+    staleTime: 0,
   });
   const studentCourses = studentDetail?.courses ?? [];
 
