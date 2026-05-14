@@ -203,14 +203,25 @@ export const bookingRoutes = new Hono()
 
       if (slots.length === 0) return c.json([]);
 
-      // Hide slots already taken (approved, pending, or pending-cancellation)
-      const slotIds = slots.map((s) => s.id);
-      const takenRows = await db
-        .select({ availability_id: lessonBookings.availability_id })
+      // Hide slots already occupied — checks by TIME OVERLAP, not availability_id.
+      // This catches both student-initiated bookings (availability_id set) AND
+      // teacher-created lessons (availability_id=null), which the old
+      // availability_id-only IN-query couldn't see.
+      const dateFrom = slots[0]!.date!;
+      const dateTo = slots[slots.length - 1]!.date!;
+
+      const activeBookings = await db
+        .select({
+          date: lessonBookings.date,
+          start_time: lessonBookings.start_time,
+          end_time: lessonBookings.end_time,
+        })
         .from(lessonBookings)
         .where(
           and(
-            inArray(lessonBookings.availability_id, slotIds),
+            eq(lessonBookings.teacher_id, student.teacher_id),
+            gte(lessonBookings.date, dateFrom),
+            lte(lessonBookings.date, dateTo),
             inArray(lessonBookings.status, [
               "approved",
               "pending",
@@ -218,16 +229,20 @@ export const bookingRoutes = new Hono()
             ])
           )
         );
-      const taken = new Set(takenRows.map((r) => r.availability_id));
 
       // Also hide today's slots whose start_time has already passed in Israel
       // time — otherwise a student loading the page at 14:00 still sees an
       // 11:30 slot they can't actually take.
       const visible = slots.filter(
         (s) =>
-          !taken.has(s.id) &&
           s.date != null &&
-          !isSlotInPastIsrael(s.date, s.start_time)
+          !isSlotInPastIsrael(s.date, s.start_time) &&
+          !activeBookings.some(
+            (b) =>
+              b.date === s.date &&
+              timeToMin(b.start_time) < timeToMin(s.end_time) &&
+              timeToMin(b.end_time) > timeToMin(s.start_time)
+          )
       );
       return c.json(visible);
     }
@@ -527,18 +542,28 @@ export const bookingRoutes = new Hono()
       }
     }
 
-    const slotIds = sorted.map((s) => s.id);
-    const takenRows = await db
-      .select({ availability_id: lessonBookings.availability_id })
+    const lessonStart = sorted[0]!.start_time;
+    const lessonEnd   = sorted[sorted.length - 1]!.end_time;
+
+    // Backend guard: reject if the teacher already has an active booking that
+    // overlaps the requested time span — covers both availability-based bookings
+    // AND teacher-created lessons (availability_id=null) that the old
+    // availability_id-only IN-query couldn't detect.
+    const [conflict] = await db
+      .select({ id: lessonBookings.id })
       .from(lessonBookings)
       .where(
         and(
-          inArray(lessonBookings.availability_id, slotIds),
-          inArray(lessonBookings.status, ["approved", "pending", "cancel_requested"])
+          eq(lessonBookings.teacher_id, student.teacher_id),
+          eq(lessonBookings.date, date),
+          inArray(lessonBookings.status, ["approved", "pending", "cancel_requested"]),
+          lt(lessonBookings.start_time, lessonEnd),
+          gt(lessonBookings.end_time, lessonStart)
         )
-      );
+      )
+      .limit(1);
 
-    if (takenRows.length > 0) {
+    if (conflict) {
       return c.json({ error: "One or more slots are already taken" }, 409);
     }
 
