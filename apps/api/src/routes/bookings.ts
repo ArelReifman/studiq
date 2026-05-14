@@ -750,6 +750,11 @@ export const bookingRoutes = new Hono()
         );
       }
 
+      // Reject lessons scheduled in the past (Israel time).
+      if (isSlotInPastIsrael(date, start_time)) {
+        return c.json({ error: "Cannot schedule a lesson in the past" }, 400);
+      }
+
       // Student must belong to this teacher
       const [student] = await db
         .select({ id: students.id })
@@ -938,6 +943,11 @@ export const bookingRoutes = new Hono()
           { error: "start_time must be on the hour or half-hour (HH:00 or HH:30)" },
           400
         );
+      }
+
+      // Reject edits that move a lesson to a past date/time (Israel time).
+      if (isSlotInPastIsrael(date, start_time)) {
+        return c.json({ error: "Cannot reschedule a lesson to a past date or time" }, 400);
       }
 
       // Fetch + ownership check

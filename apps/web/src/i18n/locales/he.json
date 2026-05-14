@@ -576,6 +576,8 @@
   "teacher.saving": "שומר...",
   "teacher.save": "שמירה",
   "teacher.invalidStartTime": "שעת ההתחלה חייבת להיות בדיוק על שעה עגולה או חצי שעה (XX:00 / XX:30)",
+  "teacher.pastDateError": "לא ניתן לקבוע שיעור בתאריך שעבר",
+  "teacher.pastTimeError": "לא ניתן לקבוע שיעור בשעה שכבר עברה",
   "teacher.selectTime": "בחר/י שעה",
   "teacher.duration60": "שעה",
   "teacher.duration90": "שעה וחצי",
