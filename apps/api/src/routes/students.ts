@@ -116,14 +116,10 @@ export const studentRoutes = new Hono()
     // student_courses row (legacy students whose course was set directly on the
     // student record before the student_courses join table existed).
     // Prepend so it appears first; skip if already present to avoid duplicates.
-    const primaryAlreadyInList = studentCoursesList.some(
-      (c) => c.id === student.primary_course_id
-    );
-    console.log(
-      `[students/:id] student=${studentId} primary_course_id=${student.primary_course_id ?? "null"} ` +
-        `student_courses_count=${studentCoursesList.length} primary_in_list=${primaryAlreadyInList}`
-    );
-    if (student.primary_course_id && !primaryAlreadyInList) {
+    if (
+      student.primary_course_id &&
+      !studentCoursesList.some((c) => c.id === student.primary_course_id)
+    ) {
       const [primaryCourse] = await db
         .select({ id: courses.id, name: courses.name })
         .from(courses)
@@ -134,9 +130,6 @@ export const studentRoutes = new Hono()
           )
         )
         .limit(1);
-      console.log(
-        `[students/:id] primary course lookup result=${primaryCourse ? primaryCourse.name : "NOT FOUND"}`
-      );
       if (primaryCourse) {
         studentCoursesList.unshift(primaryCourse);
       }
