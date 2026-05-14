@@ -116,10 +116,14 @@ export const studentRoutes = new Hono()
     // student_courses row (legacy students whose course was set directly on the
     // student record before the student_courses join table existed).
     // Prepend so it appears first; skip if already present to avoid duplicates.
-    if (
-      student.primary_course_id &&
-      !studentCoursesList.some((c) => c.id === student.primary_course_id)
-    ) {
+    const primaryAlreadyInList = studentCoursesList.some(
+      (c) => c.id === student.primary_course_id
+    );
+    console.log(
+      `[students/:id] student=${studentId} primary_course_id=${student.primary_course_id ?? "null"} ` +
+        `student_courses_count=${studentCoursesList.length} primary_in_list=${primaryAlreadyInList}`
+    );
+    if (student.primary_course_id && !primaryAlreadyInList) {
       const [primaryCourse] = await db
         .select({ id: courses.id, name: courses.name })
         .from(courses)
@@ -130,6 +134,9 @@ export const studentRoutes = new Hono()
           )
         )
         .limit(1);
+      console.log(
+        `[students/:id] primary course lookup result=${primaryCourse ? primaryCourse.name : "NOT FOUND"}`
+      );
       if (primaryCourse) {
         studentCoursesList.unshift(primaryCourse);
       }
@@ -540,11 +547,19 @@ export const studentRoutes = new Hono()
         return c.json({ error: "Course already assigned to student" }, 409);
       }
 
-      // Update primary_course_id
-      await db
-        .update(students)
-        .set({ primary_course_id: course_id })
-        .where(eq(students.id, studentId));
+      // Set primary_course_id only when the student has none yet.
+      // Subsequent course additions must NOT overwrite the existing primary
+      // course — otherwise the original course (e.g. "Algebra 1") would
+      // disappear from the course picker once a second course is added.
+      // The learning-map fallback path (primary_course_id → student_courses)
+      // continues to work correctly because the first-assigned course remains
+      // the primary.
+      if (!student.primary_course_id) {
+        await db
+          .update(students)
+          .set({ primary_course_id: course_id })
+          .where(eq(students.id, studentId));
+      }
 
       // Add to student_courses join table
       await db
