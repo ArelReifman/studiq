@@ -470,8 +470,12 @@ export default function TeacherSchedulePage() {
                 <p className="text-sm font-medium text-gray-700 mb-2">
                   {t("teacher.addSlotForDate")}
                 </p>
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
+                {/* On mobile (< sm), the two time inputs sit side by side and
+                    the Add button wraps to its own full-width row below — so
+                    the button never overlaps the end-time input on narrow
+                    screens. On sm+ it stays a single row as before. */}
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="flex-1 min-w-0">
                     <label className="block text-xs text-gray-500 mb-1">
                       {t("teacher.startTime")}
                     </label>
@@ -482,7 +486,7 @@ export default function TeacherSchedulePage() {
                       className="w-full border border-gray-200 rounded-lg px-2 py-2 text-sm"
                     />
                   </div>
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <label className="block text-xs text-gray-500 mb-1">
                       {t("teacher.endTime")}
                     </label>
@@ -496,7 +500,7 @@ export default function TeacherSchedulePage() {
                   <button
                     type="submit"
                     disabled={addMutation.isPending}
-                    className="flex items-center gap-1 bg-brand-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50"
+                    className="w-full sm:w-auto flex items-center justify-center gap-1 bg-brand-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50"
                   >
                     <Plus size={14} />
                     {t("teacher.add")}

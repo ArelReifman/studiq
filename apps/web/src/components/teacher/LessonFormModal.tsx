@@ -501,7 +501,13 @@ export function LessonFormModal({
                 if (formError === t("teacher.pastDateError")) setFormError(null);
                 setDate(newDate);
               }}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-200"
+              // appearance-none + bg-white strip Safari iOS's native pill-style
+              // gray background that otherwise leaks over the surrounding input
+              // box. min-h-[42px] matches the visual height of the other inputs
+              // so the field doesn't look smaller before a value is picked.
+              // [text-align] keeps the rendered date aligned to the start
+              // of the input in both RTL and LTR.
+              className="w-full appearance-none bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-start min-h-[42px] focus:outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-200"
             />
             <p className="mt-1 text-xs text-gray-400">{t("teacher.datePlaceholder")}</p>
           </div>
