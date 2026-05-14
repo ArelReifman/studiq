@@ -7,6 +7,7 @@ import {
   lessonBookings,
   teacherAvailability,
   students,
+  studentCourses,
   profiles,
   teachers,
   courses,
@@ -37,6 +38,66 @@ function addMinutes(hhmm: string, min: number): string {
   const h = Math.floor(total / 60);
   const m = total % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+// ── Course name resolver ──────────────────────────────────────────────────────
+//
+// Returns a human-readable course name for GCal titles and Telegram messages.
+//
+// Resolution order:
+//   1. booking.course_id  — explicit course set at lesson creation (Phase 2.2+)
+//   2. student.primary_course_id — legacy single-course default
+//   3. sole entry in student_courses — student has exactly one course but no primary
+//
+// Returns "" when the course cannot be determined (multi-course student without
+// an explicit booking course_id). Callers treat "" as "omit course from title".
+// Never throws — a missing name degrades gracefully in GCal/Telegram.
+async function resolveCourseName(
+  courseId: string | null | undefined,
+  studentId: string
+): Promise<string> {
+  // Path 1: explicit course_id on this booking
+  if (courseId) {
+    const [row] = await db
+      .select({ name: courses.name })
+      .from(courses)
+      .where(eq(courses.id, courseId))
+      .limit(1);
+    return row?.name ?? "";
+  }
+
+  // Path 2: student's primary_course_id (backward-compat for older lessons)
+  const [student] = await db
+    .select({ primary_course_id: students.primary_course_id })
+    .from(students)
+    .where(eq(students.id, studentId))
+    .limit(1);
+
+  if (student?.primary_course_id) {
+    const [row] = await db
+      .select({ name: courses.name })
+      .from(courses)
+      .where(eq(courses.id, student.primary_course_id))
+      .limit(1);
+    return row?.name ?? "";
+  }
+
+  // Path 3: sole entry in student_courses (no primary set, exactly one course)
+  const sc = await db
+    .select({ course_id: studentCourses.course_id })
+    .from(studentCourses)
+    .where(eq(studentCourses.student_id, studentId));
+
+  if (sc.length === 1) {
+    const [row] = await db
+      .select({ name: courses.name })
+      .from(courses)
+      .where(eq(courses.id, sc[0]!.course_id))
+      .limit(1);
+    return row?.name ?? "";
+  }
+
+  return "";
 }
 
 // ── Validation schemas ────────────────────────────────────────────────────────
@@ -83,6 +144,9 @@ const teacherLessonCreateSchema = z.object({
   start_time:        z.string().regex(/^\d{2}:\d{2}$/),
   duration_minutes:  durationSchema,
   note:              z.string().max(500).optional(),
+  // Phase 2.2: optional course association. When absent the column stays NULL
+  // and existing behaviour (primary_course_id fallback) is preserved.
+  course_id:         z.string().uuid().optional(),
 });
 
 /** Teacher edits the date / time / duration of an existing lesson group. */
@@ -92,6 +156,9 @@ const teacherLessonEditSchema = z.object({
   start_time:        z.string().regex(/^\d{2}:\d{2}$/),
   duration_minutes:  durationSchema,
   note:              z.string().max(500).optional(),
+  // Phase 2.2: optional course_id override. When absent the existing course_id
+  // on the booking slots is preserved (same-count) or carried forward (reinsert).
+  course_id:         z.string().uuid().optional(),
 });
 
 export const bookingRoutes = new Hono()
@@ -136,14 +203,25 @@ export const bookingRoutes = new Hono()
 
       if (slots.length === 0) return c.json([]);
 
-      // Hide slots already taken (approved, pending, or pending-cancellation)
-      const slotIds = slots.map((s) => s.id);
-      const takenRows = await db
-        .select({ availability_id: lessonBookings.availability_id })
+      // Hide slots already occupied — checks by TIME OVERLAP, not availability_id.
+      // This catches both student-initiated bookings (availability_id set) AND
+      // teacher-created lessons (availability_id=null), which the old
+      // availability_id-only IN-query couldn't see.
+      const dateFrom = slots[0]!.date!;
+      const dateTo = slots[slots.length - 1]!.date!;
+
+      const activeBookings = await db
+        .select({
+          date: lessonBookings.date,
+          start_time: lessonBookings.start_time,
+          end_time: lessonBookings.end_time,
+        })
         .from(lessonBookings)
         .where(
           and(
-            inArray(lessonBookings.availability_id, slotIds),
+            eq(lessonBookings.teacher_id, student.teacher_id),
+            gte(lessonBookings.date, dateFrom),
+            lte(lessonBookings.date, dateTo),
             inArray(lessonBookings.status, [
               "approved",
               "pending",
@@ -151,16 +229,20 @@ export const bookingRoutes = new Hono()
             ])
           )
         );
-      const taken = new Set(takenRows.map((r) => r.availability_id));
 
       // Also hide today's slots whose start_time has already passed in Israel
       // time — otherwise a student loading the page at 14:00 still sees an
       // 11:30 slot they can't actually take.
       const visible = slots.filter(
         (s) =>
-          !taken.has(s.id) &&
           s.date != null &&
-          !isSlotInPastIsrael(s.date, s.start_time)
+          !isSlotInPastIsrael(s.date, s.start_time) &&
+          !activeBookings.some(
+            (b) =>
+              b.date === s.date &&
+              timeToMin(b.start_time) < timeToMin(s.end_time) &&
+              timeToMin(b.end_time) > timeToMin(s.start_time)
+          )
       );
       return c.json(visible);
     }
@@ -282,21 +364,21 @@ export const bookingRoutes = new Hono()
         const groupEnd = recent[hi]!.end_time;
         const hours = hi - lo + 1;
 
-        void (async () => {
-          const [studentRow] = await db
-            .select({ name: profiles.full_name })
-            .from(profiles)
-            .where(eq(profiles.id, studentId))
-            .limit(1);
-          const studentName = studentRow?.name ?? "Student";
-          const noteLine = body.note
-            ? `\n📝 ${escapeTelegramHtml(body.note)}`
-            : "";
-          const durationLabel = hours > 1 ? ` · ${hours}h` : "";
-          await notifyTelegram(
-            `📅 <b>New lesson request</b>\n${escapeTelegramHtml(studentName)} · ${slot.date} · ${groupStart}–${groupEnd}${durationLabel}${noteLine}`
-          );
-        })();
+        // Awaited directly — Vercel closes the execution context immediately
+        // after the response is returned, so fire-and-forget is unreliable.
+        const [studentRow] = await db
+          .select({ name: profiles.full_name })
+          .from(profiles)
+          .where(eq(profiles.id, studentId))
+          .limit(1);
+        const studentName = studentRow?.name ?? "Student";
+        const noteLine = body.note
+          ? `\n📝 ${escapeTelegramHtml(body.note)}`
+          : "";
+        const durationLabel = hours > 1 ? ` · ${hours}h` : "";
+        await notifyTelegram(
+          `📅 <b>New lesson request</b>\n${escapeTelegramHtml(studentName)} · ${slot.date} · ${groupStart}–${groupEnd}${durationLabel}${noteLine}`
+        );
       }
     }
 
@@ -330,6 +412,7 @@ export const bookingRoutes = new Hono()
         created_at: lessonBookings.created_at,
         student_name: profiles.full_name,
         student_id: lessonBookings.student_id,
+        course_id: lessonBookings.course_id,
       })
       .from(lessonBookings)
       .innerJoin(profiles, eq(profiles.id, lessonBookings.student_id))
@@ -459,18 +542,28 @@ export const bookingRoutes = new Hono()
       }
     }
 
-    const slotIds = sorted.map((s) => s.id);
-    const takenRows = await db
-      .select({ availability_id: lessonBookings.availability_id })
+    const lessonStart = sorted[0]!.start_time;
+    const lessonEnd   = sorted[sorted.length - 1]!.end_time;
+
+    // Backend guard: reject if the teacher already has an active booking that
+    // overlaps the requested time span — covers both availability-based bookings
+    // AND teacher-created lessons (availability_id=null) that the old
+    // availability_id-only IN-query couldn't detect.
+    const [conflict] = await db
+      .select({ id: lessonBookings.id })
       .from(lessonBookings)
       .where(
         and(
-          inArray(lessonBookings.availability_id, slotIds),
-          inArray(lessonBookings.status, ["approved", "pending", "cancel_requested"])
+          eq(lessonBookings.teacher_id, student.teacher_id),
+          eq(lessonBookings.date, date),
+          inArray(lessonBookings.status, ["approved", "pending", "cancel_requested"]),
+          lt(lessonBookings.start_time, lessonEnd),
+          gt(lessonBookings.end_time, lessonStart)
         )
-      );
+      )
+      .limit(1);
 
-    if (takenRows.length > 0) {
+    if (conflict) {
       return c.json({ error: "One or more slots are already taken" }, 409);
     }
 
@@ -489,12 +582,16 @@ export const bookingRoutes = new Hono()
       )
       .returning();
 
-    // ONE Telegram notification for the whole lesson
-    const groupStart = sorted[0]!.start_time;
-    const groupEnd = sorted[sorted.length - 1]!.end_time;
-    const totalMin = timeToMin(groupEnd) - timeToMin(groupStart);
+    // ONE Telegram notification for the whole lesson.
+    // Wrapped in try/catch: a notification failure must never roll back the
+    // already-committed booking rows or return a 500 to the student.
+    // Awaited before the response — Vercel closes the execution context
+    // immediately after c.json() returns, so fire-and-forget is unreliable.
+    try {
+      const groupStart = sorted[0]!.start_time;
+      const groupEnd = sorted[sorted.length - 1]!.end_time;
+      const totalMin = timeToMin(groupEnd) - timeToMin(groupStart);
 
-    void (async () => {
       const [studentRow] = await db
         .select({ name: profiles.full_name })
         .from(profiles)
@@ -505,7 +602,9 @@ export const bookingRoutes = new Hono()
       await notifyTelegram(
         `📅 <b>New lesson request</b>\n${escapeTelegramHtml(studentName)} · ${date} · ${groupStart}–${groupEnd} · ${formatDurationMin(totalMin)}${noteLine}`
       );
-    })();
+    } catch (err) {
+      console.error("[batch] Telegram notification threw:", (err as Error).message);
+    }
 
     return c.json(created, 201);
   })
@@ -572,14 +671,8 @@ export const bookingRoutes = new Hono()
           const lessonEnd = sorted[sorted.length - 1]!.end_time;
           const studentId = sorted[0]!.student_id;
 
-          // Look up course name (students.primary_course_id → courses.name)
-          // and teacher name for the event title/description.
-          const [courseRow] = await db
-            .select({ course_name: courses.name })
-            .from(students)
-            .leftJoin(courses, eq(students.primary_course_id, courses.id))
-            .where(eq(students.id, studentId))
-            .limit(1);
+          // Resolve course name: booking.course_id → primary_course_id → sole entry.
+          const courseName = await resolveCourseName(sorted[0]?.course_id, studentId);
 
           const [teacherRow] = await db
             .select({ teacher_name: profiles.full_name })
@@ -593,7 +686,7 @@ export const bookingRoutes = new Hono()
             end_time: lessonEnd,
             student_id: studentId,
             teacher_id: teacherId,
-            ...(courseRow?.course_name ? { course_name: courseRow.course_name } : {}),
+            ...(courseName               ? { course_name:  courseName               } : {}),
             ...(teacherRow?.teacher_name ? { teacher_name: teacherRow.teacher_name } : {}),
           });
           if (eventId) {
@@ -614,17 +707,20 @@ export const bookingRoutes = new Hono()
         }
 
         void (async () => {
+          const studentId = sorted[0]!.student_id;
           const [studentRow] = await db
             .select({ name: profiles.full_name })
             .from(profiles)
-            .where(eq(profiles.id, sorted[0]!.student_id))
+            .where(eq(profiles.id, studentId))
             .limit(1);
           const studentName = studentRow?.name ?? "Student";
           const totalMin =
             timeToMin(sorted[sorted.length - 1]!.end_time) -
             timeToMin(sorted[0]!.start_time);
+          const courseName = await resolveCourseName(sorted[0]?.course_id, studentId);
+          const courseTag  = courseName ? ` · ${escapeTelegramHtml(courseName)}` : "";
           await notifyTelegram(
-            `🚫 <b>Lesson cancelled by you</b>\n${escapeTelegramHtml(studentName)} · ${sorted[0]!.date} · ${sorted[0]!.start_time}–${sorted[sorted.length - 1]!.end_time} · ${formatDurationMin(totalMin)}`
+            `🚫 <b>Lesson cancelled by you</b>\n${escapeTelegramHtml(studentName)} · ${sorted[0]!.date} · ${sorted[0]!.start_time}–${sorted[sorted.length - 1]!.end_time} · ${formatDurationMin(totalMin)}${courseTag}`
           );
         })();
       }
@@ -644,7 +740,7 @@ export const bookingRoutes = new Hono()
     zValidator("json", teacherLessonCreateSchema),
     async (c) => {
       const teacherId = c.get("userId");
-      const { student_id, date, start_time, duration_minutes, note } = c.req.valid("json");
+      const { student_id, date, start_time, duration_minutes, note, course_id } = c.req.valid("json");
 
       // start_time must land on an exact half-hour boundary (HH:00 or HH:30)
       if (timeToMin(start_time) % 30 !== 0) {
@@ -662,6 +758,35 @@ export const bookingRoutes = new Hono()
         .limit(1);
       if (!student) {
         return c.json({ error: "Student not found or does not belong to you" }, 404);
+      }
+
+      // Validate course_id when provided: must belong to the teacher AND be
+      // assigned to this student. Prevents a teacher from tagging a lesson with
+      // a course that isn't theirs or that the student hasn't enrolled in.
+      let validatedCourseId: string | null = null;
+      if (course_id) {
+        const [courseCheck] = await db
+          .select({ id: courses.id })
+          .from(courses)
+          .where(and(eq(courses.id, course_id), eq(courses.teacher_id, teacherId)))
+          .limit(1);
+        if (!courseCheck) {
+          return c.json({ error: "Course not found or does not belong to you" }, 404);
+        }
+        const [scCheck] = await db
+          .select({ course_id: studentCourses.course_id })
+          .from(studentCourses)
+          .where(
+            and(
+              eq(studentCourses.student_id, student_id),
+              eq(studentCourses.course_id, course_id)
+            )
+          )
+          .limit(1);
+        if (!scCheck) {
+          return c.json({ error: "Course is not assigned to this student" }, 400);
+        }
+        validatedCourseId = course_id;
       }
 
       // Build slot list: one 30-min slot per increment
@@ -711,7 +836,7 @@ export const bookingRoutes = new Hono()
         return c.json({ error: "Student has a conflicting booking at this time" }, 409);
       }
 
-      // Insert all slots as approved
+      // Insert all slots as approved — every slot in the group gets the same course_id.
       const created = await db
         .insert(lessonBookings)
         .values(
@@ -724,22 +849,20 @@ export const bookingRoutes = new Hono()
             end_time:         s.end_time,
             status:           "approved" as const,
             teacher_note:     note ?? null,
+            course_id:        validatedCourseId,
           }))
         )
         .returning();
 
       const createdIds = created.map((b) => b.id);
 
+      // Resolve course name once — used by both GCal and Telegram below.
+      // Falls back through primary_course_id → sole student_courses entry → "".
+      const courseName = await resolveCourseName(validatedCourseId, student_id);
+
       // Create ONE GCal event for the full span.
       // A gcal failure must never roll back the already-committed booking.
       try {
-        const [courseRow] = await db
-          .select({ course_name: courses.name })
-          .from(students)
-          .leftJoin(courses, eq(students.primary_course_id, courses.id))
-          .where(eq(students.id, student_id))
-          .limit(1);
-
         const [teacherRow] = await db
           .select({ teacher_name: profiles.full_name })
           .from(profiles)
@@ -752,7 +875,7 @@ export const bookingRoutes = new Hono()
           end_time:    lessonEnd,
           student_id,
           teacher_id:  teacherId,
-          ...(courseRow?.course_name    ? { course_name:   courseRow.course_name    } : {}),
+          ...(courseName                ? { course_name:   courseName                } : {}),
           ...(teacherRow?.teacher_name  ? { teacher_name:  teacherRow.teacher_name  } : {}),
         });
 
@@ -765,6 +888,26 @@ export const bookingRoutes = new Hono()
         }
       } catch (err) {
         console.error("[teacher-lesson POST] GCal event creation failed:", err);
+      }
+
+      // Telegram: one notification per teacher-created lesson.
+      // Teacher-initiated lessons are inserted as "approved" immediately (no
+      // pending→approval step), so this is the only notification point for them.
+      // Awaited before the response — Vercel closes the execution context
+      // immediately after c.json() returns, so fire-and-forget is unreliable.
+      try {
+        const [studentRow] = await db
+          .select({ name: profiles.full_name })
+          .from(profiles)
+          .where(eq(profiles.id, student_id))
+          .limit(1);
+        const studentName = studentRow?.name ?? "Student";
+        const courseTag = courseName ? ` · ${escapeTelegramHtml(courseName)}` : "";
+        await notifyTelegram(
+          `📚 <b>Lesson scheduled</b>\n${escapeTelegramHtml(studentName)} · ${date} · ${start_time}–${lessonEnd} · ${formatDurationMin(duration_minutes)}${courseTag}`
+        );
+      } catch (err) {
+        console.error("[teacher-lesson POST] Telegram notification failed:", err);
       }
 
       return c.json(created, 201);
@@ -788,7 +931,7 @@ export const bookingRoutes = new Hono()
     zValidator("json", teacherLessonEditSchema),
     async (c) => {
       const teacherId = c.get("userId");
-      const { booking_ids, date, start_time, duration_minutes, note } = c.req.valid("json");
+      const { booking_ids, date, start_time, duration_minutes, note, course_id } = c.req.valid("json");
 
       if (timeToMin(start_time) % 30 !== 0) {
         return c.json(
@@ -812,6 +955,35 @@ export const bookingRoutes = new Hono()
         return c.json({ error: "One or more bookings not found" }, 404);
       }
 
+      // Validate course_id when the teacher wants to change (or set) the course.
+      // undefined = no change; a UUID = validate and apply.
+      let validatedCourseId: string | undefined = undefined;
+      if (course_id !== undefined) {
+        const studentId0 = existing[0]!.student_id;
+        const [courseCheck] = await db
+          .select({ id: courses.id })
+          .from(courses)
+          .where(and(eq(courses.id, course_id), eq(courses.teacher_id, teacherId)))
+          .limit(1);
+        if (!courseCheck) {
+          return c.json({ error: "Course not found or does not belong to you" }, 404);
+        }
+        const [scCheck] = await db
+          .select({ course_id: studentCourses.course_id })
+          .from(studentCourses)
+          .where(
+            and(
+              eq(studentCourses.student_id, studentId0),
+              eq(studentCourses.course_id, course_id)
+            )
+          )
+          .limit(1);
+        if (!scCheck) {
+          return c.json({ error: "Course is not assigned to this student" }, 400);
+        }
+        validatedCourseId = course_id;
+      }
+
       // Block edit when student has raised a cancellation request
       if (existing.some((b) => b.status === "cancel_requested")) {
         return c.json(
@@ -820,8 +992,12 @@ export const bookingRoutes = new Hono()
         );
       }
 
-      const studentId     = existing[0]!.student_id;
+      const studentId      = existing[0]!.student_id;
       const existingGcalId = existing.find((b) => b.gcal_event_id)?.gcal_event_id ?? null;
+      // course_id to carry forward: use the validated new value if provided,
+      // otherwise preserve whatever is on the existing slots.
+      const existingCourseId  = existing[0]?.course_id ?? null;
+      const finalCourseId     = validatedCourseId !== undefined ? validatedCourseId : existingCourseId;
 
       // Build new slot list
       const slotCount = duration_minutes / 30;
@@ -879,7 +1055,9 @@ export const bookingRoutes = new Hono()
       );
 
       if (sortedExisting.length === slotCount) {
-        // Same count: update each slot in-place (preserves attendance / IDs)
+        // Same count: update each slot in-place (preserves attendance / IDs).
+        // Only include course_id in the SET when the teacher explicitly provided
+        // a new value — otherwise leave the existing DB value untouched.
         for (let i = 0; i < sortedExisting.length; i++) {
           await db
             .update(lessonBookings)
@@ -889,13 +1067,15 @@ export const bookingRoutes = new Hono()
               end_time:     newSlotTimes[i]!.end_time,
               teacher_note: note ?? null,
               updated_at:   new Date(),
+              ...(validatedCourseId !== undefined ? { course_id: validatedCourseId } : {}),
             })
             .where(eq(lessonBookings.id, sortedExisting[i]!.id));
         }
         finalIds = sortedExisting.map((b) => b.id);
       } else {
         // Different count: delete old rows, insert new ones.
-        // gcal_event_id is carried forward — no duplicate event will be created.
+        // Both gcal_event_id and course_id are carried forward so no duplicate
+        // GCal event is ever created and the course association is preserved.
         await db.delete(lessonBookings).where(inArray(lessonBookings.id, booking_ids));
 
         const inserted = await db
@@ -911,6 +1091,7 @@ export const bookingRoutes = new Hono()
               status:          "approved" as const,
               teacher_note:    note ?? null,
               gcal_event_id:   existingGcalId,
+              course_id:       finalCourseId,
             }))
           )
           .returning();
@@ -919,13 +1100,11 @@ export const bookingRoutes = new Hono()
       }
 
       // ── GCal sync ──────────────────────────────────────────────────────────
+      // Resolve course name once using the final course_id (new value or carried
+      // forward from existing slots). Falls back through primary_course_id → sole
+      // student_courses entry → "" for old lessons that have no course_id.
       try {
-        const [courseRow] = await db
-          .select({ course_name: courses.name })
-          .from(students)
-          .leftJoin(courses, eq(students.primary_course_id, courses.id))
-          .where(eq(students.id, studentId))
-          .limit(1);
+        const courseName = await resolveCourseName(finalCourseId, studentId);
 
         const [teacherRow] = await db
           .select({ teacher_name: profiles.full_name })
@@ -935,8 +1114,7 @@ export const bookingRoutes = new Hono()
 
         if (existingGcalId) {
           // Existing event → patch span + title. Never create a duplicate.
-          const courseName  = courseRow?.course_name ?? "";
-          const teacherName = (teacherRow?.teacher_name ?? "").replace(/\s+/g, " ").trim();
+          const teacherName  = (teacherRow?.teacher_name ?? "").replace(/\s+/g, " ").trim();
           const teacherFirst = teacherName.split(" ")[0] ?? teacherName;
 
           const [studentProfile] = await db
@@ -972,7 +1150,7 @@ export const bookingRoutes = new Hono()
             end_time:   lessonEnd,
             student_id: studentId,
             teacher_id: teacherId,
-            ...(courseRow?.course_name   ? { course_name:  courseRow.course_name   } : {}),
+            ...(courseName               ? { course_name:  courseName               } : {}),
             ...(teacherRow?.teacher_name ? { teacher_name: teacherRow.teacher_name } : {}),
           });
           if (eventId) {
@@ -1046,13 +1224,8 @@ export const bookingRoutes = new Hono()
       // Silently skipped if the teacher hasn't connected Google Calendar.
       if (body.status === "approved") {
         void (async () => {
-          // Look up course name and teacher name for the event title/description.
-          const [courseRow] = await db
-            .select({ course_name: courses.name })
-            .from(students)
-            .leftJoin(courses, eq(students.primary_course_id, courses.id))
-            .where(eq(students.id, updated.student_id))
-            .limit(1);
+          // Resolve course name: booking.course_id → primary_course_id → sole entry.
+          const courseName = await resolveCourseName(updated.course_id, updated.student_id);
 
           const [teacherRow] = await db
             .select({ teacher_name: profiles.full_name })
@@ -1066,7 +1239,7 @@ export const bookingRoutes = new Hono()
             end_time: updated.end_time,
             student_id: updated.student_id,
             teacher_id: teacherId,
-            ...(courseRow?.course_name ? { course_name: courseRow.course_name } : {}),
+            ...(courseName               ? { course_name:  courseName               } : {}),
             ...(teacherRow?.teacher_name ? { teacher_name: teacherRow.teacher_name } : {}),
           });
           if (eventId) {
@@ -1094,10 +1267,10 @@ export const bookingRoutes = new Hono()
             .where(eq(profiles.id, updated.student_id))
             .limit(1);
           const studentName = studentRow?.name ?? "Student";
+          const courseName  = await resolveCourseName(updated.course_id, updated.student_id);
+          const courseTag   = courseName ? ` · ${escapeTelegramHtml(courseName)}` : "";
           await notifyTelegram(
-            `🚫 <b>Lesson cancelled by you</b>\n${escapeTelegramHtml(
-              studentName
-            )} · ${updated.date} · ${updated.start_time}–${updated.end_time}`
+            `🚫 <b>Lesson cancelled by you</b>\n${escapeTelegramHtml(studentName)} · ${updated.date} · ${updated.start_time}–${updated.end_time}${courseTag}`
           );
         })();
       }
