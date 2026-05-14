@@ -99,6 +99,10 @@ export function useRealtimeSync() {
         { event: "*", schema: "public", table: "lesson_bookings" },
         () => {
           qc.invalidateQueries({ queryKey: ["bookings"] });
+          qc.invalidateQueries({ queryKey: ["approvals-bookings"] });
+          qc.invalidateQueries({ queryKey: ["my-bookings-as-teacher"] });
+          qc.invalidateQueries({ queryKey: ["my-bookings"] });
+          qc.invalidateQueries({ queryKey: ["booking-slots"] });
         }
       )
       // ─── Teacher AI Feedback ──────────────────────────────────
