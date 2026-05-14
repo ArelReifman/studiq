@@ -112,6 +112,29 @@ export const studentRoutes = new Hono()
       .where(and(eq(studentCourses.student_id, studentId), eq(studentCourses.is_active, true)))
       .orderBy(studentCourses.added_at);
 
+    // Ensure primary_course_id is included even when it has no corresponding
+    // student_courses row (legacy students whose course was set directly on the
+    // student record before the student_courses join table existed).
+    // Prepend so it appears first; skip if already present to avoid duplicates.
+    if (
+      student.primary_course_id &&
+      !studentCoursesList.some((c) => c.id === student.primary_course_id)
+    ) {
+      const [primaryCourse] = await db
+        .select({ id: courses.id, name: courses.name })
+        .from(courses)
+        .where(
+          and(
+            eq(courses.id, student.primary_course_id),
+            eq(courses.teacher_id, teacherId)
+          )
+        )
+        .limit(1);
+      if (primaryCourse) {
+        studentCoursesList.unshift(primaryCourse);
+      }
+    }
+
     return c.json({ ...student, courses: studentCoursesList });
   })
 
