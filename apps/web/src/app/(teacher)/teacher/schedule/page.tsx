@@ -32,6 +32,8 @@ interface BookingRow {
   student_name: string;
   student_id: string;
   created_at: string;
+  /** Course associated with this lesson. Null for legacy lessons. */
+  course_id?: string | null;
 }
 
 type Attendance = "attended" | "no_show" | null;
@@ -580,6 +582,7 @@ export default function TeacherSchedulePage() {
                               date: g.date,
                               start_time: g.start_time,
                               end_time: g.end_time,
+                              course_id: g.course_id ?? null,
                             },
                           })
                         }

@@ -66,6 +66,8 @@ export interface BookingLike {
   /** Whether the lesson actually took place. Null until teacher marks it. */
   attendance?: "attended" | "no_show" | null;
   created_at: string;
+  /** Course this lesson is associated with. Null for legacy lessons. */
+  course_id?: string | null;
 }
 
 export interface BookingGroup<T extends BookingLike = BookingLike> {
@@ -88,6 +90,8 @@ export interface BookingGroup<T extends BookingLike = BookingLike> {
    * Derived from start_time..end_time of the full group, NOT bookings.length.
    */
   hours: number;
+  /** Course this lesson group is associated with. Null for legacy lessons. */
+  course_id?: string | null;
 }
 
 export function groupConsecutiveBookings<T extends BookingLike>(
@@ -130,6 +134,7 @@ export function groupConsecutiveBookings<T extends BookingLike>(
         teacher_note: b.teacher_note ?? null,
         bookings: [b],
         hours: (timeToMin(b.end_time) - timeToMin(b.start_time)) / 60,
+        course_id: b.course_id ?? null,
       });
     }
   }

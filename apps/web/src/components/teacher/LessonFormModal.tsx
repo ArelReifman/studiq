@@ -91,6 +91,8 @@ export interface EditableGroup {
   date: string;
   start_time: string;
   end_time: string;
+  /** Course set on the lesson. Null for legacy lessons without a course. */
+  course_id?: string | null;
 }
 
 export interface LessonFormModalProps {
@@ -245,6 +247,10 @@ export function LessonFormModal({
   );
   const [note, setNote] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  // course_id for the lesson; pre-filled in edit mode, auto-set for 1-course students.
+  const [courseId, setCourseId] = useState<string>(
+    existingGroup?.course_id ?? ""
+  );
 
   // ── student list (create mode only) ────────────────────────────────────────
   const { data: students = [] } = useQuery<StudentOption[]>({
@@ -253,6 +259,31 @@ export function LessonFormModal({
     // Don't fetch if student is already fixed
     enabled: !isEdit && !initialStudentId,
   });
+
+  // ── student courses — used for course picker ────────────────────────────────
+  // Fetch the student detail to get their enrolled courses. The query is
+  // enabled as soon as we have a studentId (immediately in edit mode and on
+  // create-from-student-page; after the teacher picks a student in open-select
+  // create mode). React Query caches by studentId, so re-opening the modal is
+  // essentially free (cache hit).
+  const { data: studentDetail } = useQuery<{
+    courses?: { id: string; name: string }[];
+  }>({
+    queryKey: ["students", studentId],
+    queryFn: () => api.get(`/students/${studentId}`),
+    enabled: !!studentId,
+  });
+  const studentCourses = studentDetail?.courses ?? [];
+
+  // Auto-select when the student has exactly one enrolled course and no course
+  // has been chosen yet. Functional updater avoids adding courseId to the deps
+  // array (which would cause an update loop when courseId becomes non-empty).
+  useEffect(() => {
+    if (studentCourses.length === 1) {
+      setCourseId((prev) => prev || studentCourses[0]!.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studentCourses]);
 
   // Resolved display name — either from the students list or from the prop.
   const fixedStudentName =
@@ -269,6 +300,7 @@ export function LessonFormModal({
         start_time: startTime,
         duration_minutes: duration,
         ...(note.trim() ? { note: note.trim() } : {}),
+        ...(courseId ? { course_id: courseId } : {}),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-bookings-as-teacher"] });
@@ -286,6 +318,7 @@ export function LessonFormModal({
         start_time: startTime,
         duration_minutes: duration,
         ...(note.trim() ? { note: note.trim() } : {}),
+        ...(courseId ? { course_id: courseId } : {}),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-bookings-as-teacher"] });
@@ -325,6 +358,14 @@ export function LessonFormModal({
     // Validate start time is not in the past (relevant only when date is today)
     if (date === nowDate && startTime <= nowTime) {
       setFormError(t("teacher.pastTimeError"));
+      return;
+    }
+
+    // Validate course selection when the student has multiple enrolled courses.
+    // Single-course students are auto-selected silently; no-course students are
+    // allowed to proceed without a course_id.
+    if (studentCourses.length >= 2 && !courseId) {
+      setFormError(t("teacher.courseRequired"));
       return;
     }
 
@@ -385,7 +426,12 @@ export function LessonFormModal({
               <select
                 required
                 value={studentId}
-                onChange={(e) => setStudentId(e.target.value)}
+                onChange={(e) => {
+                  setStudentId(e.target.value);
+                  // Reset course selection when switching students so the new
+                  // student's courses can be auto-selected or manually chosen.
+                  setCourseId("");
+                }}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-200"
               >
                 <option value="">{t("teacher.selectStudent")}</option>
@@ -397,6 +443,29 @@ export function LessonFormModal({
               </select>
             )}
           </div>
+
+          {/* Course picker — visible only when the student has ≥2 enrolled
+              courses. Single-course students are auto-selected silently.
+              Students with no courses skip this field entirely. */}
+          {studentCourses.length >= 2 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                {t("teacher.courseLabel")}
+              </label>
+              <select
+                value={courseId}
+                onChange={(e) => setCourseId(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-200"
+              >
+                <option value="">{t("teacher.coursePlaceholder")}</option>
+                {studentCourses.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Date */}
           <div>
