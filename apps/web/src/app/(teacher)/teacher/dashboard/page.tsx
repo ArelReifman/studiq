@@ -284,23 +284,21 @@ export default function TeacherDashboard() {
                   key={g.key}
                   className="rounded-lg border border-gray-100 px-2.5 py-2"
                 >
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-y-0.5 gap-x-2">
-                    <span className="text-sm font-medium text-gray-800 truncate w-full sm:flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="text-sm font-medium text-gray-800">
                       {g.student_name}
                     </span>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      <span
-                        className="font-mono text-xs font-semibold text-brand-700 bg-brand-50 px-1.5 py-0.5 rounded"
-                        dir="ltr"
-                      >
-                        {formatTime(g.start_time)}–{formatTime(g.end_time)}
+                    <span
+                      className="font-mono text-xs font-semibold text-brand-700 bg-brand-50 px-1.5 py-0.5 rounded flex-shrink-0"
+                      dir="ltr"
+                    >
+                      {formatTime(g.start_time)}–{formatTime(g.end_time)}
+                    </span>
+                    {g.hours >= 1 && (
+                      <span className="text-xs text-gray-400 flex-shrink-0">
+                        {formatDurationI18n(g.hours, t)}
                       </span>
-                      {g.hours >= 1 && (
-                        <span className="text-xs text-gray-400">
-                          {formatDurationI18n(g.hours, t)}
-                        </span>
-                      )}
-                    </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -329,23 +327,21 @@ export default function TeacherDashboard() {
             <div className="space-y-1.5">
               {tomorrowGroups.map((g) => (
                 <div key={g.key} className="rounded-lg border border-gray-100 px-2.5 py-2">
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-y-0.5 gap-x-2">
-                    <span className="text-sm font-medium text-gray-800 truncate w-full sm:flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="text-sm font-medium text-gray-800">
                       {g.student_name}
                     </span>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      <span
-                        className="font-mono text-xs font-semibold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded"
-                        dir="ltr"
-                      >
-                        {formatTime(g.start_time)}–{formatTime(g.end_time)}
+                    <span
+                      className="font-mono text-xs font-semibold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded flex-shrink-0"
+                      dir="ltr"
+                    >
+                      {formatTime(g.start_time)}–{formatTime(g.end_time)}
+                    </span>
+                    {g.hours >= 1 && (
+                      <span className="text-xs text-gray-400 flex-shrink-0">
+                        {formatDurationI18n(g.hours, t)}
                       </span>
-                      {g.hours >= 1 && (
-                        <span className="text-xs text-gray-400">
-                          {formatDurationI18n(g.hours, t)}
-                        </span>
-                      )}
-                    </div>
+                    )}
                   </div>
                 </div>
               ))}
