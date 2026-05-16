@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { useT } from "@/i18n";
 import { groupConsecutiveBookings, formatDurationI18n } from "@/lib/booking-grouping";
+import { getIsraelToday, getIsraelTomorrow } from "@/lib/time";
 import {
   AlertTriangle,
   CalendarCheck,
@@ -36,6 +37,10 @@ interface BookingRow {
   created_at: string;
   student_name: string;
   student_id: string;
+  /** Course associated with this lesson. Null for legacy lessons. */
+  course_id?: string | null;
+  /** GCal event id — needed so groupConsecutiveBookings splits distinct lessons. */
+  gcal_event_id?: string | null;
 }
 
 interface HomeworkSubmission {
@@ -56,16 +61,6 @@ interface StudentRow {
 
 function hasLessonEnded(date: string, endTime: string): boolean {
   return new Date(`${date}T${endTime}:00`).getTime() <= Date.now();
-}
-
-function getTodayStr(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function getTomorrowStr(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
 }
 
 function formatTime(t: string) {
@@ -90,8 +85,10 @@ export default function TeacherDashboard() {
     queryFn: () => api.get("/students"),
   });
 
-  const today = getTodayStr();
-  const tomorrow = getTomorrowStr();
+  // Israel-local dates — bookings.date is stored as YYYY-MM-DD in Israel time,
+  // so comparing against UTC's "today" drifts at night (~22:00–02:00 UTC).
+  const today = getIsraelToday();
+  const tomorrow = getIsraelTomorrow();
 
   // ── Action items ────────────────────────────────────────────────────────────
   const pendingRequests = useMemo(

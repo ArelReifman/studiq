@@ -581,6 +581,7 @@
   "teacher.courseLabel": "Course",
   "teacher.coursePlaceholder": "Select a course",
   "teacher.courseRequired": "Please select a course before saving",
+  "teacher.courseArchivedReselect": "The original course for this lesson was archived. Please pick an active course before saving.",
   "teacher.selectTime": "Select a time",
   "teacher.duration60": "1h",
   "teacher.duration90": "1.5h",
@@ -608,5 +609,9 @@
 
   "error.generateReport": "Failed to generate report",
   "error.markReviewed": "Action failed",
-  "error.updateProfile": "Failed to update profile"
+  "error.updateProfile": "Failed to update profile",
+
+  "teacher.conflictingTeacherBooking": "You already have a lesson scheduled at this time",
+  "teacher.conflictingStudentBooking": "This student already has a lesson at this time",
+  "teacher.courseNotAssigned": "This course is not assigned to this student"
 }

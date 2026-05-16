@@ -118,22 +118,45 @@ export const studentRoutes = new Hono()
     // student_courses row (legacy students whose course was set directly on the
     // student record before the student_courses join table existed).
     // Prepend so it appears first; skip if already present to avoid duplicates.
+    //
+    // IMPORTANT: only apply the fallback when there is NO student_courses row
+    // at all (not even an archived one). If a row exists with is_active=false,
+    // the course was archived by the teacher — respect that and do not re-surface
+    // it here. The original check (course not in active list) is necessary but
+    // not sufficient: after archive, the row exists but is filtered out above,
+    // which is exactly the case we must NOT fall through to.
     if (
       student.primary_course_id &&
       !studentCoursesList.some((c) => c.id === student.primary_course_id)
     ) {
-      const [primaryCourse] = await db
-        .select({ id: courses.id, name: courses.name })
-        .from(courses)
+      // Check for any student_courses row (active OR archived).
+      // • No row found → true legacy; add the fallback course.
+      // • Row found (is_active=false) → archived; respect the archive, skip.
+      const [anyRow] = await db
+        .select({ course_id: studentCourses.course_id })
+        .from(studentCourses)
         .where(
           and(
-            eq(courses.id, student.primary_course_id),
-            eq(courses.teacher_id, teacherId)
+            eq(studentCourses.student_id, studentId),
+            eq(studentCourses.course_id, student.primary_course_id)
           )
         )
         .limit(1);
-      if (primaryCourse) {
-        studentCoursesList.unshift(primaryCourse);
+
+      if (!anyRow) {
+        const [primaryCourse] = await db
+          .select({ id: courses.id, name: courses.name })
+          .from(courses)
+          .where(
+            and(
+              eq(courses.id, student.primary_course_id),
+              eq(courses.teacher_id, teacherId)
+            )
+          )
+          .limit(1);
+        if (primaryCourse) {
+          studentCoursesList.unshift(primaryCourse);
+        }
       }
     }
 

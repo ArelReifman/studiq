@@ -28,6 +28,10 @@ interface PendingBooking {
   student_name: string;
   student_id: string;
   created_at: string;
+  /** Course associated with this lesson. Null for legacy lessons. */
+  course_id?: string | null;
+  /** GCal event id — needed so groupConsecutiveBookings splits distinct lessons. */
+  gcal_event_id?: string | null;
 }
 
 function formatBookingDate(d: string): string {

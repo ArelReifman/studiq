@@ -415,6 +415,10 @@ export const bookingRoutes = new Hono()
         student_name: profiles.full_name,
         student_id: lessonBookings.student_id,
         course_id: lessonBookings.course_id,
+        // Needed client-side so groupConsecutiveBookings can keep distinct
+        // lessons apart even when they're back-to-back. All slots created in
+        // one teacher action share one id.
+        gcal_event_id: lessonBookings.gcal_event_id,
       })
       .from(lessonBookings)
       .innerJoin(profiles, eq(profiles.id, lessonBookings.student_id))
@@ -794,7 +798,18 @@ export const bookingRoutes = new Hono()
           )
           .limit(1);
         if (!scCheck) {
-          return c.json({ error: "Course is not assigned to this student" }, 400);
+          // Legacy fallback: pre-`student_courses` data may have only the
+          // `students.primary_course_id` set. The UI already shows that course
+          // via the GET /students/:id fallback (apps/api/src/routes/students.ts).
+          // Accept it here so UI and backend agree, without inserting a row.
+          const [legacy] = await db
+            .select({ primary_course_id: students.primary_course_id })
+            .from(students)
+            .where(eq(students.id, student_id))
+            .limit(1);
+          if (legacy?.primary_course_id !== course_id) {
+            return c.json({ error: "Course is not assigned to this student" }, 400);
+          }
         }
         validatedCourseId = course_id;
       }
@@ -997,7 +1012,16 @@ export const bookingRoutes = new Hono()
           )
           .limit(1);
         if (!scCheck) {
-          return c.json({ error: "Course is not assigned to this student" }, 400);
+          // Legacy fallback: same logic as POST — accept the course if it's
+          // the student's primary_course_id, since the UI already surfaces it.
+          const [legacy] = await db
+            .select({ primary_course_id: students.primary_course_id })
+            .from(students)
+            .where(eq(students.id, studentId0))
+            .limit(1);
+          if (legacy?.primary_course_id !== course_id) {
+            return c.json({ error: "Course is not assigned to this student" }, 400);
+          }
         }
         validatedCourseId = course_id;
       }
