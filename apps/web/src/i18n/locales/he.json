@@ -601,6 +601,7 @@
   "teacher.archiveCourseWarningBody": "לתלמיד/ה יש {count} שיעורים עתידיים בקורס זה. השיעורים האלה לא יבוטלו.",
   "teacher.archiveCourseProceed": "הסתרה בכל זאת",
   "teacher.archiveCourseSuccess": "הקורס הוסתר",
+  "teacher.allCoursesAssigned": "כל הקורסים שלך כבר משויכים לתלמיד/ה.",
 
   "nav.openMenu": "פתיחת תפריט",
   "nav.closeMenu": "סגירת תפריט",

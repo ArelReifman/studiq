@@ -660,22 +660,36 @@ export default function StudentDetailPage() {
                 <CheckCircle2 size={16} />
                 {t("teacher.addCourseSuccess")}
               </div>
-            ) : (
+            ) : (() => {
+              // Hide courses the student is already actively enrolled in. The
+              // student.courses list is server-filtered to is_active = true,
+              // so previously-archived courses stay in availableCourses and
+              // can be re-added (the backend re-activates them in place).
+              const activeIds = new Set((student?.courses ?? []).map((c) => c.id));
+              const availableCourses = allCourses.filter((c) => !activeIds.has(c.id));
+              const noneAvailable = availableCourses.length === 0;
+              return (
               <div className="space-y-4">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">
                     {t("teacher.selectCourse")}
                   </label>
-                  <select
-                    value={selectedCourseId}
-                    onChange={(e) => { setSelectedCourseId(e.target.value); setAddCourseError(null); }}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  >
-                    <option value="">{t("teacher.selectCourse")}</option>
-                    {allCourses.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
+                  {noneAvailable ? (
+                    <p className="text-xs text-gray-500 px-3 py-2 bg-gray-50 rounded-lg">
+                      {t("teacher.allCoursesAssigned")}
+                    </p>
+                  ) : (
+                    <select
+                      value={selectedCourseId}
+                      onChange={(e) => { setSelectedCourseId(e.target.value); setAddCourseError(null); }}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    >
+                      <option value="">{t("teacher.selectCourse")}</option>
+                      {availableCourses.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 {addCourseError && (
                   <p className="text-xs text-red-500">{addCourseError}</p>
@@ -690,13 +704,14 @@ export default function StudentDetailPage() {
                   </button>
                   <Button
                     onClick={() => selectedCourseId && addCourse.mutate(selectedCourseId)}
-                    disabled={!selectedCourseId || addCourse.isPending}
+                    disabled={!selectedCourseId || addCourse.isPending || noneAvailable}
                   >
                     {addCourse.isPending ? "..." : t("teacher.addCourse")}
                   </Button>
                 </div>
               </div>
-            )}
+              );
+            })()}
           </div>
         </div>
       )}
