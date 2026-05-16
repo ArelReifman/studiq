@@ -80,6 +80,38 @@ export default function CourseDetailPage() {
     },
   });
 
+  // ── swap two topics' order_index ──────────────────────────────────────────
+  // moveParent / moveChild previously called patchTopic.mutate() twice in a
+  // row. TanStack Query only fires onSuccess for the *last* mutate() call on a
+  // given useMutation instance — if the second PATCH returned before the first,
+  // the cache was invalidated with only one of the two updates applied, and the
+  // first update silently had no callback, leaving the UI stuck in the wrong
+  // order until a full page refresh.
+  //
+  // Using a single mutation that wraps both PATCHes in Promise.all guarantees:
+  //   • Both requests are sent in parallel.
+  //   • onSuccess fires exactly once after *both* have completed.
+  //   • Cache is invalidated only when the full swap is consistent.
+  const swapTopics = useMutation({
+    mutationFn: (args: {
+      a: { id: string; order_index: number };
+      b: { id: string; order_index: number };
+    }) =>
+      Promise.all([
+        api.patch(`/courses/${courseId}/topics/${args.a.id}`, {
+          order_index: args.b.order_index,
+        }),
+        api.patch(`/courses/${courseId}/topics/${args.b.id}`, {
+          order_index: args.a.order_index,
+        }),
+      ]),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["courses", courseId] });
+      qc.invalidateQueries({ queryKey: ["lessons"] });
+      qc.invalidateQueries({ queryKey: ["learning-map"] });
+    },
+  });
+
   const deleteTopic = useMutation({
     mutationFn: (topicId: string) =>
       api.delete(`/courses/${courseId}/topics/${topicId}`),
@@ -123,10 +155,6 @@ export default function CourseDetailPage() {
   function addChildFor(parentId: string, childCount: number) {
     const name = newChild[parentId]?.trim();
     if (!name) return;
-    patchTopic.mutate(
-      { id: "_noop_", body: {} },
-      { onError: () => {} }   // dummy — real call below
-    );
     api
       .post(`/courses/${courseId}/topics`, {
         name,
@@ -144,20 +172,14 @@ export default function CourseDetailPage() {
   function moveParent(idx: number, dir: -1 | 1) {
     const target = idx + dir;
     if (target < 0 || target >= tree.length) return;
-    const a = tree[idx]!, b = tree[target]!;
-    patchTopic.mutate({ id: a.id, body: { order_index: b.order_index } });
-    patchTopic.mutate({ id: b.id, body: { order_index: a.order_index } });
+    swapTopics.mutate({ a: tree[idx]!, b: tree[target]! });
   }
 
   // ── reorder children inside a single parent ──────────────────────────────
-  // Same swap-by-order_index trick as moveParent — keeps the rest of the
-  // tree untouched and works for arbitrary sub-topic counts.
   function moveChild(parent: TopicTree, idx: number, dir: -1 | 1) {
     const target = idx + dir;
     if (target < 0 || target >= parent.children.length) return;
-    const a = parent.children[idx]!, b = parent.children[target]!;
-    patchTopic.mutate({ id: a.id, body: { order_index: b.order_index } });
-    patchTopic.mutate({ id: b.id, body: { order_index: a.order_index } });
+    swapTopics.mutate({ a: parent.children[idx]!, b: parent.children[target]! });
   }
 
   if (isLoading) return <div className="text-gray-400">{t("common.loading")}</div>;
