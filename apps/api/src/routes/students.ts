@@ -630,13 +630,25 @@ export const studentRoutes = new Hono()
       // student/course combination. "Future" = date >= Israel today; "active" =
       // status in approved / pending / cancel_requested.
       //
-      // futureCount reports LESSON GROUPS, not lesson_bookings rows. A 1-hour
-      // lesson is stored as 2 consecutive 30-min slots; a 1.5-hour lesson as
-      // 3; etc. Counting rows would tell the teacher "you have 3 future
-      // lessons" when really it's one 90-min lesson. We apply the same
-      // consecutive-slot grouping as booking-grouping.ts (frontend) and
-      // fix-gcal-events.ts (script): same date + same status + previous
-      // row's end_time === next row's start_time → same group.
+      // futureCount reports REAL LESSON GROUPS, not lesson_bookings rows.
+      // A 1-hour lesson is stored as 2 consecutive 30-min slots; a 1.5-hour
+      // lesson as 3; etc.
+      //
+      // Grouping rule (in priority order):
+      //   1. gcal_event_id is the authoritative group key — slots created
+      //      together always share one gcal_event_id (set atomically by
+      //      bookings.ts after the GCal event is created). This means
+      //      back-to-back lessons (e.g. 10:00-11:00 and 11:00-12:00) with
+      //      DIFFERENT gcal_event_ids are correctly counted as TWO lessons
+      //      even though their times are consecutive.
+      //   2. NULL gcal_event_id (rare — gcal creation failed at the time, or
+      //      a very old booking pre-dates that field) falls back to the
+      //      consecutive-slot rule: same date + same status + previous
+      //      end_time === current start_time → same lesson.
+      //
+      // A gcal-tagged slot ALWAYS breaks any synthetic (null-gcal) chain,
+      // so a slot with gcal_event_id cannot be merged with a null-gcal
+      // neighbour. This is the safe direction (over-warn, never under-warn).
       if (!force) {
         const today = getIsraelToday();
         const futureSlots = await db
@@ -645,6 +657,7 @@ export const studentRoutes = new Hono()
             start_time: lessonBookings.start_time,
             end_time: lessonBookings.end_time,
             status: lessonBookings.status,
+            gcal_event_id: lessonBookings.gcal_event_id,
           })
           .from(lessonBookings)
           .where(
@@ -657,26 +670,44 @@ export const studentRoutes = new Hono()
           )
           .orderBy(lessonBookings.date, lessonBookings.start_time);
 
-        let groupCount = 0;
+        const groupKeys = new Set<string>();
         let lastDate: string | null = null;
         let lastEnd: string | null = null;
         let lastStatus: string | null = null;
+        let activeSyntheticKey: string | null = null;
+        let syntheticIdx = 0;
+
         for (const s of futureSlots) {
-          const isConsecutive =
-            s.date === lastDate &&
-            s.start_time === lastEnd &&
-            s.status === lastStatus;
-          if (!isConsecutive) groupCount++;
-          lastDate = s.date;
-          lastEnd = s.end_time;
-          lastStatus = s.status;
+          if (s.gcal_event_id) {
+            // Real lesson group — every slot of the same lesson shares this id.
+            groupKeys.add(`g:${s.gcal_event_id}`);
+            // A gcal-tagged slot breaks any in-flight synthetic chain so a
+            // null-gcal neighbour can never merge into it.
+            activeSyntheticKey = null;
+            lastDate = null;
+            lastEnd = null;
+            lastStatus = null;
+          } else {
+            const continuesChain =
+              activeSyntheticKey !== null &&
+              s.date === lastDate &&
+              s.start_time === lastEnd &&
+              s.status === lastStatus;
+            if (!continuesChain) {
+              activeSyntheticKey = `s:${syntheticIdx++}`;
+            }
+            groupKeys.add(activeSyntheticKey!);
+            lastDate = s.date;
+            lastEnd = s.end_time;
+            lastStatus = s.status;
+          }
         }
 
-        if (groupCount > 0) {
+        if (groupKeys.size > 0) {
           return c.json(
             {
               error: "Student has future active lessons for this course",
-              futureCount: groupCount,
+              futureCount: groupKeys.size,
             },
             409
           );
