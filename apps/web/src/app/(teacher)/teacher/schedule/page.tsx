@@ -549,14 +549,14 @@ export default function TeacherSchedulePage() {
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm text-gray-700">
+                      <span className="text-sm text-gray-500">
                         {formatDate(g.date, locale)}
-                      </span>
-                      <span className="font-mono text-sm font-semibold text-brand-700" dir="ltr">
-                        {g.start_time}–{g.end_time}
                       </span>
                       <span className="font-medium text-gray-800">
                         {g.student_name}
+                      </span>
+                      <span className="font-mono text-sm font-semibold text-brand-700" dir="ltr">
+                        {g.start_time}–{g.end_time}
                       </span>
                       {g.hours >= 1 && (
                         <span className="text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">
@@ -658,14 +658,14 @@ export default function TeacherSchedulePage() {
                     className="border border-gray-100 rounded-lg p-3 opacity-55"
                   >
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm text-gray-600">
+                      <span className="text-sm text-gray-500">
                         {formatDate(g.date, locale)}
-                      </span>
-                      <span className="font-mono text-sm text-gray-600" dir="ltr">
-                        {g.start_time}–{g.end_time}
                       </span>
                       <span className="text-sm text-gray-600">
                         {g.student_name}
+                      </span>
+                      <span className="font-mono text-sm text-gray-600" dir="ltr">
+                        {g.start_time}–{g.end_time}
                       </span>
                       {g.hours >= 1 && (
                         <span className="text-xs text-gray-400">
@@ -707,16 +707,16 @@ export default function TeacherSchedulePage() {
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-3 flex-wrap">
-                      <span className="font-mono text-sm text-gray-700">
+                      <span className="text-sm text-gray-500">
                         {formatDate(g.date, locale)}
-                      </span>
-                      <span className="font-mono text-sm font-semibold text-gray-700">
-                        {g.start_time}–{g.end_time}
                       </span>
                       <span className="font-medium text-gray-800">
                         {g.student_name}
                       </span>
-                      {g.hours > 1 && (
+                      <span className="font-mono text-sm font-semibold text-gray-700" dir="ltr">
+                        {g.start_time}–{g.end_time}
+                      </span>
+                      {g.hours >= 1 && (
                         <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">
                           {formatDurationI18n(g.hours, t)}
                         </span>
