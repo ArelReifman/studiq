@@ -549,11 +549,11 @@ export default function TeacherSchedulePage() {
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-gray-800">
-                        {g.student_name}
-                      </span>
                       <span className="text-sm text-gray-500">
                         {formatDate(g.date, locale)}
+                      </span>
+                      <span className="font-medium text-gray-800">
+                        {g.student_name}
                       </span>
                       <span className="font-mono text-sm font-semibold text-brand-700" dir="ltr">
                         {g.start_time}–{g.end_time}
@@ -658,11 +658,11 @@ export default function TeacherSchedulePage() {
                     className="border border-gray-100 rounded-lg p-3 opacity-55"
                   >
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm text-gray-600">
-                        {g.student_name}
-                      </span>
                       <span className="text-sm text-gray-500">
                         {formatDate(g.date, locale)}
+                      </span>
+                      <span className="text-sm text-gray-600">
+                        {g.student_name}
                       </span>
                       <span className="font-mono text-sm text-gray-600" dir="ltr">
                         {g.start_time}–{g.end_time}
@@ -707,11 +707,11 @@ export default function TeacherSchedulePage() {
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-3 flex-wrap">
-                      <span className="font-medium text-gray-800">
-                        {g.student_name}
-                      </span>
                       <span className="text-sm text-gray-500">
                         {formatDate(g.date, locale)}
+                      </span>
+                      <span className="font-medium text-gray-800">
+                        {g.student_name}
                       </span>
                       <span className="font-mono text-sm font-semibold text-gray-700" dir="ltr">
                         {g.start_time}–{g.end_time}
