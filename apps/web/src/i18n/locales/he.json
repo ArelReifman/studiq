@@ -609,5 +609,9 @@
 
   "error.generateReport": "יצירת הדוח נכשלה",
   "error.markReviewed": "הפעולה נכשלה",
-  "error.updateProfile": "עדכון הפרופיל נכשל"
+  "error.updateProfile": "עדכון הפרופיל נכשל",
+
+  "teacher.conflictingTeacherBooking": "יש לך שיעור אחר בשעה הזו",
+  "teacher.conflictingStudentBooking": "לתלמיד יש שיעור אחר בשעה הזו",
+  "teacher.courseNotAssigned": "הקורס אינו משויך לתלמיד זה"
 }

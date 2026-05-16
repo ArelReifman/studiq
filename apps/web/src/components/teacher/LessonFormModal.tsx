@@ -316,6 +316,20 @@ export function LessonFormModal({
     initialStudentName ??
     students.find((s) => s.id === studentId)?.full_name;
 
+  // ── Booking error → i18n mapper ─────────────────────────────────────────────
+  // The backend returns raw English strings. Map known messages to i18n keys so
+  // the UI always displays localised text. Unmapped messages fall back to the
+  // raw string (safe: better than swallowing the error entirely).
+  function mapBookingError(msg: string): string {
+    if (msg.includes("Teacher has a conflicting booking"))
+      return t("teacher.conflictingTeacherBooking");
+    if (msg.includes("Student has a conflicting booking"))
+      return t("teacher.conflictingStudentBooking");
+    if (msg.includes("Course is not assigned to this student"))
+      return t("teacher.courseNotAssigned");
+    return msg;
+  }
+
   // ── mutations ───────────────────────────────────────────────────────────────
   const createMutation = useMutation({
     mutationFn: () =>
@@ -332,7 +346,7 @@ export function LessonFormModal({
       onSuccess();
       onClose();
     },
-    onError: (e: Error) => setFormError(e.message),
+    onError: (e: Error) => setFormError(mapBookingError(e.message)),
   });
 
   const editMutation = useMutation({
@@ -350,7 +364,7 @@ export function LessonFormModal({
       onSuccess();
       onClose();
     },
-    onError: (e: Error) => setFormError(e.message),
+    onError: (e: Error) => setFormError(mapBookingError(e.message)),
   });
 
   const isPending = createMutation.isPending || editMutation.isPending;

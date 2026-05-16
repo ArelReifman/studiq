@@ -609,5 +609,9 @@
 
   "error.generateReport": "Failed to generate report",
   "error.markReviewed": "Action failed",
-  "error.updateProfile": "Failed to update profile"
+  "error.updateProfile": "Failed to update profile",
+
+  "teacher.conflictingTeacherBooking": "You already have a lesson scheduled at this time",
+  "teacher.conflictingStudentBooking": "This student already has a lesson at this time",
+  "teacher.courseNotAssigned": "This course is not assigned to this student"
 }
