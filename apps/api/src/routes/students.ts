@@ -629,10 +629,23 @@ export const studentRoutes = new Hono()
       // Unless force=true, block if there are upcoming active lessons for this
       // student/course combination. "Future" = date >= Israel today; "active" =
       // status in approved / pending / cancel_requested.
+      //
+      // futureCount reports LESSON GROUPS, not lesson_bookings rows. A 1-hour
+      // lesson is stored as 2 consecutive 30-min slots; a 1.5-hour lesson as
+      // 3; etc. Counting rows would tell the teacher "you have 3 future
+      // lessons" when really it's one 90-min lesson. We apply the same
+      // consecutive-slot grouping as booking-grouping.ts (frontend) and
+      // fix-gcal-events.ts (script): same date + same status + previous
+      // row's end_time === next row's start_time → same group.
       if (!force) {
         const today = getIsraelToday();
-        const futureBookings = await db
-          .select({ id: lessonBookings.id })
+        const futureSlots = await db
+          .select({
+            date: lessonBookings.date,
+            start_time: lessonBookings.start_time,
+            end_time: lessonBookings.end_time,
+            status: lessonBookings.status,
+          })
           .from(lessonBookings)
           .where(
             and(
@@ -641,12 +654,29 @@ export const studentRoutes = new Hono()
               gte(lessonBookings.date, today),
               inArray(lessonBookings.status, ["approved", "pending", "cancel_requested"])
             )
-          );
-        if (futureBookings.length > 0) {
+          )
+          .orderBy(lessonBookings.date, lessonBookings.start_time);
+
+        let groupCount = 0;
+        let lastDate: string | null = null;
+        let lastEnd: string | null = null;
+        let lastStatus: string | null = null;
+        for (const s of futureSlots) {
+          const isConsecutive =
+            s.date === lastDate &&
+            s.start_time === lastEnd &&
+            s.status === lastStatus;
+          if (!isConsecutive) groupCount++;
+          lastDate = s.date;
+          lastEnd = s.end_time;
+          lastStatus = s.status;
+        }
+
+        if (groupCount > 0) {
           return c.json(
             {
               error: "Student has future active lessons for this course",
-              futureCount: futureBookings.length,
+              futureCount: groupCount,
             },
             409
           );
