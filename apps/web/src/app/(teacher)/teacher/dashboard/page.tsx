@@ -37,6 +37,10 @@ interface BookingRow {
   created_at: string;
   student_name: string;
   student_id: string;
+  /** Course associated with this lesson. Null for legacy lessons. */
+  course_id?: string | null;
+  /** GCal event id — needed so groupConsecutiveBookings splits distinct lessons. */
+  gcal_event_id?: string | null;
 }
 
 interface HomeworkSubmission {

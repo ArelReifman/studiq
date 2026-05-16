@@ -415,6 +415,10 @@ export const bookingRoutes = new Hono()
         student_name: profiles.full_name,
         student_id: lessonBookings.student_id,
         course_id: lessonBookings.course_id,
+        // Needed client-side so groupConsecutiveBookings can keep distinct
+        // lessons apart even when they're back-to-back. All slots created in
+        // one teacher action share one id.
+        gcal_event_id: lessonBookings.gcal_event_id,
       })
       .from(lessonBookings)
       .innerJoin(profiles, eq(profiles.id, lessonBookings.student_id))

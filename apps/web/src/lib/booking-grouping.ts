@@ -68,6 +68,16 @@ export interface BookingLike {
   created_at: string;
   /** Course this lesson is associated with. Null for legacy lessons. */
   course_id?: string | null;
+  /**
+   * Google Calendar event id. All slots created by a single teacher action
+   * share one gcal_event_id; two back-to-back lessons created separately have
+   * different ids. Used as the primary group key so distinct lessons never
+   * collapse into one row (which would also hide the correct course_id and
+   * produce non-standard durations like "3.5h").
+   * Null on legacy lessons or before GCal sync; grouping falls back to
+   * (student_id + date + consecutive-time + course_id) in that case.
+   */
+  gcal_event_id?: string | null;
 }
 
 export interface BookingGroup<T extends BookingLike = BookingLike> {
@@ -92,6 +102,8 @@ export interface BookingGroup<T extends BookingLike = BookingLike> {
   hours: number;
   /** Course this lesson group is associated with. Null for legacy lessons. */
   course_id?: string | null;
+  /** GCal event id shared by every slot in this group. Null for legacy. */
+  gcal_event_id?: string | null;
 }
 
 export function groupConsecutiveBookings<T extends BookingLike>(
@@ -106,12 +118,21 @@ export function groupConsecutiveBookings<T extends BookingLike>(
   const groups: BookingGroup<T>[] = [];
   for (const b of sorted) {
     const last = groups[groups.length - 1];
+    // Two slots are part of the same lesson only when:
+    //   - same student + same date + same status + back-to-back times AND
+    //   - same gcal_event_id (or both null — legacy) AND
+    //   - same course_id (or both null — legacy)
+    // The gcal/course gates prevent two distinct lessons (e.g., Math 10–11
+    // then Algebra 11–12) from collapsing into one "3.5h" row whose course_id
+    // would silently reflect only the first slot.
     const isConsecutive =
       !!last &&
       last.student_id === b.student_id &&
       last.date === b.date &&
       last.end_time === b.start_time &&
-      last.status === b.status;
+      last.status === b.status &&
+      (last.gcal_event_id ?? null) === (b.gcal_event_id ?? null) &&
+      (last.course_id ?? null) === (b.course_id ?? null);
 
     if (isConsecutive) {
       last.ids.push(b.id);
@@ -122,7 +143,10 @@ export function groupConsecutiveBookings<T extends BookingLike>(
       if (b.teacher_note) last.teacher_note = b.teacher_note;
     } else {
       groups.push({
-        key: `${b.student_id}|${b.date}|${b.start_time}|${b.status}`,
+        // gcal_event_id is appended (when present) so two same-time-same-student
+        // groups get unique React keys even before the consecutive check splits
+        // them (defensive — gcal_event_id is already in the consecutive check).
+        key: `${b.student_id}|${b.date}|${b.start_time}|${b.status}|${b.gcal_event_id ?? ""}`,
         ids: [b.id],
         student_id: b.student_id,
         student_name: b.student_name,
@@ -135,6 +159,7 @@ export function groupConsecutiveBookings<T extends BookingLike>(
         bookings: [b],
         hours: (timeToMin(b.end_time) - timeToMin(b.start_time)) / 60,
         course_id: b.course_id ?? null,
+        gcal_event_id: b.gcal_event_id ?? null,
       });
     }
   }
