@@ -287,6 +287,29 @@ export function LessonFormModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentCourses]);
 
+  // ── Archived-course detection (edit mode) ───────────────────────────────────
+  // If a future lesson references a course that was archived after it was
+  // scheduled, the active-courses list won't contain that course_id. Without
+  // intervention, the picker stays hidden (or auto-picks the only active
+  // course) and the silently-carried archived course_id would flow through to
+  // the PATCH unchanged. Force a re-selection instead.
+  const originalCourseId = existingGroup?.course_id ?? null;
+  const courseListLoaded = studentDetail !== undefined;
+  const originalCourseIsArchived =
+    isEdit &&
+    !!originalCourseId &&
+    courseListLoaded &&
+    !studentCourses.some((c) => c.id === originalCourseId);
+
+  // Clear the stale archived course_id from form state once we know the list.
+  // Runs at most once per modal open — `courseListLoaded` flips false→true.
+  useEffect(() => {
+    if (originalCourseIsArchived) {
+      setCourseId("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [originalCourseIsArchived]);
+
   // Resolved display name — either from the students list or from the prop.
   const fixedStudentName =
     existingGroup?.student_name ??
@@ -368,6 +391,12 @@ export function LessonFormModal({
     // allowed to proceed without a course_id.
     if (studentCourses.length >= 2 && !courseId) {
       setFormError(t("teacher.courseRequired"));
+      return;
+    }
+    // If the lesson's original course was archived, force the teacher to pick
+    // an active one — do not silently carry the archived id forward.
+    if (originalCourseIsArchived && !courseId) {
+      setFormError(t("teacher.courseArchivedReselect"));
       return;
     }
 
@@ -453,14 +482,21 @@ export function LessonFormModal({
             )}
           </div>
 
-          {/* Course picker — visible only when the student has ≥2 enrolled
-              courses. Single-course students are auto-selected silently.
+          {/* Course picker — visible when:
+              - student has ≥2 enrolled active courses, OR
+              - the lesson's original course was archived (force re-select)
+              Single-active-course students are auto-selected silently.
               Students with no courses skip this field entirely. */}
-          {studentCourses.length >= 2 && (
+          {(studentCourses.length >= 2 || originalCourseIsArchived) && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
                 {t("teacher.courseLabel")}
               </label>
+              {originalCourseIsArchived && (
+                <p className="mb-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  {t("teacher.courseArchivedReselect")}
+                </p>
+              )}
               <select
                 value={courseId}
                 onChange={(e) => setCourseId(e.target.value)}

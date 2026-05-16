@@ -10,6 +10,7 @@ import { Calendar, TimeSlotGrid, type TimeSlot } from "@/components/calendar/cal
 import { Plus, CalendarCheck, MessageSquare, X, CalendarDays, CheckCircle2, AlertCircle, Pencil } from "lucide-react";
 import { groupConsecutiveBookings, formatDurationI18n, type BookingGroup } from "@/lib/booking-grouping";
 import { LessonFormModal, type EditableGroup } from "@/components/teacher/LessonFormModal";
+import { getIsraelToday } from "@/lib/time";
 
 interface Slot extends TimeSlot {
   date: string;
@@ -116,7 +117,9 @@ export default function TeacherSchedulePage() {
     queryFn: () => api.get("/bookings/requests"),
   });
 
-  const today = new Date().toISOString().split("T")[0]!;
+  // Israel-local date — bookings.date is stored in IL tz, so comparing against
+  // UTC's "today" misclassifies upcoming vs past at night (~22:00–02:00 UTC).
+  const today = getIsraelToday();
 
   // Approved + cancel-requested both still occupy the slot; show both in the
   // upcoming list so the teacher sees a lesson that's pending cancellation.

@@ -581,6 +581,7 @@
   "teacher.courseLabel": "קורס",
   "teacher.coursePlaceholder": "בחר קורס",
   "teacher.courseRequired": "יש לבחור קורס לפני שמירת השיעור",
+  "teacher.courseArchivedReselect": "הקורס המקורי של השיעור הזה בוטל. יש לבחור קורס פעיל לפני השמירה.",
   "teacher.selectTime": "בחר/י שעה",
   "teacher.duration60": "שעה",
   "teacher.duration90": "שעה וחצי",
