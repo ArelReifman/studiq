@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate, formatPercent } from "@/lib/utils";
 import type { LessonSession, DifficultyReport, StudentAiProfile, StudentReport } from "@studiq/types";
-import { ArrowLeft, AlertTriangle, Sparkles, Trash2, MessageSquare, Map, ClipboardCheck, RotateCw, ArrowUp, CheckCircle2, ExternalLink, Check, FileBarChart2, BookPlus } from "lucide-react";
+import { ArrowLeft, AlertTriangle, Sparkles, Trash2, MessageSquare, Map, ClipboardCheck, RotateCw, ArrowUp, CheckCircle2, ExternalLink, Check, FileBarChart2, BookPlus, Archive } from "lucide-react";
+import { useAuthStore } from "@/store/auth";
 import { useT } from "@/i18n";
 import { CreateLessonModal } from "@/components/teacher/create-lesson-modal";
 import { LessonFormModal } from "@/components/teacher/LessonFormModal";
@@ -26,6 +27,9 @@ interface StudentDetail {
   background_note: string | null;
   next_session_briefing: string | null;
   primary_course_id: string | null;
+  // Active courses returned by the API (already filtered server-side to
+  // is_active = true). Drives the active-courses card + archive flow.
+  courses: { id: string; name: string }[];
 }
 
 interface Course {
@@ -44,6 +48,15 @@ export default function StudentDetailPage() {
   const [addCourseError, setAddCourseError] = useState<string | null>(null);
   const [addCourseSuccess, setAddCourseSuccess] = useState(false);
   const [selectedCourseId, setSelectedCourseId] = useState("");
+
+  // Archive course flow state. Two-step:
+  //   1. archiveTarget set, archiveFutureCount === null → initial confirmation
+  //   2. 409 with futureCount → archiveFutureCount populated → "archive anyway"
+  // Cancelling resets all three.
+  const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string } | null>(null);
+  const [archiveFutureCount, setArchiveFutureCount] = useState<number | null>(null);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+  const [archiveSuccess, setArchiveSuccess] = useState(false);
 
   const { data: student } = useQuery<StudentDetail>({
     queryKey: ["students", id],
@@ -96,6 +109,69 @@ export default function StudentDetailPage() {
       } else {
         setAddCourseError(msg || t("error.updateProfile"));
       }
+    },
+  });
+
+  // Archive (soft-disable) a course for this student.
+  // Uses raw fetch (not the shared api client) because we need to read the
+  // structured 409 body — specifically `futureCount` — which the shared
+  // client's error helper folds into a plain Error.message and loses.
+  const archiveCourse = useMutation({
+    mutationFn: async ({ courseId, force }: { courseId: string; force: boolean }) => {
+      const token = useAuthStore.getState().token;
+      const apiUrl = process.env["NEXT_PUBLIC_API_URL"] ?? "/api";
+      const qs = force ? "?force=true" : "";
+      const res = await fetch(
+        `${apiUrl}/students/${id}/courses/${courseId}/archive${qs}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          credentials: "include",
+        }
+      );
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        futureCount?: number;
+      };
+      if (!res.ok) {
+        const err = new Error(body.error ?? `HTTP ${res.status}`) as Error & {
+          status?: number;
+          futureCount?: number;
+        };
+        err.status = res.status;
+        if (typeof body.futureCount === "number") err.futureCount = body.futureCount;
+        throw err;
+      }
+      return body;
+    },
+    onSuccess: () => {
+      // Refetch the student so the archived course drops out of the active
+      // list everywhere on the page — including LessonFormModal's picker
+      // (which keys off the same query).
+      qc.invalidateQueries({ queryKey: ["students", id] });
+      setArchiveSuccess(true);
+      setArchiveFutureCount(null);
+      setArchiveError(null);
+      // Close after a short success indicator (mirrors addCourse UX).
+      setTimeout(() => {
+        setArchiveTarget(null);
+        setArchiveSuccess(false);
+      }, 1500);
+    },
+    onError: (err) => {
+      const e = err as Error & { status?: number; futureCount?: number };
+      // 409 + futureCount → switch the dialog into "archive anyway" state.
+      // The teacher must re-confirm before we retry with force=true.
+      if (e.status === 409 && typeof e.futureCount === "number") {
+        setArchiveFutureCount(e.futureCount);
+        setArchiveError(null);
+        return;
+      }
+      setArchiveError(e.message || t("error.updateProfile"));
     },
   });
 
@@ -267,6 +343,48 @@ export default function StudentDetailPage() {
               studentId={id}
               initialBackground={student?.background_note ?? null}
             />
+          </div>
+
+          {/* Active courses — soft-archivable per-student enrollment list.
+              Archived courses (is_active = false) are excluded server-side and
+              not shown here. Re-adding the same course via the "Add course"
+              dialog reactivates it. */}
+          <div className="mt-4">
+            <Card>
+              <h2 className="font-semibold mb-3 text-sm text-gray-600">
+                {t("teacher.activeCourses")}
+              </h2>
+              {(student?.courses?.length ?? 0) === 0 ? (
+                <p className="text-gray-400 text-sm">{t("teacher.noCourses")}</p>
+              ) : (
+                <ul className="space-y-1">
+                  {student?.courses?.map((c) => (
+                    <li
+                      key={c.id}
+                      className="flex items-center justify-between gap-2 py-1.5"
+                    >
+                      <span className="text-sm text-gray-700 truncate min-w-0 flex-1">
+                        {c.name}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setArchiveTarget({ id: c.id, name: c.name });
+                          setArchiveFutureCount(null);
+                          setArchiveError(null);
+                          setArchiveSuccess(false);
+                        }}
+                        aria-label={t("teacher.archiveCourse")}
+                        title={t("teacher.archiveCourse")}
+                        className="text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-md p-1.5 transition-colors flex-shrink-0"
+                      >
+                        <Archive size={14} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
           </div>
         </div>
 
@@ -578,6 +696,102 @@ export default function StudentDetailPage() {
                   </Button>
                 </div>
               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Archive course confirmation dialog.
+          Two visual states:
+            • Initial — shows the course name + an optional "last active
+              course" warning when student.courses.length === 1.
+            • Future-lessons warning — entered after the backend returns
+              409 + futureCount. The teacher must explicitly confirm; the
+              retry sends ?force=true. */}
+      {archiveTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            {archiveSuccess ? (
+              <div className="flex items-center gap-2 text-emerald-600 text-sm py-4 justify-center">
+                <CheckCircle2 size={16} />
+                {t("teacher.archiveCourseSuccess")}
+              </div>
+            ) : (
+              <>
+                <h2 className="font-semibold text-base mb-1">
+                  {t("teacher.archiveCourseConfirmTitle")}
+                </h2>
+                <p className="text-sm text-gray-600 mb-3 break-words">
+                  {archiveTarget.name}
+                </p>
+
+                {/* Last-active-course warning — shown only on the initial
+                    confirmation, not after the future-lessons step (the
+                    future-lessons message takes priority). */}
+                {archiveFutureCount === null &&
+                  (student?.courses?.length ?? 0) === 1 && (
+                    <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
+                      <AlertTriangle
+                        size={14}
+                        className="text-amber-600 mt-0.5 flex-shrink-0"
+                      />
+                      <p className="text-xs text-amber-800">
+                        {t("teacher.archiveCourseLastWarning")}
+                      </p>
+                    </div>
+                  )}
+
+                {/* Future-lessons warning — populated from the 409 response. */}
+                {archiveFutureCount !== null && (
+                  <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
+                    <AlertTriangle
+                      size={14}
+                      className="text-amber-600 mt-0.5 flex-shrink-0"
+                    />
+                    <p className="text-xs text-amber-800">
+                      {t("teacher.archiveCourseWarningBody", {
+                        count: archiveFutureCount,
+                      })}
+                    </p>
+                  </div>
+                )}
+
+                {archiveError && (
+                  <p className="text-xs text-red-500 mb-3">{archiveError}</p>
+                )}
+
+                <div className="flex flex-wrap gap-2 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setArchiveTarget(null);
+                      setArchiveFutureCount(null);
+                      setArchiveError(null);
+                    }}
+                    disabled={archiveCourse.isPending}
+                    className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg border border-gray-200 transition-colors disabled:opacity-50"
+                  >
+                    {t("common.cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      archiveCourse.mutate({
+                        courseId: archiveTarget.id,
+                        force: archiveFutureCount !== null,
+                      })
+                    }
+                    disabled={archiveCourse.isPending}
+                    className="px-4 py-2 text-sm rounded-lg bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-50 transition-colors"
+                  >
+                    {archiveCourse.isPending
+                      ? "..."
+                      : archiveFutureCount !== null
+                      ? t("teacher.archiveCourseProceed")
+                      : t("teacher.archiveCourse")}
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </div>
