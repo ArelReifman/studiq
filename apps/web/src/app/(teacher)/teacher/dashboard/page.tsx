@@ -278,13 +278,16 @@ export default function TeacherDashboard() {
           {todayGroups.length === 0 ? (
             <p className="text-xs text-gray-400">{t("teacher.noTodayLessons")}</p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {todayGroups.map((g) => (
                 <div
                   key={g.key}
-                  className="flex items-center gap-3"
+                  className="flex items-center gap-2 rounded-lg border border-gray-100 px-2.5 py-1.5"
                 >
-                  <span className="font-mono text-xs text-gray-500 flex-shrink-0 w-24" dir="ltr">
+                  <span
+                    className="font-mono text-xs font-semibold text-brand-700 bg-brand-50 px-1.5 py-0.5 rounded flex-shrink-0"
+                    dir="ltr"
+                  >
                     {formatTime(g.start_time)}–{formatTime(g.end_time)}
                   </span>
                   <span className="text-sm font-medium text-gray-800 truncate flex-1">
@@ -319,10 +322,13 @@ export default function TeacherDashboard() {
               {t("teacher.noTomorrowLessons")}
             </p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {tomorrowGroups.map((g) => (
-                <div key={g.key} className="flex items-center gap-3">
-                  <span className="font-mono text-xs text-gray-500 flex-shrink-0 w-24" dir="ltr">
+                <div key={g.key} className="flex items-center gap-2 rounded-lg border border-gray-100 px-2.5 py-1.5">
+                  <span
+                    className="font-mono text-xs font-semibold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded flex-shrink-0"
+                    dir="ltr"
+                  >
                     {formatTime(g.start_time)}–{formatTime(g.end_time)}
                   </span>
                   <span className="text-sm font-medium text-gray-800 truncate flex-1">
