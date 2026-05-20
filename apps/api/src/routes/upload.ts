@@ -3,36 +3,115 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq, and } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { homeworkItems, lessonSessions, profiles } from "../db/schema.js";
+import { courses, homeworkItems, lessonSessions, profiles } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { createAdminSupabase } from "../lib/supabase.js";
 import { uuidParamSchema } from "../lib/validators.js";
 import { notifyTelegram, escapeTelegramHtml } from "../lib/notify.js";
 
 // Fire-and-forget Telegram ping when a student attaches a homework file.
-// Looks up the student name + item title so the teacher can see at a glance
-// what was submitted, then links to the submission file.
+// contentType is optional — when not passed (e.g. the signed-URL confirm flow),
+// isPdf falls back to checking the file extension.
 async function notifyHomeworkSubmission(
   studentId: string,
   itemId: string,
   fileUrl: string,
-  fileName: string
+  fileName: string,
+  contentType = ""
 ): Promise<void> {
-  const [studentRow] = await db
-    .select({ name: profiles.full_name })
-    .from(profiles)
-    .where(eq(profiles.id, studentId))
-    .limit(1);
-  const [itemRow] = await db
-    .select({ title: homeworkItems.title })
+  const [row] = await db
+    .select({
+      studentName: profiles.full_name,
+      itemTitle: homeworkItems.title,
+      lessonTitle: lessonSessions.title,
+      courseName: courses.name,
+    })
     .from(homeworkItems)
+    .innerJoin(profiles, eq(profiles.id, homeworkItems.student_id))
+    .innerJoin(lessonSessions, eq(lessonSessions.id, homeworkItems.lesson_id))
+    .leftJoin(courses, eq(courses.id, lessonSessions.course_id))
     .where(eq(homeworkItems.id, itemId))
     .limit(1);
-  const studentName = studentRow?.name ?? "Student";
-  const itemTitle = itemRow?.title ?? "homework";
-  await notifyTelegram(
-    `📎 <b>Homework submitted</b>\n${escapeTelegramHtml(studentName)} · ${escapeTelegramHtml(itemTitle)}\n📄 <a href="${fileUrl}">${escapeTelegramHtml(fileName)}</a>`
+
+  const studentName = row?.studentName ?? "Student";
+  const itemTitle = row?.itemTitle ?? "homework";
+  const lessonTitle = row?.lessonTitle;
+  const courseName = row?.courseName;
+
+  const isPdf =
+    contentType === "application/pdf" ||
+    fileName.toLowerCase().endsWith(".pdf");
+
+  const submittedAt = new Date().toLocaleString("he-IL", {
+    timeZone: "Asia/Jerusalem",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const lines = [
+    `📎 <b>Homework submitted</b>`,
+    `👤 ${escapeTelegramHtml(studentName)}`,
+    `📝 ${escapeTelegramHtml(itemTitle)}`,
+  ];
+  if (lessonTitle) lines.push(`📚 ${escapeTelegramHtml(lessonTitle)}`);
+  if (courseName) lines.push(`🎓 ${escapeTelegramHtml(courseName)}`);
+  lines.push(
+    `${isPdf ? "📄 PDF" : "📎 File"}: <a href="${fileUrl}">${escapeTelegramHtml(fileName)}</a>`
   );
+  lines.push(`🕐 ${submittedAt}`);
+
+  await notifyTelegram(lines.join("\n"));
+}
+
+// Fire-and-forget Telegram ping when a student submits their lesson solution.
+async function notifyLessonSolutionSubmission(
+  studentId: string,
+  lessonId: string,
+  fileUrl: string,
+  fileName: string
+): Promise<void> {
+  const [row] = await db
+    .select({
+      studentName: profiles.full_name,
+      lessonTitle: lessonSessions.title,
+      courseName: courses.name,
+    })
+    .from(lessonSessions)
+    .innerJoin(profiles, eq(profiles.id, lessonSessions.student_id))
+    .leftJoin(courses, eq(courses.id, lessonSessions.course_id))
+    .where(eq(lessonSessions.id, lessonId))
+    .limit(1);
+
+  const studentName = row?.studentName ?? "Student";
+  const lessonTitle = row?.lessonTitle ?? "lesson";
+  const courseName = row?.courseName;
+
+  const isPdf = fileName.toLowerCase().endsWith(".pdf");
+
+  const submittedAt = new Date().toLocaleString("he-IL", {
+    timeZone: "Asia/Jerusalem",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const lines = [
+    `📤 <b>Solution submitted</b>`,
+    `👤 ${escapeTelegramHtml(studentName)}`,
+    `📚 ${escapeTelegramHtml(lessonTitle)}`,
+  ];
+  if (courseName) lines.push(`🎓 ${escapeTelegramHtml(courseName)}`);
+  lines.push(
+    `${isPdf ? "📄 PDF" : "📎 File"}: <a href="${fileUrl}">${escapeTelegramHtml(fileName)}</a>`
+  );
+  lines.push(`🕐 ${submittedAt}`);
+
+  await notifyTelegram(lines.join("\n"));
 }
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB (client-side limit; Supabase bucket is the actual gate)
@@ -143,7 +222,7 @@ export const uploadRoutes = new Hono()
 
       if (!updated) return c.json({ error: "Failed to update homework item" }, 500);
 
-      void notifyHomeworkSubmission(studentId, itemId, fileUrl, file.name);
+      void notifyHomeworkSubmission(studentId, itemId, fileUrl, file.name, file.type);
 
       return c.json({
         file_url: updated.file_url,
@@ -618,6 +697,8 @@ export const uploadRoutes = new Hono()
         .returning();
 
       if (!updated) return c.json({ error: "Failed to update lesson" }, 500);
+
+      void notifyLessonSolutionSubmission(studentId, lessonId, urlData.publicUrl, file_name);
 
       return c.json({
         student_solution_url: updated.student_solution_url,
