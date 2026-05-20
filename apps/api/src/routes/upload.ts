@@ -717,7 +717,10 @@ export const uploadRoutes = new Hono()
       const lessonId = c.req.valid("param").id;
 
       const [lesson] = await db
-        .select()
+        .select({
+          student_solution_url: lessonSessions.student_solution_url,
+          student_solution_name: lessonSessions.student_solution_name,
+        })
         .from(lessonSessions)
         .where(
           and(
