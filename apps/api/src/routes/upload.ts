@@ -19,6 +19,7 @@ async function notifyHomeworkSubmission(
   fileName: string,
   contentType = ""
 ): Promise<void> {
+  try {
   const [row] = await db
     .select({
       studentName: profiles.full_name,
@@ -64,6 +65,9 @@ async function notifyHomeworkSubmission(
   lines.push(`🕐 ${submittedAt}`);
 
   await notifyTelegram(lines.join("\n"));
+  } catch (err) {
+    console.warn("[notify] notifyHomeworkSubmission failed:", (err as Error).message);
+  }
 }
 
 // Fire-and-forget Telegram ping when a student submits their lesson solution.
@@ -73,6 +77,7 @@ async function notifyLessonSolutionSubmission(
   fileUrl: string,
   fileName: string
 ): Promise<void> {
+  try {
   const [row] = await db
     .select({
       studentName: profiles.full_name,
@@ -112,6 +117,9 @@ async function notifyLessonSolutionSubmission(
   lines.push(`🕐 ${submittedAt}`);
 
   await notifyTelegram(lines.join("\n"));
+  } catch (err) {
+    console.warn("[notify] notifyLessonSolutionSubmission failed:", (err as Error).message);
+  }
 }
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB (client-side limit; Supabase bucket is the actual gate)
