@@ -96,6 +96,9 @@ export default function StudentDetailPage() {
       setAddCourseSuccess(true);
       setAddCourseError(null);
       qc.invalidateQueries({ queryKey: ["students", id] });
+      // The map's course is derived from the student's assignments, so a new
+      // course can change what the map shows — refresh it too.
+      qc.invalidateQueries({ queryKey: ["learning-map"] });
       setTimeout(() => {
         setShowAddCourse(false);
         setAddCourseSuccess(false);
@@ -153,6 +156,8 @@ export default function StudentDetailPage() {
       // list everywhere on the page — including LessonFormModal's picker
       // (which keys off the same query).
       qc.invalidateQueries({ queryKey: ["students", id] });
+      // Archiving a course can change the map's derived course — refresh it.
+      qc.invalidateQueries({ queryKey: ["learning-map"] });
       setArchiveSuccess(true);
       setArchiveFutureCount(null);
       setArchiveError(null);

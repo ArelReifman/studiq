@@ -94,8 +94,8 @@ behaviour?
 | Lock / unlock topic | yes | toggle `is_locked` | invalidate `["learning-map"]` |
 | Edit course topics | yes | topic CRUD | invalidate `["learning-map"]` |
 | Change `exam_date` / override | yes (deadlines) | upsert override | invalidate `["learning-map"]` |
-| Add course to student | yes (map may switch course) | join-table insert | invalidate `["learning-map"]` *(gap — see §10)* |
-| Remove course from student | yes | join-table delete | invalidate `["learning-map"]` *(gap — see §10)* |
+| Add course to student | yes (map may switch course) | join-table insert | invalidate `["learning-map"]` |
+| Remove course from student | yes | archive (soft-disable) | invalidate `["learning-map"]` |
 | AI generate lesson | yes | persist `topic_id` + `course_id` | invalidate `["learning-map"]` *(not yet wired — see §10)* |
 | Schedule calendar booking | **no** | none | none — bookings never touch the map |
 
@@ -115,7 +115,7 @@ variant `["learning-map", "self"]` and the teacher variant
 | `components/student/task-item.tsx` | complete / fail task | ✅ |
 | `app/(teacher)/teacher/students/[id]/map/page.tsx` | lock/unlock, exam-date | ✅ |
 | `app/(teacher)/teacher/courses/[id]/page.tsx` | course topic edits | ✅ |
-| `app/(teacher)/teacher/students/[id]/page.tsx` | add / remove course | ❌ **gap** — only invalidates `["students", id]` |
+| `app/(teacher)/teacher/students/[id]/page.tsx` | add / remove course | ✅ |
 
 > **Rule:** any mutation that changes a lesson, task, topic, or course
 > assignment must call `qc.invalidateQueries({ queryKey: ["learning-map"] })`
@@ -210,10 +210,10 @@ where noted.
    optimistic update of the map (mirroring the lessons-list optimistic update)
    so the topic action flips instantly instead of after the refetch round-trip.
 
-2. **Invalidate `["learning-map"]` on add/remove student course.**
-   `app/(teacher)/teacher/students/[id]/page.tsx` currently invalidates only
-   `["students", id]`. Changing a student's course set can change the inferred
-   map course, leaving it stale. (Matrix gap in §4/§5.)
+2. ~~**Invalidate `["learning-map"]` on add/remove student course.**~~
+   **Done.** Both `addCourse` and `archiveCourse` in
+   `app/(teacher)/teacher/students/[id]/page.tsx` now invalidate
+   `["learning-map"]` in addition to `["students", id]`.
 
 3. **Backend duplicate prevention.** Make `POST /lessons/create` idempotent per
    `(student_id, topic_id)` for `active` lessons — return the existing one
