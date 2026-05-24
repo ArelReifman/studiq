@@ -21,16 +21,25 @@ import type {
 } from "@studiq/types";
 
 function computeStatus(s: {
+  lessons_total: number;
+  lessons_completed: number;
   tasks_total: number;
   tasks_completed: number;
   tasks_failed: number;
 }): TopicStatus {
-  if (s.tasks_total === 0) return "not_started";
-  if (s.tasks_failed > 0 && s.tasks_completed < s.tasks_total / 2)
-    return "struggling";
-  if (s.tasks_completed === s.tasks_total && s.tasks_failed === 0)
-    return "mastered";
-  return "in_progress";
+  // When there are tasks, status is driven by task completion.
+  if (s.tasks_total > 0) {
+    if (s.tasks_failed > 0 && s.tasks_completed < s.tasks_total / 2)
+      return "struggling";
+    if (s.tasks_completed === s.tasks_total && s.tasks_failed === 0)
+      return "mastered";
+    return "in_progress";
+  }
+  // No tasks — fall back to lesson completion.
+  if (s.lessons_total === 0) return "not_started";
+  if (s.lessons_completed === s.lessons_total) return "mastered";
+  if (s.lessons_completed > 0) return "in_progress";
+  return "not_started";
 }
 
 export const learningMapRoutes = new Hono()
@@ -235,9 +244,11 @@ export const learningMapRoutes = new Hono()
 
     // 6. Compute pct + status per topic
     for (const s of statsByTopic.values()) {
-      s.pct = s.tasks_total === 0
-        ? 0
-        : Math.round((s.tasks_completed / s.tasks_total) * 100);
+      s.pct = s.tasks_total > 0
+        ? Math.round((s.tasks_completed / s.tasks_total) * 100)
+        : s.lessons_total > 0
+        ? Math.round((s.lessons_completed / s.lessons_total) * 100)
+        : 0;
       s.status = computeStatus(s);
     }
 

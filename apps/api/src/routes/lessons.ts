@@ -430,6 +430,13 @@ export const lessonRoutes = new Hono()
             .set({ reviewed: true })
             .where(inArray(difficultyReports.source_id, sourceIds));
         }
+
+        // Mark the lesson itself as completed so learning-map progress
+        // can count it when tasks_total === 0 (lesson-only progress).
+        await db
+          .update(lessonSessions)
+          .set({ status: "completed", completed_at: new Date() })
+          .where(eq(lessonSessions.id, lessonId));
       }
 
       // Fire-and-forget: refresh student AI profile so the teacher's verdict
