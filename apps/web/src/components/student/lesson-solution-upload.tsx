@@ -30,6 +30,7 @@ export function LessonSolutionUpload({
   const t = useT();
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isRemoving = useRef(false);
 
   const upload = useMutation({
     mutationFn: (file: File) =>
@@ -49,6 +50,9 @@ export function LessonSolutionUpload({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["lessons", lessonId] });
       qc.invalidateQueries({ queryKey: ["lessons"] });
+    },
+    onSettled: () => {
+      isRemoving.current = false;
     },
   });
 
@@ -80,7 +84,11 @@ export function LessonSolutionUpload({
             {solutionName || t("student.yourSolution")}
           </a>
           <button
-            onClick={() => remove.mutate()}
+            onClick={() => {
+              if (isRemoving.current) return;
+              isRemoving.current = true;
+              remove.mutate();
+            }}
             disabled={remove.isPending}
             className="text-gray-400 hover:text-red-500 transition-colors flex-shrink-0 disabled:opacity-50"
             title={t("upload.remove")}
