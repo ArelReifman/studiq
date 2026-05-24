@@ -174,7 +174,10 @@ export const learningMapRoutes = new Hono()
           eq(lessonSessions.student_id, studentId),
           eq(lessonSessions.course_id, courseId)
         )
-      );
+      )
+      // Newest first so the first lesson we see per topic is the latest —
+      // used to populate latest_lesson_id for the "open lesson" action.
+      .orderBy(desc(lessonSessions.generated_at));
 
     const lessonIds = lessons.map((l) => l.id);
 
@@ -222,9 +225,14 @@ export const learningMapRoutes = new Hono()
 
     // Map lesson_id -> topic_id for task aggregation
     const lessonTopicMap = new Map<string, string | null>();
+    // topic_id -> latest lesson id. `lessons` is ordered newest-first, so the
+    // first lesson encountered for a topic is its most recent one.
+    const latestLessonByTopic = new Map<string, string>();
     for (const l of lessons) {
       lessonTopicMap.set(l.id, l.topic_id);
       if (!l.topic_id) continue;
+      if (!latestLessonByTopic.has(l.topic_id))
+        latestLessonByTopic.set(l.topic_id, l.id);
       const s = ensureStats(l.topic_id);
       s.lessons_total++;
       if (l.status === "completed") s.lessons_completed++;
@@ -295,6 +303,7 @@ export const learningMapRoutes = new Hono()
         prerequisite_topic_ids: t.prerequisite_topic_ids,
         locked,
         effective_deadline,
+        latest_lesson_id: latestLessonByTopic.get(t.id) ?? null,
         stats,
         children: [],
       };

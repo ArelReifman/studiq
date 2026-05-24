@@ -271,6 +271,10 @@ export interface LearningMapTopic {
   /** Effective deadline for this topic (topic.target_date ?? course.exam_date),
    *  or null if neither is set. ISO YYYY-MM-DD. */
   effective_deadline: string | null;
+  /** Most-recent lesson for this topic + student, or null if none exist.
+   *  Lets the Learning Map switch the topic action between "create lesson"
+   *  (none) and "open lesson" (navigate to this id). */
+  latest_lesson_id: string | null;
   stats: TopicStats;
   children: LearningMapTopic[];
 }

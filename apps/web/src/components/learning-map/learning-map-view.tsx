@@ -33,11 +33,17 @@ export function LearningMapView({
   role,
   map,
   onCreateLesson,
+  onOpenLesson,
   onToggleLock,
 }: {
   role: "teacher" | "student";
   map: LearningMap;
   onCreateLesson?: (topicId: string) => void;
+  /**
+   * Open an existing lesson by id. The parent page builds the role-correct
+   * URL (teacher vs student) and navigates.
+   */
+  onOpenLesson?: (lessonId: string) => void;
   /**
    * Teacher-only: toggle the manual lock flag on a topic. The server is
    * source of truth; the parent page handles the mutation + invalidation.
@@ -311,6 +317,7 @@ export function LearningMapView({
                   role={role}
                   onClick={() => !tp.locked && setActiveId(tp.id)}
                   onCreateLesson={onCreateLesson}
+                  onOpenLesson={onOpenLesson}
                   onToggleLock={onToggleLock}
                 />
               ))}
@@ -336,14 +343,10 @@ export function LearningMapView({
                 >
                   {statusLabel(t, active.stats.status, role)}
                 </span>
-                {role === "teacher" && !active.locked && (
-                  <button
-                    onClick={() => onCreateLesson?.(active.id)}
-                    className="text-[11px] font-semibold px-3 py-1 rounded-md bg-brand-50 border border-brand-100 text-brand-700 hover:bg-brand-100/70 transition-colors whitespace-nowrap"
-                  >
-                    {t("map.createLessonOnTopic")}
-                  </button>
-                )}
+                {/* The lesson action lives on the active topic card (single
+                    primary CTA). The duplicate "create lesson on this topic"
+                    button that used to sit here was removed to avoid three
+                    competing lesson buttons per topic. */}
               </div>
 
               {/* Stat grid */}
@@ -466,6 +469,7 @@ function TopicCard({
   role,
   onClick,
   onCreateLesson,
+  onOpenLesson,
   onToggleLock,
 }: {
   topic: LearningMapTopic;
@@ -473,11 +477,15 @@ function TopicCard({
   role: "teacher" | "student";
   onClick: () => void;
   onCreateLesson?: (id: string) => void;
+  onOpenLesson?: (lessonId: string) => void;
   onToggleLock?: (id: string, nextLocked: boolean) => void;
 }) {
   const t = useT();
   const status = tp.stats.status;
   const pct = tp.stats.pct;
+  // A topic "has a lesson" only when the API gave us an id to open. This
+  // single flag drives the one primary action: open it vs. create one.
+  const hasLesson = tp.stats.lessons_total > 0 && !!tp.latest_lesson_id;
   // Big CTA on the currently-selected, unlocked card — both roles get one,
   // with the label switched: teachers see "create lesson", students see
   // "start/continue learning". Removes the need to hunt for a small button.
@@ -627,17 +635,10 @@ function TopicCard({
             })}
           </span>
         )}
-        {role === "teacher" ? (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onCreateLesson?.(tp.id);
-            }}
-            className="text-[10px] font-semibold px-2 py-0.5 rounded border border-gray-200 text-gray-600 hover:text-brand-700 hover:border-brand-200 hover:bg-brand-50 transition-colors whitespace-nowrap"
-          >
-            {t("map.lessonShort")}
-          </button>
-        ) : (
+        {/* Teachers no longer get a footer "Lesson" button — the single
+            primary action (create/open) is the CTA on the active card.
+            Students keep a lightweight status hint here. */}
+        {role === "student" && (
           <span
             className={`text-[10px] font-semibold ${statusText(status)}`}
           >
@@ -650,23 +651,35 @@ function TopicCard({
         )}
       </div>
 
-      {/* Big CTA on the active card — clear next-step button for both roles.
-          Teacher: "create lesson" · Student: "start" or "continue". */}
-      {showCta && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onCreateLesson?.(tp.id);
-          }}
-          className="mt-2 w-full h-8 rounded-md bg-brand-500 hover:bg-brand-600 text-white text-[12px] font-semibold transition-colors shadow-sm"
-        >
-          {role === "teacher"
-            ? t("map.createLesson")
-            : status === "not_started"
-            ? t("map.startLearning")
-            : t("map.continueLearning")}
-        </button>
-      )}
+      {/* Single primary action on the active card. One topic → one button:
+          • has a lesson  → "Open lesson" (navigate to latest_lesson_id)
+          • no lesson yet → teacher creates one; student starts/continues. */}
+      {showCta &&
+        (hasLesson ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenLesson?.(tp.latest_lesson_id!);
+            }}
+            className="mt-2 w-full h-8 rounded-md bg-brand-500 hover:bg-brand-600 text-white text-[12px] font-semibold transition-colors shadow-sm"
+          >
+            {t("map.openLesson")}
+          </button>
+        ) : (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onCreateLesson?.(tp.id);
+            }}
+            className="mt-2 w-full h-8 rounded-md bg-brand-500 hover:bg-brand-600 text-white text-[12px] font-semibold transition-colors shadow-sm"
+          >
+            {role === "teacher"
+              ? t("map.createLesson")
+              : status === "not_started"
+              ? t("map.startLearning")
+              : t("map.continueLearning")}
+          </button>
+        ))}
     </div>
   );
 }

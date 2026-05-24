@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, CalendarDays, Check, X, Pencil } from "lucide-react";
 import { api } from "@/lib/api";
@@ -27,6 +27,7 @@ interface StudentDetail {
 export default function TeacherLearningMapPage() {
   const t = useT();
   const qc = useQueryClient();
+  const router = useRouter();
   const { id } = useParams<{ id: string }>();
   const [courseId, setCourseId] = useState<string>("");
   const [lessonModal, setLessonModal] = useState<{
@@ -166,6 +167,9 @@ export default function TeacherLearningMapPage() {
             map={map}
             onCreateLesson={(topicId) =>
               setLessonModal({ open: true, topicId })
+            }
+            onOpenLesson={(lessonId) =>
+              router.push(`/teacher/students/${id}/lessons/${lessonId}`)
             }
             onToggleLock={(topicId, nextLocked) =>
               toggleLock.mutate({ topicId, nextLocked })

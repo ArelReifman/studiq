@@ -429,6 +429,7 @@
   "map.aiRecommendation": "AI Recommendation",
   "map.createLesson": "Create lesson",
   "map.createLessonOnTopic": "Create a lesson on this topic",
+  "map.openLesson": "Open lesson",
   "map.lessonShort": "Lesson",
   "map.routePct": "{pct}% of the path",
   "map.keepGoing": "Keep going",

@@ -68,6 +68,9 @@ export default function StudentLearningMapPage() {
             role="student"
             map={map}
             onCreateLesson={handleContinue}
+            onOpenLesson={(lessonId) =>
+              router.push(`/student/lessons/${lessonId}`)
+            }
           />
         </div>
       )}
