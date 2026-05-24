@@ -9,6 +9,7 @@ import {
   todoItems,
   students,
   difficultyReports,
+  teacherAiFeedback,
 } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { generateLesson } from "../services/ai/generate-lesson.js";
@@ -290,6 +291,16 @@ export const lessonRoutes = new Hono()
         .delete(difficultyReports)
         .where(inArray(difficultyReports.source_id, sourceIds));
     }
+
+    // teacher_ai_feedback.source_lesson_id references this lesson with a FK
+    // that has no ON DELETE rule (defaults to NO ACTION / RESTRICT), so a
+    // straight delete would be blocked whenever AI feedback points here.
+    // Null the reference instead of deleting — preserves the teacher's
+    // feedback history (which still trains the AI) while unblocking deletion.
+    await db
+      .update(teacherAiFeedback)
+      .set({ source_lesson_id: null })
+      .where(eq(teacherAiFeedback.source_lesson_id, lessonId));
 
     // DB cascade will clean up homework_items and todo_items via FK ON DELETE CASCADE
     await db
