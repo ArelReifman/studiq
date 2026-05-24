@@ -223,7 +223,13 @@ export default function StudentDetailPage() {
       qc.setQueryData(["lessons", { student_id: id }], ctx?.prev);
       alert(err instanceof Error ? err.message : t("studentDetail.deleteFailed"));
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["lessons"] }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["lessons"] });
+      // Deleting a lesson changes the topic's lessons_total / progress /
+      // latest_lesson_id — refresh the map so the topic action flips back
+      // from "open lesson" to "create lesson" when the last one is gone.
+      qc.invalidateQueries({ queryKey: ["learning-map"] });
+    },
   });
 
   return (
