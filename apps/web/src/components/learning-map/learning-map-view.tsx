@@ -279,13 +279,17 @@ export function LearningMapView({
                 >
                   {tp.name}
                 </span>
-                <span
-                  className={`text-[11px] font-bold tabular-nums ${statusText(
-                    tp.stats.status
-                  )}`}
-                >
-                  {tp.stats.pct}%
-                </span>
+                {tp.locked ? (
+                  <Lock size={11} className="text-gray-400 flex-shrink-0" />
+                ) : (
+                  <span
+                    className={`text-[11px] font-bold tabular-nums ${statusText(
+                      tp.stats.status
+                    )}`}
+                  >
+                    {tp.stats.pct}%
+                  </span>
+                )}
               </button>
             ))}
           </div>
