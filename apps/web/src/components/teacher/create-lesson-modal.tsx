@@ -163,6 +163,7 @@ export function CreateLessonModal({
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["lessons"] });
+      qc.invalidateQueries({ queryKey: ["learning-map"] });
       onClose();
     },
   });
