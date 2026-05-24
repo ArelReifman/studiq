@@ -347,6 +347,33 @@ export default function TeacherDashboard() {
         </Card>
       </div>
 
+      {/* ── Quick nav ──────────────────────────────────────────────────────── */}
+      {students.length > 0 && (
+        <div className="flex items-center justify-center gap-3 pt-1">
+          <Link
+            href="/teacher/schedule"
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-600 px-3 py-2 rounded-lg hover:bg-brand-50 transition-colors"
+          >
+            <CalendarCheck size={13} />
+            {t("teacher.schedule")}
+          </Link>
+          <Link
+            href="/teacher/approvals"
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-600 px-3 py-2 rounded-lg hover:bg-brand-50 transition-colors"
+          >
+            <Clock size={13} />
+            {t("approvals.navLabel")}
+          </Link>
+          <Link
+            href="/teacher/students"
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-600 px-3 py-2 rounded-lg hover:bg-brand-50 transition-colors"
+          >
+            <Users size={13} />
+            {t("teacher.students")}
+          </Link>
+        </div>
+      )}
+
       {/* Empty state — no students at all */}
       {students.length === 0 && (
         <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl bg-white">
