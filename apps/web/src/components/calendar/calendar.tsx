@@ -255,7 +255,7 @@ export function TimeSlotGrid({
                     e.stopPropagation();
                     onRemoveSlot(slot);
                   }}
-                  className="absolute -top-1.5 -end-1.5 w-5 h-5 rounded-full bg-red-100 text-red-600 hover:bg-red-200 flex items-center justify-center text-xs font-bold transition-colors"
+                  className="absolute -top-1.5 -end-1.5 w-5 h-5 rounded-full bg-gray-100 text-gray-300 hover:bg-red-100 hover:text-red-600 focus:bg-red-100 focus:text-red-600 flex items-center justify-center text-xs font-bold transition-colors"
                   aria-label={t("common.remove")}
                 >
                   ×
