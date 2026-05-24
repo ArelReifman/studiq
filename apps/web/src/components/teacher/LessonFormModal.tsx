@@ -559,7 +559,6 @@ export function LessonFormModal({
               // of the input in both RTL and LTR.
               className="w-full appearance-none bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-start min-h-[42px] focus:outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-200"
             />
-            <p className="mt-1 text-xs text-gray-400">{t("teacher.datePlaceholder")}</p>
           </div>
 
           {/* Start time */}
