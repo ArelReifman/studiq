@@ -15,7 +15,18 @@ async function refreshAccessToken(teacherId: string, refreshToken: string): Prom
   });
 
   if (!res.ok) {
-    throw new Error(`Google token refresh failed: ${await res.text()}`);
+    const body = await res.text();
+    // invalid_grant = refresh_token revoked / expired / app in Testing mode > 7d.
+    // Clear the stored row so /auth/google/status reports connected:false and
+    // the UI re-prompts the teacher to reconnect instead of silently failing
+    // on every future event creation.
+    if (body.includes("invalid_grant")) {
+      await db
+        .delete(teacherGoogleTokens)
+        .where(eq(teacherGoogleTokens.teacher_id, teacherId));
+      console.error(`[GoogleCalendar] Google refresh token invalidated for teacher_id=${teacherId}`);
+    }
+    throw new Error(`Google token refresh failed: ${body}`);
   }
 
   const data = (await res.json()) as { access_token: string; expires_in: number };
