@@ -471,7 +471,7 @@ export default function StudentDetailPage() {
                       </Badge>
                       <Link
                         href={`/teacher/students/${id}/lessons/${l.id}`}
-                        className="text-gray-400 hover:text-brand-600 transition-colors p-1"
+                        className="text-gray-400 hover:text-brand-600 transition-colors p-2"
                         aria-label={t("studentDetail.openLesson")}
                         title={t("studentDetail.openLesson")}
                       >
@@ -480,7 +480,7 @@ export default function StudentDetailPage() {
                       <button
                         type="button"
                         onClick={() => setReviewLesson(l)}
-                        className="text-gray-400 hover:text-brand-600 transition-colors p-1"
+                        className="text-gray-400 hover:text-brand-600 transition-colors p-2"
                         aria-label={t("lessonReview.openButton")}
                         title={t("lessonReview.openButton")}
                       >
@@ -494,8 +494,9 @@ export default function StudentDetailPage() {
                           }
                         }}
                         disabled={deleteLesson.isPending}
-                        className="text-gray-300 hover:text-red-500 disabled:opacity-40 transition-colors p-1"
+                        className="text-gray-300 hover:text-red-500 disabled:opacity-40 transition-colors p-2"
                         aria-label={t("studentDetail.deleteLesson")}
+                        title={t("studentDetail.deleteLesson")}
                       >
                         <Trash2 size={14} />
                       </button>
