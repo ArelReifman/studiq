@@ -49,7 +49,7 @@ importers:
         version: 16.6.1
       drizzle-orm:
         specifier: ^0.41.0
-        version: 0.41.0(@types/pg@8.20.0)(gel@2.2.0)(pg@8.20.0)(postgres@3.4.9)
+        version: 0.41.0(@electric-sql/pglite@0.4.6)(@types/pg@8.20.0)(gel@2.2.0)(pg@8.20.0)(postgres@3.4.9)
       hono:
         specifier: ^4.7.7
         version: 4.12.12
@@ -63,6 +63,9 @@ importers:
         specifier: ^3.24.2
         version: 3.25.76
     devDependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.4.6
+        version: 0.4.6
       '@types/node':
         specifier: ^22.14.0
         version: 22.19.17
@@ -174,6 +177,9 @@ packages:
 
   '@drizzle-team/brocli@0.10.2':
     resolution: {integrity: sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w==}
+
+  '@electric-sql/pglite@0.4.6':
+    resolution: {integrity: sha512-qmlmfN8UyKCee35qkV0r/MBp+Znl8FjBz7OpoglNvww3GJpw0/DLP0o1ZymvLNmcD5DTLOQdzKPtF8Hd3mdl1w==}
 
   '@emnapi/core@1.9.2':
     resolution: {integrity: sha512-UC+ZhH3XtczQYfOlu3lNEkdW/p4dsJ1r/bP7H8+rhao3TTTMO1ATq/4DdIi23XuGoFY+Cz0JmCbdVl0hz9jZcA==}
@@ -2213,6 +2219,8 @@ snapshots:
 
   '@drizzle-team/brocli@0.10.2': {}
 
+  '@electric-sql/pglite@0.4.6': {}
+
   '@emnapi/core@1.9.2':
     dependencies:
       '@emnapi/wasi-threads': 1.2.1
@@ -2964,8 +2972,9 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  drizzle-orm@0.41.0(@types/pg@8.20.0)(gel@2.2.0)(pg@8.20.0)(postgres@3.4.9):
+  drizzle-orm@0.41.0(@electric-sql/pglite@0.4.6)(@types/pg@8.20.0)(gel@2.2.0)(pg@8.20.0)(postgres@3.4.9):
     optionalDependencies:
+      '@electric-sql/pglite': 0.4.6
       '@types/pg': 8.20.0
       gel: 2.2.0
       pg: 8.20.0
