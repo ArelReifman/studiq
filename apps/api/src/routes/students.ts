@@ -628,7 +628,7 @@ export const studentRoutes = new Hono()
 
       // Verify teacher owns the student
       const [student] = await db
-        .select({ id: students.id })
+        .select({ id: students.id, primary_course_id: students.primary_course_id })
         .from(students)
         .where(and(eq(students.id, studentId), eq(students.teacher_id, teacherId)))
         .limit(1);
@@ -747,6 +747,28 @@ export const studentRoutes = new Hono()
             eq(studentCourses.course_id, courseId)
           )
         );
+
+      // Keep primary_course_id pointing at an active course only. If we just
+      // archived the primary, move it to the oldest remaining active course,
+      // or null when none remain. Other consumers (e.g. the learning-map
+      // fallback) rely on primary never pointing at an archived course.
+      if (student.primary_course_id === courseId) {
+        const [nextActive] = await db
+          .select({ course_id: studentCourses.course_id })
+          .from(studentCourses)
+          .where(
+            and(
+              eq(studentCourses.student_id, studentId),
+              eq(studentCourses.is_active, true)
+            )
+          )
+          .orderBy(studentCourses.added_at)
+          .limit(1);
+        await db
+          .update(students)
+          .set({ primary_course_id: nextActive?.course_id ?? null })
+          .where(eq(students.id, studentId));
+      }
 
       return c.json({ student_id: studentId, course_id: courseId, is_active: false });
     }
