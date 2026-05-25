@@ -143,6 +143,43 @@ export const lessonRoutes = new Hono()
 
       if (!student) return c.json({ error: "Student not found" }, 404);
 
+      // Idempotency guard: one ACTIVE lesson per (student, course, topic).
+      // When the topic is specified and an active lesson already exists for it,
+      // return that lesson instead of inserting a duplicate. Completed/archived
+      // lessons do NOT block — a fresh pass can start once the previous is done.
+      if (course_id && topic_id) {
+        const [existing] = await db
+          .select()
+          .from(lessonSessions)
+          .where(
+            and(
+              eq(lessonSessions.student_id, student_id),
+              eq(lessonSessions.course_id, course_id),
+              eq(lessonSessions.topic_id, topic_id),
+              eq(lessonSessions.status, "active")
+            )
+          )
+          .limit(1);
+        if (existing) {
+          const [hw, tds] = await Promise.all([
+            db
+              .select()
+              .from(homeworkItems)
+              .where(eq(homeworkItems.lesson_id, existing.id))
+              .orderBy(homeworkItems.order_index),
+            db
+              .select()
+              .from(todoItems)
+              .where(eq(todoItems.lesson_id, existing.id))
+              .orderBy(todoItems.order_index),
+          ]);
+          return c.json(
+            { ...existing, homework_items: hw, todo_items: tds },
+            200
+          );
+        }
+      }
+
       // Create lesson
       const [lesson] = await db
         .insert(lessonSessions)
