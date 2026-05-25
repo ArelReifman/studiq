@@ -54,15 +54,22 @@ export default function TeacherLearningMapPage() {
   });
 
   // Build the set of course IDs this student is associated with:
-  // - join-table courses[] from the student detail (primary source), PLUS
-  // - courses they have lessons for (fallback/safety), PLUS
-  // - their primary_course_id (backward-compat fallback),
-  //   so a freshly-onboarded student sees their map even before the first lesson.
-  const studentCourseIds = new Set([
-    ...(student?.courses?.map((c) => c.id) ?? []),
-    ...lessons.map((l) => l.course_id).filter((id): id is string => !!id),
-    ...(student?.primary_course_id ? [student.primary_course_id] : []),
-  ]);
+  // - When the student has active courses (join-table is_active=true), use ONLY
+  //   those — this keeps the selector consistent with the "active courses" card,
+  //   which is also active-only. An archived course still referenced by old
+  //   lessons must NOT re-surface here.
+  // - Only when there are no active courses, fall back to lesson course_ids /
+  //   primary_course_id so a freshly-onboarded or legacy student (no active
+  //   join-table row yet) still sees their map.
+  const activeIds = student?.courses?.map((c) => c.id) ?? [];
+  const studentCourseIds = new Set(
+    activeIds.length > 0
+      ? activeIds
+      : [
+          ...lessons.map((l) => l.course_id).filter((id): id is string => !!id),
+          ...(student?.primary_course_id ? [student.primary_course_id] : []),
+        ]
+  );
   const courses = allCourses.filter((c) => studentCourseIds.has(c.id));
 
   // Default to first course if none selected
