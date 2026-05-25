@@ -1,8 +1,9 @@
 import { Hono } from "hono";
-import { eq, and, inArray, desc, isNotNull } from "drizzle-orm";
+import { eq, and, inArray, desc } from "drizzle-orm";
 import { db } from "../db/client.js";
 import {
   students,
+  studentCourses,
   courses,
   courseTopics,
   lessonSessions,
@@ -76,34 +77,44 @@ export const learningMapRoutes = new Hono()
       studentId = studentIdParam;
     }
 
-    // If no course_id provided, infer from most-recent lesson — and fall
-    // back to the student's primary_course_id (set at signup or approval).
-    // The fallback exists so a freshly-approved student lands on a populated
-    // map instead of a 404, even before their first lesson is created.
-    if (!courseId) {
-      const [latest] = await db
-        .select({ course_id: lessonSessions.course_id })
-        .from(lessonSessions)
-        .where(
-          and(
-            eq(lessonSessions.student_id, studentId),
-            isNotNull(lessonSessions.course_id)
-          )
+    // Resolve which course the map shows. Only ACTIVE course assignments
+    // count. Old lesson_sessions still reference archived courses, so we must
+    // NOT infer the course from them — otherwise hiding a student's last
+    // course would keep surfacing its archived map.
+    const activeCourses = await db
+      .select({ course_id: studentCourses.course_id })
+      .from(studentCourses)
+      .where(
+        and(
+          eq(studentCourses.student_id, studentId),
+          eq(studentCourses.is_active, true)
         )
-        .orderBy(desc(lessonSessions.generated_at))
-        .limit(1);
+      )
+      .orderBy(studentCourses.added_at);
+    const activeCourseIds = new Set(activeCourses.map((r) => r.course_id));
 
-      if (latest?.course_id) {
-        courseId = latest.course_id;
-      } else {
-        const [student] = await db
-          .select({ primary_course_id: students.primary_course_id })
-          .from(students)
-          .where(eq(students.id, studentId))
-          .limit(1);
-        if (!student?.primary_course_id)
-          return c.json({ error: "No course found for student" }, 404);
+    if (courseId) {
+      // A provided course_id must be one of the student's active courses;
+      // otherwise fall through to the empty/error response below.
+      if (!activeCourseIds.has(courseId))
+        return c.json({ error: "No course found for student" }, 404);
+    } else {
+      // No course_id: prefer the student's primary course when it is still
+      // active, else the oldest active course. Never infer from old lessons.
+      const [student] = await db
+        .select({ primary_course_id: students.primary_course_id })
+        .from(students)
+        .where(eq(students.id, studentId))
+        .limit(1);
+      if (
+        student?.primary_course_id &&
+        activeCourseIds.has(student.primary_course_id)
+      ) {
         courseId = student.primary_course_id;
+      } else if (activeCourses.length > 0) {
+        courseId = activeCourses[0]!.course_id;
+      } else {
+        return c.json({ error: "No course found for student" }, 404);
       }
     }
 

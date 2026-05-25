@@ -10,7 +10,7 @@ import { LearningMapView } from "@/components/learning-map/learning-map-view";
 import { LearningMapHero } from "@/components/learning-map/learning-map-hero";
 import { CreateLessonModal } from "@/components/teacher/create-lesson-modal";
 import { useT } from "@/i18n";
-import type { LearningMap, LessonSession } from "@studiq/types";
+import type { LearningMap } from "@studiq/types";
 
 interface Course {
   id: string;
@@ -45,34 +45,15 @@ export default function TeacherLearningMapPage() {
     queryFn: () => api.get(`/courses`),
   });
 
-  // Pull this student's lessons so we can show only the courses they're
-  // actually working on. Without this, the dropdown listed every course
-  // the teacher has, even ones the student has never touched.
-  const { data: lessons = [] } = useQuery<LessonSession[]>({
-    queryKey: ["lessons", { student_id: id }],
-    queryFn: () => api.get(`/lessons?student_id=${id}`),
-  });
+  // The course set is exactly the student's ACTIVE courses (student.courses is
+  // server-filtered to is_active=true). We deliberately do NOT fall back to
+  // courses derived from old lessons: an archived course still referenced by
+  // past lessons must not re-surface here. When there are no active courses,
+  // `courses` is empty and the existing empty state renders.
+  const activeIds = new Set(student?.courses?.map((c) => c.id) ?? []);
+  const courses = allCourses.filter((c) => activeIds.has(c.id));
 
-  // Build the set of course IDs this student is associated with:
-  // - When the student has active courses (join-table is_active=true), use ONLY
-  //   those — this keeps the selector consistent with the "active courses" card,
-  //   which is also active-only. An archived course still referenced by old
-  //   lessons must NOT re-surface here.
-  // - Only when there are no active courses, fall back to lesson course_ids /
-  //   primary_course_id so a freshly-onboarded or legacy student (no active
-  //   join-table row yet) still sees their map.
-  const activeIds = student?.courses?.map((c) => c.id) ?? [];
-  const studentCourseIds = new Set(
-    activeIds.length > 0
-      ? activeIds
-      : [
-          ...lessons.map((l) => l.course_id).filter((id): id is string => !!id),
-          ...(student?.primary_course_id ? [student.primary_course_id] : []),
-        ]
-  );
-  const courses = allCourses.filter((c) => studentCourseIds.has(c.id));
-
-  // Default to first course if none selected
+  // Default to first active course if none selected
   const effectiveCourseId = courseId || courses[0]?.id || "";
 
   const { data: map, isLoading } = useQuery<LearningMap>({
