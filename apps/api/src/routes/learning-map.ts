@@ -426,6 +426,33 @@ export const learningMapRoutes = new Hono()
       }
     }
 
+    // 8b. Parent-topic progress rollup (post-order).
+    // Per contract §8 case 11, lessons attach to leaf sub-topics — parents
+    // have no direct lessons/tasks of their own and would otherwise show
+    // pct=0 / not_started even when every child is mastered. Combine each
+    // parent's own counts (if any, for forward-compatible mixed data) with
+    // the sum of its children, then recompute pct/status from the combined
+    // counts so the existing computeStatus + pct formula stays the single
+    // source of truth.
+    const rollupStats = (node: LearningMapTopic) => {
+      if (node.children.length === 0) return;
+      for (const child of node.children) rollupStats(child);
+      for (const child of node.children) {
+        node.stats.lessons_total += child.stats.lessons_total;
+        node.stats.lessons_completed += child.stats.lessons_completed;
+        node.stats.tasks_total += child.stats.tasks_total;
+        node.stats.tasks_completed += child.stats.tasks_completed;
+        node.stats.tasks_failed += child.stats.tasks_failed;
+      }
+      node.stats.pct = node.stats.tasks_total > 0
+        ? Math.round((node.stats.tasks_completed / node.stats.tasks_total) * 100)
+        : node.stats.lessons_total > 0
+        ? Math.round((node.stats.lessons_completed / node.stats.lessons_total) * 100)
+        : 0;
+      node.stats.status = computeStatus(node.stats);
+    };
+    for (const r of roots) rollupStats(r);
+
     // 9. Overall stats (top-level only)
     const overall = {
       total_topics: roots.length,
