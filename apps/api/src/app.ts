@@ -17,6 +17,7 @@ import { bookingRoutes } from "./routes/bookings.js";
 import { uploadRoutes } from "./routes/upload.js";
 import { coursesRoutes } from "./routes/courses.js";
 import { learningMapRoutes } from "./routes/learning-map.js";
+import { learningResourcesRoutes } from "./routes/learning-resources.js";
 import { approvalsRoutes } from "./routes/approvals.js";
 import { profileRoutes } from "./routes/profile.js";
 import { googleAuthRoutes } from "./routes/google-auth.js";
@@ -71,6 +72,7 @@ export function createApp(basePath = "") {
   app.use("/reports/generate", rateLimit(10, 60 * 1000));
   // Uploads burn storage and bandwidth.
   app.use("/upload/*", rateLimit(30, 60 * 1000));
+  app.use("/learning-resources/*", rateLimit(30, 60 * 1000));
   // Booking churn (cap-of-3 already enforces business rule, this caps abuse).
   app.use("/bookings/*", rateLimit(60, 60 * 1000));
 
@@ -88,6 +90,7 @@ export function createApp(basePath = "") {
   app.route("/upload", uploadRoutes);
   app.route("/courses", coursesRoutes);
   app.route("/learning-map", learningMapRoutes);
+  app.route("/learning-resources", learningResourcesRoutes);
   app.route("/approvals", approvalsRoutes);
   app.route("/profile", profileRoutes);
   app.route("/auth/google", googleAuthRoutes);

@@ -727,6 +727,52 @@ export const auditLogs = pgTable(
   ]
 );
 
+// ─── Learning Resources ──────────────────────────────────────────────────────
+// Teacher-uploaded study materials (formula sheets, summaries, PDFs, …).
+// Server-only table — see migration 023 and SUPABASE_DATA_API_GRANTS.md
+// Template B. The browser never queries this table directly; access is
+// always through the API (service_role).
+
+export const learningResources = pgTable(
+  "learning_resources",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    teacher_id: uuid("teacher_id")
+      .notNull()
+      .references(() => teachers.id, { onDelete: "cascade" }),
+    course_id: uuid("course_id")
+      .notNull()
+      .references(() => courses.id, { onDelete: "cascade" }),
+    // NULL = applies to the whole course; non-NULL = topic-scoped
+    topic_id: uuid("topic_id").references(() => courseTopics.id, {
+      onDelete: "cascade",
+    }),
+    // Reserved for future per-student visibility (MVP-C); always NULL in Phase 1.
+    student_id: uuid("student_id").references(() => students.id, {
+      onDelete: "cascade",
+    }),
+    title: text("title").notNull(),
+    description: text("description"),
+    file_name: text("file_name").notNull(),
+    file_url: text("file_url").notNull(),
+    storage_path: text("storage_path").notNull(),
+    file_type: text("file_type").notNull(),
+    file_size_bytes: integer("file_size_bytes"),
+    visibility: text("visibility").notNull().default("teacher_only"),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("idx_learning_resources_teacher_id").on(t.teacher_id),
+    index("idx_learning_resources_course_id").on(t.course_id),
+    index("idx_learning_resources_topic_id").on(t.topic_id),
+  ]
+);
+
 // ─── Relations ────────────────────────────────────────────────────────────────
 
 export const profilesRelations = relations(profiles, ({ one }) => ({
