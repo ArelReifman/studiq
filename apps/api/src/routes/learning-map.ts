@@ -302,7 +302,12 @@ export const learningMapRoutes = new Hono()
       s.tasks_total++;
       if (status === "completed") s.tasks_completed++;
       else if (status === "failed") {
-        if (!isResolvedFailure(tid, marked_at)) s.tasks_failed++;
+        // A failed row that was overturned by a later success in the same
+        // topic is treated as completed for current map progress — the topic
+        // can reach mastered. The original failed row stays in the DB for
+        // history; only this in-memory aggregation reinterprets it.
+        if (isResolvedFailure(tid, marked_at)) s.tasks_completed++;
+        else s.tasks_failed++;
       }
     };
 

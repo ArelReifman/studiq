@@ -201,7 +201,7 @@ describe("learning map — active failure recovery", () => {
     expect(stats.status).toBe("struggling");
   });
 
-  it("2. later completed task in same topic clears active failure", async () => {
+  it("2. later completed task in same topic clears active failure and counts as completed", async () => {
     const { sid, cid, tid } = await freshScenario();
     const lesson = await insertLesson(sid, cid, tid);
     await insertHomework(lesson, sid, "failed", T1);
@@ -209,8 +209,26 @@ describe("learning map — active failure recovery", () => {
 
     const stats = findTopic(await getMap(sid, cid), tid)!.stats;
     expect(stats.tasks_failed).toBe(0);
-    expect(stats.tasks_completed).toBe(1);
-    expect(stats.status).not.toBe("struggling");
+    // Option B: the resolved failed task is reinterpreted as completed.
+    expect(stats.tasks_total).toBe(2);
+    expect(stats.tasks_completed).toBe(2);
+    expect(stats.pct).toBe(100);
+    expect(stats.status).toBe("mastered");
+  });
+
+  it("2b. two resolved failures + one completed => 100% mastered", async () => {
+    const { sid, cid, tid } = await freshScenario();
+    const lesson = await insertLesson(sid, cid, tid);
+    await insertHomework(lesson, sid, "failed", T0);
+    await insertHomework(lesson, sid, "failed", T1);
+    await insertHomework(lesson, sid, "completed", T2);
+
+    const stats = findTopic(await getMap(sid, cid), tid)!.stats;
+    expect(stats.tasks_total).toBe(3);
+    expect(stats.tasks_completed).toBe(3);
+    expect(stats.tasks_failed).toBe(0);
+    expect(stats.pct).toBe(100);
+    expect(stats.status).toBe("mastered");
   });
 
   it("3. failed subtopic + later success in same subtopic clears active failure", async () => {
@@ -229,7 +247,11 @@ describe("learning map — active failure recovery", () => {
 
     const stats = findTopic(await getMap(sid, cid), child)!.stats;
     expect(stats.tasks_failed).toBe(0);
-    expect(stats.tasks_completed).toBe(1);
+    // Option B applies identically at the subtopic level.
+    expect(stats.tasks_total).toBe(2);
+    expect(stats.tasks_completed).toBe(2);
+    expect(stats.pct).toBe(100);
+    expect(stats.status).toBe("mastered");
   });
 
   it("4. success in sibling subtopic does not clear failure", async () => {
@@ -272,6 +294,10 @@ describe("learning map — active failure recovery", () => {
 
     const stats = findTopic(await getMap(sid, cid), tid)!.stats;
     expect(stats.tasks_failed).toBe(0);
+    // The resolved failed task counts as completed.
+    expect(stats.tasks_total).toBe(1);
+    expect(stats.tasks_completed).toBe(1);
+    expect(stats.pct).toBe(100);
   });
 
   it("6. teacher_decision = next_level clears a previous failed task", async () => {
@@ -288,6 +314,8 @@ describe("learning map — active failure recovery", () => {
 
     const stats = findTopic(await getMap(sid, cid), tid)!.stats;
     expect(stats.tasks_failed).toBe(0);
+    expect(stats.tasks_completed).toBe(1);
+    expect(stats.pct).toBe(100);
   });
 
   it("7. failed row still exists in DB after being resolved in the map", async () => {
@@ -298,6 +326,7 @@ describe("learning map — active failure recovery", () => {
 
     const stats = findTopic(await getMap(sid, cid), tid)!.stats;
     expect(stats.tasks_failed).toBe(0);
+    expect(stats.tasks_completed).toBe(2);
 
     // History is preserved — the original failed row is still in the DB.
     const [row] = await testDb
