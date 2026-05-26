@@ -178,6 +178,9 @@ export const learningMapRoutes = new Hono()
         id: lessonSessions.id,
         topic_id: lessonSessions.topic_id,
         status: lessonSessions.status,
+        completed_at: lessonSessions.completed_at,
+        teacher_decision: lessonSessions.teacher_decision,
+        teacher_reviewed_at: lessonSessions.teacher_reviewed_at,
       })
       .from(lessonSessions)
       .where(
@@ -199,6 +202,7 @@ export const learningMapRoutes = new Hono()
             .select({
               lesson_id: homeworkItems.lesson_id,
               status: homeworkItems.status,
+              marked_at: homeworkItems.marked_at,
             })
             .from(homeworkItems)
             .where(inArray(homeworkItems.lesson_id, lessonIds))
@@ -208,6 +212,7 @@ export const learningMapRoutes = new Hono()
             .select({
               lesson_id: todoItems.lesson_id,
               status: todoItems.status,
+              marked_at: todoItems.marked_at,
             })
             .from(todoItems)
             .where(inArray(todoItems.lesson_id, lessonIds))
@@ -249,17 +254,60 @@ export const learningMapRoutes = new Hono()
       if (l.status === "completed") s.lessons_completed++;
     }
 
-    const aggregateTask = (lesson_id: string, status: string) => {
+    // Active-failure recovery: per-topic latest success timestamp.
+    // A failed task is only "active" if there's no later success for the same
+    // topic. We don't delete the failed row — we just stop counting it.
+    // Success signals: completed task (marked_at), completed lesson
+    // (completed_at), or positive teacher_decision (teacher_reviewed_at).
+    const latestSuccessByTopic = new Map<string, number>();
+    const noteSuccess = (tid: string | null | undefined, at: Date | null) => {
+      if (!tid || !at) return;
+      const ts = at.getTime();
+      const prev = latestSuccessByTopic.get(tid);
+      if (prev === undefined || ts > prev) latestSuccessByTopic.set(tid, ts);
+    };
+    for (const l of lessons) {
+      if (!l.topic_id) continue;
+      if (l.status === "completed") noteSuccess(l.topic_id, l.completed_at);
+      if (
+        l.teacher_decision === "next_level" ||
+        l.teacher_decision === "next_topic"
+      )
+        noteSuccess(l.topic_id, l.teacher_reviewed_at);
+    }
+    for (const h of hw) {
+      if (h.status === "completed")
+        noteSuccess(lessonTopicMap.get(h.lesson_id), h.marked_at);
+    }
+    for (const t of td) {
+      if (t.status === "completed")
+        noteSuccess(lessonTopicMap.get(t.lesson_id), t.marked_at);
+    }
+
+    const isResolvedFailure = (tid: string, marked_at: Date | null) => {
+      if (!marked_at) return false; // null timestamp → fail-safe, stays active
+      const latest = latestSuccessByTopic.get(tid);
+      if (latest === undefined) return false;
+      return marked_at.getTime() <= latest;
+    };
+
+    const aggregateTask = (
+      lesson_id: string,
+      status: string,
+      marked_at: Date | null
+    ) => {
       const tid = lessonTopicMap.get(lesson_id);
       if (!tid) return;
       const s = ensureStats(tid);
       s.tasks_total++;
       if (status === "completed") s.tasks_completed++;
-      else if (status === "failed") s.tasks_failed++;
+      else if (status === "failed") {
+        if (!isResolvedFailure(tid, marked_at)) s.tasks_failed++;
+      }
     };
 
-    for (const h of hw) aggregateTask(h.lesson_id, h.status);
-    for (const t of td) aggregateTask(t.lesson_id, t.status);
+    for (const h of hw) aggregateTask(h.lesson_id, h.status, h.marked_at);
+    for (const t of td) aggregateTask(t.lesson_id, t.status, t.marked_at);
 
     // 6. Compute pct + status per topic
     for (const s of statsByTopic.values()) {
