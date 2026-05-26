@@ -56,6 +56,14 @@ const fakeStorage = vi.hoisted(() => {
       for (const p of paths) files.delete(p);
       return { error: null };
     }),
+    createSignedUploadUrl: vi.fn(async (path: string) => ({
+      data: {
+        signedUrl: `https://fake.local/signed/${path}`,
+        token: "fake-token",
+        path,
+      },
+      error: null,
+    })),
   };
 });
 
@@ -352,6 +360,120 @@ describe("learning resources — phase 1 backend", () => {
       .where(eq(learningResources.id, id));
     expect(rows.length).toBe(0);
     expect(fakeStorage.files.has(storage_path)).toBe(false);
+  });
+
+  it("11. sign+confirm flow creates a resource with the expected path", async () => {
+    const courseId = await seedCourse(ctx.TEACHER_A);
+    ctx.currentUser = ctx.TEACHER_A;
+    ctx.currentRole = "teacher";
+
+    const signRes = await learningResourcesRoutes.request("/sign", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-requested-with": "XMLHttpRequest",
+      },
+      body: JSON.stringify({
+        file_name: "formulas.pdf",
+        content_type: "application/pdf",
+        size: 1024,
+        course_id: courseId,
+      }),
+    });
+    expect(signRes.status).toBe(200);
+    const sign = (await signRes.json()) as {
+      signedUrl: string;
+      token: string;
+      path: string;
+      resource_id: string;
+    };
+    expect(sign.path).toMatch(
+      new RegExp(`^resources/${ctx.TEACHER_A}/${courseId}/[0-9a-f-]+\\.pdf$`)
+    );
+
+    const confirmRes = await learningResourcesRoutes.request("/confirm", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-requested-with": "XMLHttpRequest",
+      },
+      body: JSON.stringify({
+        resource_id: sign.resource_id,
+        path: sign.path,
+        file_name: "formulas.pdf",
+        file_type: "application/pdf",
+        file_size_bytes: 1024,
+        course_id: courseId,
+        title: "Big formula sheet",
+        visibility: "student_visible",
+      }),
+    });
+    expect(confirmRes.status).toBe(201);
+    const row = (await confirmRes.json()) as any;
+    expect(row.id).toBe(sign.resource_id);
+    expect(row.storage_path).toBe(sign.path);
+    expect(row.visibility).toBe("student_visible");
+  });
+
+  it("12. confirm rejects a tampered storage path", async () => {
+    const courseId = await seedCourse(ctx.TEACHER_A);
+    ctx.currentUser = ctx.TEACHER_A;
+    ctx.currentRole = "teacher";
+
+    const signRes = await learningResourcesRoutes.request("/sign", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-requested-with": "XMLHttpRequest",
+      },
+      body: JSON.stringify({
+        file_name: "f.pdf",
+        content_type: "application/pdf",
+        size: 100,
+        course_id: courseId,
+      }),
+    });
+    const sign = (await signRes.json()) as { resource_id: string };
+
+    // Path encodes a different teacher — must be rejected.
+    const evilPath = `resources/${ctx.TEACHER_B}/${courseId}/${sign.resource_id}.pdf`;
+    const confirmRes = await learningResourcesRoutes.request("/confirm", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-requested-with": "XMLHttpRequest",
+      },
+      body: JSON.stringify({
+        resource_id: sign.resource_id,
+        path: evilPath,
+        file_name: "f.pdf",
+        file_type: "application/pdf",
+        course_id: courseId,
+        title: "x",
+      }),
+    });
+    expect(confirmRes.status).toBe(400);
+  });
+
+  it("13. sign rejects an invalid file type", async () => {
+    const courseId = await seedCourse(ctx.TEACHER_A);
+    ctx.currentUser = ctx.TEACHER_A;
+    ctx.currentRole = "teacher";
+
+    const res = await learningResourcesRoutes.request("/sign", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-requested-with": "XMLHttpRequest",
+      },
+      body: JSON.stringify({
+        file_name: "notes.exe",
+        content_type: "application/x-msdownload",
+        size: 1024,
+        course_id: courseId,
+      }),
+    });
+    expect(res.status).toBe(400);
   });
 
   it("10. invalid file type is rejected", async () => {

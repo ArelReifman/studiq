@@ -181,3 +181,82 @@ class ApiClient {
 }
 
 export const api = new ApiClient();
+
+// ─── Learning Resources (formula sheets, summaries, …) ──────────────────────
+// All access flows through the API — the table is server-only (Template B,
+// see docs/SUPABASE_DATA_API_GRANTS.md). Uploads use the sign+confirm flow
+// to bypass Vercel's 4.5 MB body limit.
+
+import type { LearningResource, LearningResourceVisibility } from "@studiq/types";
+
+export interface UploadResourceMeta {
+  course_id: string;
+  topic_id?: string | null;
+  title: string;
+  description?: string | null;
+  visibility?: LearningResourceVisibility;
+}
+
+export const learningResourcesApi = {
+  listForTeacher(courseId: string, topicId?: string) {
+    const qs = new URLSearchParams({ course_id: courseId });
+    if (topicId) qs.set("topic_id", topicId);
+    return api.get<LearningResource[]>(`/learning-resources?${qs}`);
+  },
+  listForStudent(courseId: string, topicId?: string) {
+    const qs = new URLSearchParams({ course_id: courseId });
+    if (topicId) qs.set("topic_id", topicId);
+    return api.get<LearningResource[]>(`/learning-resources/student?${qs}`);
+  },
+  async upload(file: File, meta: UploadResourceMeta): Promise<LearningResource> {
+    // 1. Ask backend for a signed upload URL + reserved resource id.
+    const signed = await api.post<{
+      signedUrl: string;
+      token: string;
+      path: string;
+      resource_id: string;
+    }>("/learning-resources/sign", {
+      file_name: file.name,
+      content_type: file.type || "application/octet-stream",
+      size: file.size,
+      course_id: meta.course_id,
+      topic_id: meta.topic_id ?? null,
+    });
+
+    // 2. PUT the file straight to Supabase Storage — bypasses Vercel.
+    const { error } = await supabase.storage
+      .from("uploads")
+      .uploadToSignedUrl(signed.path, signed.token, file, {
+        contentType: file.type || "application/octet-stream",
+        upsert: true,
+      });
+    if (error) throw new Error(`Upload failed: ${error.message}`);
+
+    // 3. Confirm with the API — inserts the DB row using the reserved id.
+    return api.post<LearningResource>("/learning-resources/confirm", {
+      resource_id: signed.resource_id,
+      path: signed.path,
+      file_name: file.name,
+      file_type: file.type || "application/octet-stream",
+      file_size_bytes: file.size,
+      course_id: meta.course_id,
+      topic_id: meta.topic_id ?? null,
+      title: meta.title,
+      description: meta.description ?? null,
+      visibility: meta.visibility ?? "teacher_only",
+    });
+  },
+  patch(
+    id: string,
+    body: {
+      title?: string;
+      description?: string | null;
+      visibility?: LearningResourceVisibility;
+    }
+  ) {
+    return api.patch<LearningResource>(`/learning-resources/${id}`, body);
+  },
+  delete(id: string) {
+    return api.delete<{ message: string }>(`/learning-resources/${id}`);
+  },
+};

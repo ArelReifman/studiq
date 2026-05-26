@@ -28,6 +28,29 @@ const listQuerySchema = z.object({
   topic_id: z.string().uuid().optional(),
 });
 
+// Sign+Confirm flow — bypasses Vercel's 4.5 MB body limit by uploading
+// the file straight from the browser to Supabase via a signed URL.
+const signSchema = z.object({
+  file_name: z.string().min(1).max(255),
+  content_type: z.string().min(1),
+  size: z.number().int().positive().max(MAX_FILE_SIZE),
+  course_id: z.string().uuid(),
+  topic_id: z.string().uuid().nullable().optional(),
+});
+
+const confirmSchema = z.object({
+  resource_id: z.string().uuid(),
+  path: z.string().min(1).max(500),
+  file_name: z.string().min(1).max(255),
+  file_type: z.string().min(1),
+  file_size_bytes: z.number().int().positive().max(MAX_FILE_SIZE).optional(),
+  course_id: z.string().uuid(),
+  topic_id: z.string().uuid().nullable().optional(),
+  title: z.string().min(1).max(255),
+  description: z.string().max(2000).nullable().optional(),
+  visibility: z.enum(["teacher_only", "student_visible"]).optional(),
+});
+
 const patchSchema = z
   .object({
     title: z.string().min(1).max(255).optional(),
@@ -167,6 +190,156 @@ export const learningResourcesRoutes = new Hono()
       return c.json({ error: "Failed to save resource" }, 500);
     }
   })
+
+  // ── Teacher: sign a direct-to-Storage upload URL ──────────────────────────
+  .post(
+    "/sign",
+    requireRole("teacher"),
+    zValidator("json", signSchema),
+    async (c) => {
+      const teacherId = c.get("userId");
+      const { file_name, content_type, course_id, topic_id } =
+        c.req.valid("json");
+
+      if (!ALLOWED_TYPES.includes(content_type))
+        return c.json(
+          { error: "Invalid file type. Allowed: PDF, JPEG, PNG, WebP" },
+          400
+        );
+
+      // Ownership + relationship checks before allocating storage.
+      const [course] = await db
+        .select({ id: courses.id })
+        .from(courses)
+        .where(
+          and(eq(courses.id, course_id), eq(courses.teacher_id, teacherId))
+        )
+        .limit(1);
+      if (!course) return c.json({ error: "Course not found" }, 404);
+
+      if (topic_id) {
+        const [t] = await db
+          .select({ id: courseTopics.id })
+          .from(courseTopics)
+          .where(
+            and(
+              eq(courseTopics.id, topic_id),
+              eq(courseTopics.course_id, course_id)
+            )
+          )
+          .limit(1);
+        if (!t) return c.json({ error: "Topic not found in course" }, 404);
+      }
+
+      const resourceId = crypto.randomUUID();
+      const ext = safeExt(file_name);
+      const storagePath = `resources/${teacherId}/${course_id}/${resourceId}.${ext}`;
+
+      const supabase = createAdminSupabase();
+      const { data, error } = await supabase.storage
+        .from("uploads")
+        .createSignedUploadUrl(storagePath);
+
+      if (error || !data) {
+        console.error("[learning-resources] signed URL error:", error);
+        return c.json(
+          {
+            error: `Failed to create upload URL: ${
+              error?.message ?? "unknown"
+            }`,
+          },
+          500
+        );
+      }
+
+      return c.json({
+        signedUrl: data.signedUrl,
+        token: data.token,
+        path: data.path,
+        resource_id: resourceId,
+      });
+    }
+  )
+
+  // ── Teacher: confirm upload and create the resource record ────────────────
+  .post(
+    "/confirm",
+    requireRole("teacher"),
+    zValidator("json", confirmSchema),
+    async (c) => {
+      const teacherId = c.get("userId");
+      const body = c.req.valid("json");
+
+      // Defend against path tampering — the path must encode this teacher,
+      // course, and the same resource id we are about to insert.
+      const expectedPrefix = `resources/${teacherId}/${body.course_id}/${body.resource_id}.`;
+      if (!body.path.startsWith(expectedPrefix))
+        return c.json({ error: "Invalid storage path" }, 400);
+
+      // Re-verify course ownership in case it was changed between sign+confirm.
+      const [course] = await db
+        .select({ id: courses.id })
+        .from(courses)
+        .where(
+          and(
+            eq(courses.id, body.course_id),
+            eq(courses.teacher_id, teacherId)
+          )
+        )
+        .limit(1);
+      if (!course) return c.json({ error: "Course not found" }, 404);
+
+      let topicId: string | null = null;
+      if (body.topic_id) {
+        const [t] = await db
+          .select({ id: courseTopics.id })
+          .from(courseTopics)
+          .where(
+            and(
+              eq(courseTopics.id, body.topic_id),
+              eq(courseTopics.course_id, body.course_id)
+            )
+          )
+          .limit(1);
+        if (!t) return c.json({ error: "Topic not found in course" }, 404);
+        topicId = t.id;
+      }
+
+      const supabase = createAdminSupabase();
+      const { data: urlData } = supabase.storage
+        .from("uploads")
+        .getPublicUrl(body.path);
+
+      try {
+        const [row] = await db
+          .insert(learningResources)
+          .values({
+            id: body.resource_id,
+            teacher_id: teacherId,
+            course_id: body.course_id,
+            topic_id: topicId,
+            title: body.title.trim(),
+            description:
+              body.description && body.description.trim()
+                ? body.description.trim()
+                : null,
+            file_name: body.file_name,
+            file_url: urlData.publicUrl,
+            storage_path: body.path,
+            file_type: body.file_type,
+            file_size_bytes: body.file_size_bytes ?? null,
+            visibility: body.visibility ?? "teacher_only",
+          })
+          .returning();
+        return c.json(row, 201);
+      } catch (err) {
+        // Best-effort cleanup of the orphan storage object.
+        await supabase.storage.from("uploads").remove([body.path]);
+        console.error("[learning-resources] confirm insert error:", err);
+        return c.json({ error: "Failed to save resource" }, 500);
+      }
+    }
+  )
 
   // ── Teacher: list own resources by course (optionally filtered by topic) ──
   .get(

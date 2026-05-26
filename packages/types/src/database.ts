@@ -294,3 +294,23 @@ export interface LearningMap {
     overall_pct: number;
   };
 }
+
+export type LearningResourceVisibility = "teacher_only" | "student_visible";
+
+export interface LearningResource {
+  id: string;
+  teacher_id: string;
+  course_id: string;
+  topic_id: string | null;
+  student_id: string | null;
+  title: string;
+  description: string | null;
+  file_name: string;
+  file_url: string;
+  storage_path: string;
+  file_type: string;
+  file_size_bytes: number | null;
+  visibility: LearningResourceVisibility;
+  created_at: string;
+  updated_at: string;
+}

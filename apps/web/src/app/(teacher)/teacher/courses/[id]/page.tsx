@@ -12,6 +12,7 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/i18n";
 import type { CourseWithTopics, CourseTopic } from "@studiq/types";
+import { ResourcesSection } from "@/components/learning-resources/resources-section";
 
 // ── helper ────────────────────────────────────────────────────────────────────
 function buildTree(flat: CourseTopic[]) {
@@ -40,6 +41,15 @@ export default function CourseDetailPage() {
   });
 
   const tree: TopicTree[] = course ? buildTree(course.topics) : [];
+
+  // Tabs: topic tree (the default course-editing UI) and learning resources.
+  const [activeTab, setActiveTab] = useState<"topics" | "resources">("topics");
+
+  // Flat topic list with depth for the resources upload modal's scope dropdown.
+  const flatTopicsForScope = tree.flatMap((p) => [
+    { id: p.id, name: p.name, depth: 0 },
+    ...p.children.map((c) => ({ id: c.id, name: c.name, depth: 1 })),
+  ]);
 
   // ── course header edit ────────────────────────────────────────────────────
   const [editingCourse, setEditingCourse] = useState(false);
@@ -278,6 +288,45 @@ export default function CourseDetailPage() {
         )}
       </div>
 
+      {/* ── tabs ── */}
+      <div className="flex items-center gap-1 mb-3 border-b border-gray-100">
+        <button
+          type="button"
+          onClick={() => setActiveTab("topics")}
+          className={`px-3 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+            activeTab === "topics"
+              ? "border-brand-500 text-brand-700"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          {t("courses.pageTitle")}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("resources")}
+          className={`px-3 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+            activeTab === "resources"
+              ? "border-brand-500 text-brand-700"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          {t("resources.tabTitle")}
+        </button>
+      </div>
+
+      {activeTab === "resources" && (
+        <div className="bg-white border border-gray-100 rounded-xl p-5">
+          <ResourcesSection
+            role="teacher"
+            courseId={courseId}
+            topics={flatTopicsForScope}
+            variant="tab"
+          />
+        </div>
+      )}
+
+      {activeTab === "topics" && (
+      <>
       {/* ── topic tree ── */}
       <div className="bg-white border border-gray-100 rounded-xl p-5 space-y-3">
 
@@ -445,6 +494,8 @@ export default function CourseDetailPage() {
 
         <p className="text-xs text-gray-400 pt-1">{t("courses.sharedHint")}</p>
       </div>
+      </>
+      )}
     </div>
   );
 }

@@ -19,6 +19,7 @@ import type {
   TopicStatus,
 } from "@studiq/types";
 import { useT } from "@/i18n";
+import { ResourcesSection } from "@/components/learning-resources/resources-section";
 
 /**
  * Learning Map — light theme matching Studiq system chrome.
@@ -393,6 +394,24 @@ export function LearningMapView({
                     : t("map.noSubtopics")}
                 </div>
               )}
+
+              {/* Learning resources for this topic (course-level resources
+                  appear here too — see backend GET filter). */}
+              <div className="px-4 pb-4 flex-shrink-0">
+                <ResourcesSection
+                  role={role}
+                  courseId={map.course_id}
+                  topicId={active.id}
+                  topics={[
+                    { id: active.id, name: active.name, depth: 0 },
+                    ...active.children.map((c) => ({
+                      id: c.id,
+                      name: c.name,
+                      depth: 1,
+                    })),
+                  ]}
+                />
+              </div>
             </div>
           )}
         </main>
