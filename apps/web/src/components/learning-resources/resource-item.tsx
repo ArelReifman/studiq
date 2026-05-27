@@ -4,7 +4,7 @@ import {
   BookMarked,
   Image as ImageIcon,
   Trash2,
-  ExternalLink,
+  ArrowUpRight,
 } from "lucide-react";
 import type { LearningResource } from "@studiq/types";
 import { useT } from "@/i18n";
@@ -52,7 +52,7 @@ export function ResourceItem({ resource, canManage = false, onDelete }: Props) {
         className="text-gray-500 hover:text-brand-600 flex-shrink-0"
         title={t("resources.open")}
       >
-        <ExternalLink size={16} />
+        <ArrowUpRight size={16} />
       </a>
 
       {canManage && onDelete && (
