@@ -620,7 +620,7 @@
   "resources.sectionTitle": "Resources",
   "resources.sectionHint": "Formula sheets, summaries, and helpful files for this topic",
   "resources.uploadCta": "Upload resource",
-  "resources.uploadShort": "+ Add",
+  "resources.uploadShort": "Add",
   "resources.uploadTitle": "Upload a resource",
   "resources.titleLabel": "Title",
   "resources.titlePlaceholder": "e.g. Chapter 3 formula sheet",
