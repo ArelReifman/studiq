@@ -1,21 +1,28 @@
 "use client";
 
-import { FileText, Image as ImageIcon, Trash2, ExternalLink } from "lucide-react";
+import {
+  BookMarked,
+  Image as ImageIcon,
+  Trash2,
+  ExternalLink,
+} from "lucide-react";
 import type { LearningResource } from "@studiq/types";
 import { useT } from "@/i18n";
 
 interface Props {
   resource: LearningResource;
-  /** Teacher view shows the visibility badge and the delete button. */
+  /** Teacher view shows the delete button. */
   canManage?: boolean;
   onDelete?: (id: string) => void;
 }
 
 export function ResourceItem({ resource, canManage = false, onDelete }: Props) {
   const t = useT();
+  // Use BookMarked as the consistent study-material icon for all non-image
+  // files (PDFs, formula sheets, summaries). Images keep their own icon so
+  // the visual cue remains useful in mixed lists.
   const isImage = resource.file_type.startsWith("image/");
-  const Icon = isImage ? ImageIcon : FileText;
-  const visibleToStudents = resource.visibility === "student_visible";
+  const Icon = isImage ? ImageIcon : BookMarked;
 
   return (
     <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-gray-100 bg-white hover:border-gray-200 transition-colors">
@@ -37,20 +44,6 @@ export function ResourceItem({ resource, canManage = false, onDelete }: Props) {
           </div>
         )}
       </div>
-
-      {canManage && (
-        <span
-          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${
-            visibleToStudents
-              ? "bg-emerald-50 text-emerald-700"
-              : "bg-gray-100 text-gray-600"
-          }`}
-        >
-          {visibleToStudents
-            ? t("resources.visibilityBadgeStudent")
-            : t("resources.visibilityBadgeTeacher")}
-        </span>
-      )}
 
       <a
         href={resource.file_url}

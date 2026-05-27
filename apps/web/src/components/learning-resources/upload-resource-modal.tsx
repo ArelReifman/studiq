@@ -29,6 +29,9 @@ interface Props {
   topics?: TopicOption[];
   /** Pre-select this topic in the dropdown. */
   defaultTopicId?: string | null;
+  /** When set, the resource becomes private to that one student. Used when
+   *  the modal is opened from a specific student's Learning Map. */
+  studentId?: string | null;
   onClose: () => void;
 }
 
@@ -36,6 +39,7 @@ export function UploadResourceModal({
   courseId,
   topics = [],
   defaultTopicId = null,
+  studentId = null,
   onClose,
 }: Props) {
   const t = useT();
@@ -54,6 +58,7 @@ export function UploadResourceModal({
       return learningResourcesApi.upload(file, {
         course_id: courseId,
         topic_id: topicId || null,
+        student_id: studentId ?? null,
         title: title.trim(),
         description: description.trim() || null,
         visibility,

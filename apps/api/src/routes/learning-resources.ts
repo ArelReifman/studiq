@@ -9,6 +9,22 @@ import {
   courses,
   courseTopics,
 } from "../db/schema.js";
+
+/**
+ * Verify the (student, teacher) pair: a teacher may only attach resources to
+ * a student they own. Returns the student id when ok, null otherwise.
+ */
+async function verifyStudentOwnership(
+  teacherId: string,
+  studentId: string
+): Promise<string | null> {
+  const [row] = await db
+    .select({ id: students.id })
+    .from(students)
+    .where(and(eq(students.id, studentId), eq(students.teacher_id, teacherId)))
+    .limit(1);
+  return row?.id ?? null;
+}
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { createAdminSupabase } from "../lib/supabase.js";
 import { uuidParamSchema } from "../lib/validators.js";
@@ -26,6 +42,10 @@ const ALLOWED_TYPES = [
 const listQuerySchema = z.object({
   course_id: z.string().uuid(),
   topic_id: z.string().uuid().optional(),
+  // Teacher-only refinement: when working inside a specific student's Learning
+  // Map, the teacher passes student_id so the list contains shared course
+  // resources (student_id IS NULL) AND that student's private resources only.
+  student_id: z.string().uuid().optional(),
 });
 
 // Sign+Confirm flow — bypasses Vercel's 4.5 MB body limit by uploading
@@ -36,6 +56,10 @@ const signSchema = z.object({
   size: z.number().int().positive().max(MAX_FILE_SIZE),
   course_id: z.string().uuid(),
   topic_id: z.string().uuid().nullable().optional(),
+  // When uploading from a specific student's Learning Map, the teacher passes
+  // student_id so the resource is scoped to that student only. Null/omitted
+  // makes the resource a shared course-level resource.
+  student_id: z.string().uuid().nullable().optional(),
 });
 
 const confirmSchema = z.object({
@@ -46,6 +70,7 @@ const confirmSchema = z.object({
   file_size_bytes: z.number().int().positive().max(MAX_FILE_SIZE).optional(),
   course_id: z.string().uuid(),
   topic_id: z.string().uuid().nullable().optional(),
+  student_id: z.string().uuid().nullable().optional(),
   title: z.string().min(1).max(255),
   description: z.string().max(2000).nullable().optional(),
   visibility: z.enum(["teacher_only", "student_visible"]).optional(),
@@ -87,6 +112,7 @@ export const learningResourcesRoutes = new Hono()
     const file = formData.get("file");
     const courseId = formData.get("course_id");
     const topicIdRaw = formData.get("topic_id");
+    const studentIdRaw = formData.get("student_id");
     const title = formData.get("title");
     const description = formData.get("description");
     const visibility = formData.get("visibility");
@@ -134,6 +160,14 @@ export const learningResourcesRoutes = new Hono()
       topicId = t.id;
     }
 
+    let studentId: string | null = null;
+    if (typeof studentIdRaw === "string" && studentIdRaw) {
+      const owned = await verifyStudentOwnership(teacherId, studentIdRaw);
+      if (!owned)
+        return c.json({ error: "Student not found for this teacher" }, 404);
+      studentId = owned;
+    }
+
     // Allocate an id up front so the storage path is unique even before
     // the row is inserted.
     const id = crypto.randomUUID();
@@ -167,6 +201,7 @@ export const learningResourcesRoutes = new Hono()
           teacher_id: teacherId,
           course_id: courseId,
           topic_id: topicId,
+          student_id: studentId,
           title: title.trim(),
           description:
             typeof description === "string" && description.trim()
@@ -198,7 +233,7 @@ export const learningResourcesRoutes = new Hono()
     zValidator("json", signSchema),
     async (c) => {
       const teacherId = c.get("userId");
-      const { file_name, content_type, course_id, topic_id } =
+      const { file_name, content_type, course_id, topic_id, student_id } =
         c.req.valid("json");
 
       if (!ALLOWED_TYPES.includes(content_type))
@@ -229,6 +264,12 @@ export const learningResourcesRoutes = new Hono()
           )
           .limit(1);
         if (!t) return c.json({ error: "Topic not found in course" }, 404);
+      }
+
+      if (student_id) {
+        const owned = await verifyStudentOwnership(teacherId, student_id);
+        if (!owned)
+          return c.json({ error: "Student not found for this teacher" }, 404);
       }
 
       const resourceId = crypto.randomUUID();
@@ -305,6 +346,14 @@ export const learningResourcesRoutes = new Hono()
         topicId = t.id;
       }
 
+      let studentId: string | null = null;
+      if (body.student_id) {
+        const owned = await verifyStudentOwnership(teacherId, body.student_id);
+        if (!owned)
+          return c.json({ error: "Student not found for this teacher" }, 404);
+        studentId = owned;
+      }
+
       const supabase = createAdminSupabase();
       const { data: urlData } = supabase.storage
         .from("uploads")
@@ -318,6 +367,7 @@ export const learningResourcesRoutes = new Hono()
             teacher_id: teacherId,
             course_id: body.course_id,
             topic_id: topicId,
+            student_id: studentId,
             title: body.title.trim(),
             description:
               body.description && body.description.trim()
@@ -348,7 +398,7 @@ export const learningResourcesRoutes = new Hono()
     zValidator("query", listQuerySchema),
     async (c) => {
       const teacherId = c.get("userId");
-      const { course_id, topic_id } = c.req.valid("query");
+      const { course_id, topic_id, student_id } = c.req.valid("query");
 
       const conditions = [
         eq(learningResources.teacher_id, teacherId),
@@ -362,6 +412,22 @@ export const learningResourcesRoutes = new Hono()
             isNull(learningResources.topic_id)
           )!
         );
+      }
+      // Student scoping:
+      // - If student_id is passed (teacher working inside a student's map):
+      //   return shared resources (student_id IS NULL) OR resources for
+      //   that specific student.
+      // - If omitted (course-tab view): return only shared/course-level
+      //   resources, so per-student materials don't leak into the course tab.
+      if (student_id) {
+        conditions.push(
+          or(
+            isNull(learningResources.student_id),
+            eq(learningResources.student_id, student_id)
+          )!
+        );
+      } else {
+        conditions.push(isNull(learningResources.student_id));
       }
 
       const rows = await db
@@ -394,6 +460,14 @@ export const learningResourcesRoutes = new Hono()
         eq(learningResources.teacher_id, student.teacher_id),
         eq(learningResources.course_id, course_id),
         eq(learningResources.visibility, "student_visible"),
+        // Student-specific scoping: shared course resources
+        // (student_id IS NULL) OR resources targeted at this student only.
+        // Other students in the same course must not see one another's
+        // personal materials.
+        or(
+          isNull(learningResources.student_id),
+          eq(learningResources.student_id, studentId)
+        )!,
       ];
       if (topic_id) {
         conditions.push(

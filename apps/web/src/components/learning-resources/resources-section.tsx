@@ -18,6 +18,10 @@ interface BaseProps {
   topics?: TopicOption[];
   /** Visual mode — affects spacing and header size. */
   variant?: "panel" | "tab";
+  /** Teacher view only: when set, the section is scoped to a specific
+   *  student. The list returns shared course resources + that student's
+   *  private resources; uploads default to that student. */
+  studentId?: string | null;
 }
 
 type TeacherProps = BaseProps & { role: "teacher" };
@@ -27,20 +31,35 @@ type Props = TeacherProps | StudentProps;
 export function ResourcesSection(props: Props) {
   const t = useT();
   const qc = useQueryClient();
-  const { courseId, topicId, role, topics = [], variant = "panel" } = props;
+  const {
+    courseId,
+    topicId,
+    role,
+    topics = [],
+    variant = "panel",
+    studentId = null,
+  } = props;
   const [showUpload, setShowUpload] = useState(false);
 
   const queryKey = [
     "learning-resources",
     role,
-    { course_id: courseId, topic_id: topicId ?? null },
+    {
+      course_id: courseId,
+      topic_id: topicId ?? null,
+      student_id: studentId ?? null,
+    },
   ] as const;
 
   const { data: resources, isLoading } = useQuery({
     queryKey,
     queryFn: () =>
       role === "teacher"
-        ? learningResourcesApi.listForTeacher(courseId, topicId ?? undefined)
+        ? learningResourcesApi.listForTeacher(
+            courseId,
+            topicId ?? undefined,
+            studentId ?? undefined
+          )
         : learningResourcesApi.listForStudent(courseId, topicId ?? undefined),
     enabled: !!courseId,
   });
@@ -115,6 +134,7 @@ export function ResourcesSection(props: Props) {
           courseId={courseId}
           topics={topics}
           defaultTopicId={topicId ?? null}
+          studentId={studentId ?? null}
           onClose={() => setShowUpload(false)}
         />
       )}

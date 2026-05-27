@@ -395,13 +395,17 @@ export function LearningMapView({
                 </div>
               )}
 
-              {/* Learning resources for this topic (course-level resources
-                  appear here too — see backend GET filter). */}
+              {/* Learning resources for this topic. The list combines shared
+                  course resources (student_id IS NULL) with this student's
+                  private resources; per-student isolation is enforced server
+                  side. Uploads from here default to attaching the resource
+                  to the active student so it stays private. */}
               <div className="px-4 pb-4 flex-shrink-0">
                 <ResourcesSection
                   role={role}
                   courseId={map.course_id}
                   topicId={active.id}
+                  studentId={map.student_id}
                   topics={[
                     { id: active.id, name: active.name, depth: 0 },
                     ...active.children.map((c) => ({

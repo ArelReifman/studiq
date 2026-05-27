@@ -192,15 +192,20 @@ import type { LearningResource, LearningResourceVisibility } from "@studiq/types
 export interface UploadResourceMeta {
   course_id: string;
   topic_id?: string | null;
+  /** When set, the resource is private to that one student. Null/omitted
+   *  makes it a shared course resource visible to all students of the
+   *  uploading teacher. */
+  student_id?: string | null;
   title: string;
   description?: string | null;
   visibility?: LearningResourceVisibility;
 }
 
 export const learningResourcesApi = {
-  listForTeacher(courseId: string, topicId?: string) {
+  listForTeacher(courseId: string, topicId?: string, studentId?: string) {
     const qs = new URLSearchParams({ course_id: courseId });
     if (topicId) qs.set("topic_id", topicId);
+    if (studentId) qs.set("student_id", studentId);
     return api.get<LearningResource[]>(`/learning-resources?${qs}`);
   },
   listForStudent(courseId: string, topicId?: string) {
@@ -221,6 +226,7 @@ export const learningResourcesApi = {
       size: file.size,
       course_id: meta.course_id,
       topic_id: meta.topic_id ?? null,
+      student_id: meta.student_id ?? null,
     });
 
     // 2. PUT the file straight to Supabase Storage — bypasses Vercel.
@@ -241,6 +247,7 @@ export const learningResourcesApi = {
       file_size_bytes: file.size,
       course_id: meta.course_id,
       topic_id: meta.topic_id ?? null,
+      student_id: meta.student_id ?? null,
       title: meta.title,
       description: meta.description ?? null,
       visibility: meta.visibility ?? "teacher_only",

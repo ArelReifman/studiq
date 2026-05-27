@@ -122,6 +122,7 @@ async function uploadResource(opts: {
   asTeacher: string;
   course_id: string;
   topic_id?: string;
+  student_id?: string;
   title?: string;
   visibility?: "teacher_only" | "student_visible";
   file?: File;
@@ -132,6 +133,7 @@ async function uploadResource(opts: {
   fd.set("file", opts.file ?? makeFile("hw.pdf", "application/pdf"));
   fd.set("course_id", opts.course_id);
   if (opts.topic_id) fd.set("topic_id", opts.topic_id);
+  if (opts.student_id) fd.set("student_id", opts.student_id);
   fd.set("title", opts.title ?? "Resource");
   if (opts.visibility) fd.set("visibility", opts.visibility);
   return learningResourcesRoutes.request("/", {
@@ -453,6 +455,180 @@ describe("learning resources — phase 1 backend", () => {
       }),
     });
     expect(confirmRes.status).toBe(400);
+  });
+
+  it("14. student-specific upload: other student in same course does not see it", async () => {
+    // Two students of TEACHER_A in the same course.
+    const courseId = await seedCourse(ctx.TEACHER_A);
+    const studentY = randomUUID();
+    const studentZ = randomUUID();
+    await seedStudent(studentY, ctx.TEACHER_A, `${studentY}@test.dev`);
+    await seedStudent(studentZ, ctx.TEACHER_A, `${studentZ}@test.dev`);
+    const { studentCourses } = await import("../db/schema.js");
+    await testDb.insert(studentCourses).values([
+      { student_id: studentY, course_id: courseId, is_active: true },
+      { student_id: studentZ, course_id: courseId, is_active: true },
+    ]);
+
+    // Teacher uploads from inside studentY's Learning Map → student-specific.
+    await uploadResource({
+      asTeacher: ctx.TEACHER_A,
+      course_id: courseId,
+      student_id: studentY,
+      title: "Private notes for Y",
+      visibility: "student_visible",
+    });
+
+    // studentY sees it.
+    ctx.currentUser = studentY;
+    ctx.currentRole = "student";
+    const resY = await learningResourcesRoutes.request(
+      `/student?course_id=${courseId}`
+    );
+    const rowsY = (await resY.json()) as any[];
+    expect(rowsY.length).toBe(1);
+    expect(rowsY[0].title).toBe("Private notes for Y");
+
+    // studentZ MUST NOT see it.
+    ctx.currentUser = studentZ;
+    ctx.currentRole = "student";
+    const resZ = await learningResourcesRoutes.request(
+      `/student?course_id=${courseId}`
+    );
+    const rowsZ = (await resZ.json()) as any[];
+    expect(rowsZ.length).toBe(0);
+  });
+
+  it("15. shared course-level resource (student_id NULL) is visible to all students", async () => {
+    const courseId = await seedCourse(ctx.TEACHER_A);
+    const studentY = randomUUID();
+    const studentZ = randomUUID();
+    await seedStudent(studentY, ctx.TEACHER_A, `${studentY}@test.dev`);
+    await seedStudent(studentZ, ctx.TEACHER_A, `${studentZ}@test.dev`);
+    const { studentCourses } = await import("../db/schema.js");
+    await testDb.insert(studentCourses).values([
+      { student_id: studentY, course_id: courseId, is_active: true },
+      { student_id: studentZ, course_id: courseId, is_active: true },
+    ]);
+
+    // Upload from the course page (no student_id) → shared course resource.
+    await uploadResource({
+      asTeacher: ctx.TEACHER_A,
+      course_id: courseId,
+      title: "Course-wide PDF",
+      visibility: "student_visible",
+    });
+
+    for (const sid of [studentY, studentZ]) {
+      ctx.currentUser = sid;
+      ctx.currentRole = "student";
+      const res = await learningResourcesRoutes.request(
+        `/student?course_id=${courseId}`
+      );
+      const rows = (await res.json()) as any[];
+      expect(rows.find((r) => r.title === "Course-wide PDF")).toBeTruthy();
+    }
+  });
+
+  it("16. topic+student scoped resource appears only for that student on that topic", async () => {
+    const courseId = await seedCourse(ctx.TEACHER_A);
+    const topicId = await seedTopic(courseId);
+    const otherTopic = await seedTopic(courseId);
+    const studentY = randomUUID();
+    const studentZ = randomUUID();
+    await seedStudent(studentY, ctx.TEACHER_A, `${studentY}@test.dev`);
+    await seedStudent(studentZ, ctx.TEACHER_A, `${studentZ}@test.dev`);
+    const { studentCourses } = await import("../db/schema.js");
+    await testDb.insert(studentCourses).values([
+      { student_id: studentY, course_id: courseId, is_active: true },
+      { student_id: studentZ, course_id: courseId, is_active: true },
+    ]);
+
+    await uploadResource({
+      asTeacher: ctx.TEACHER_A,
+      course_id: courseId,
+      topic_id: topicId,
+      student_id: studentY,
+      title: "Y notes for topic",
+      visibility: "student_visible",
+    });
+
+    // studentY on the right topic → sees it.
+    ctx.currentUser = studentY;
+    ctx.currentRole = "student";
+    const resYTopic = await learningResourcesRoutes.request(
+      `/student?course_id=${courseId}&topic_id=${topicId}`
+    );
+    expect(((await resYTopic.json()) as any[]).length).toBe(1);
+
+    // studentY on a different topic → does NOT see it.
+    const resYOther = await learningResourcesRoutes.request(
+      `/student?course_id=${courseId}&topic_id=${otherTopic}`
+    );
+    expect(((await resYOther.json()) as any[]).length).toBe(0);
+
+    // studentZ on the same topic → does NOT see it.
+    ctx.currentUser = studentZ;
+    ctx.currentRole = "student";
+    const resZTopic = await learningResourcesRoutes.request(
+      `/student?course_id=${courseId}&topic_id=${topicId}`
+    );
+    expect(((await resZTopic.json()) as any[]).length).toBe(0);
+  });
+
+  it("17. teacher_only resource stays hidden from students even when student_id matches", async () => {
+    const courseId = await seedCourse(ctx.TEACHER_A);
+    const studentY = randomUUID();
+    await seedStudent(studentY, ctx.TEACHER_A, `${studentY}@test.dev`);
+
+    await uploadResource({
+      asTeacher: ctx.TEACHER_A,
+      course_id: courseId,
+      student_id: studentY,
+      title: "Internal draft",
+      visibility: "teacher_only",
+    });
+
+    ctx.currentUser = studentY;
+    ctx.currentRole = "student";
+    const res = await learningResourcesRoutes.request(
+      `/student?course_id=${courseId}`
+    );
+    const rows = (await res.json()) as any[];
+    expect(rows.find((r) => r.title === "Internal draft")).toBeUndefined();
+  });
+
+  it("18. teacher GET without student_id returns only shared resources", async () => {
+    const courseId = await seedCourse(ctx.TEACHER_A);
+    const studentY = randomUUID();
+    await seedStudent(studentY, ctx.TEACHER_A, `${studentY}@test.dev`);
+
+    await uploadResource({
+      asTeacher: ctx.TEACHER_A,
+      course_id: courseId,
+      title: "Shared",
+    });
+    await uploadResource({
+      asTeacher: ctx.TEACHER_A,
+      course_id: courseId,
+      student_id: studentY,
+      title: "Per-student",
+    });
+
+    ctx.currentUser = ctx.TEACHER_A;
+    ctx.currentRole = "teacher";
+    const res = await learningResourcesRoutes.request(
+      `/?course_id=${courseId}`
+    );
+    const titles = ((await res.json()) as any[]).map((r) => r.title).sort();
+    expect(titles).toEqual(["Shared"]);
+
+    // With student_id → returns both shared + private for that student.
+    const res2 = await learningResourcesRoutes.request(
+      `/?course_id=${courseId}&student_id=${studentY}`
+    );
+    const titles2 = ((await res2.json()) as any[]).map((r) => r.title).sort();
+    expect(titles2).toEqual(["Per-student", "Shared"]);
   });
 
   it("13. sign rejects an invalid file type", async () => {
