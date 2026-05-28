@@ -13,7 +13,7 @@ import {
   courses,
 } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
-import { notifyTelegram, escapeTelegramHtml } from "../lib/notify.js";
+import { notifyTelegramAsync, escapeTelegramHtml } from "../lib/notify.js";
 import { ensureDefaultSlots } from "../services/scheduling/ensure-default-slots.js";
 import { createCalendarEvent, deleteCalendarEvent, updateCalendarEvent } from "../services/google-calendar.js";
 import { getIsraelToday, isSlotInPastIsrael } from "../lib/time.js";
@@ -378,7 +378,7 @@ export const bookingRoutes = new Hono()
           ? `\n📝 ${escapeTelegramHtml(body.note)}`
           : "";
         const durationLabel = hours > 1 ? ` · ${hours}h` : "";
-        await notifyTelegram(
+        notifyTelegramAsync(
           `📅 <b>New lesson request</b>\n${escapeTelegramHtml(studentName)} · ${slot.date} · ${groupStart}–${groupEnd}${durationLabel}${noteLine}`
         );
       }
@@ -605,7 +605,7 @@ export const bookingRoutes = new Hono()
         .limit(1);
       const studentName = studentRow?.name ?? "Student";
       const noteLine = note ? `\n📝 ${escapeTelegramHtml(note)}` : "";
-      await notifyTelegram(
+      notifyTelegramAsync(
         `📅 <b>New lesson request</b>\n${escapeTelegramHtml(studentName)} · ${date} · ${groupStart}–${groupEnd} · ${formatDurationMin(totalMin)}${noteLine}`
       );
     } catch (err) {
@@ -727,7 +727,7 @@ export const bookingRoutes = new Hono()
             timeToMin(sorted[0]!.start_time);
           const courseName = await resolveCourseName(sorted[0]?.course_id, studentId);
           const courseTag  = courseName ? ` · ${escapeTelegramHtml(courseName)}` : "";
-          await notifyTelegram(
+          notifyTelegramAsync(
             `🚫 <b>Lesson cancelled by you</b>\n${escapeTelegramHtml(studentName)} · ${sorted[0]!.date} · ${sorted[0]!.start_time}–${sorted[sorted.length - 1]!.end_time} · ${formatDurationMin(totalMin)}${courseTag}`
           );
         })();
@@ -933,7 +933,7 @@ export const bookingRoutes = new Hono()
       try {
         const studentName = studentRow?.name ?? "Student";
         const courseTag = courseName ? ` · ${escapeTelegramHtml(courseName)}` : "";
-        await notifyTelegram(
+        notifyTelegramAsync(
           `📚 <b>Lesson scheduled</b>\n${escapeTelegramHtml(studentName)} · ${date} · ${start_time}–${lessonEnd} · ${formatDurationMin(duration_minutes)}${courseTag}`
         );
       } catch (err) {
@@ -1316,7 +1316,7 @@ export const bookingRoutes = new Hono()
           const studentName = studentRow?.name ?? "Student";
           const courseName  = await resolveCourseName(updated.course_id, updated.student_id);
           const courseTag   = courseName ? ` · ${escapeTelegramHtml(courseName)}` : "";
-          await notifyTelegram(
+          notifyTelegramAsync(
             `🚫 <b>Lesson cancelled by you</b>\n${escapeTelegramHtml(studentName)} · ${updated.date} · ${updated.start_time}–${updated.end_time}${courseTag}`
           );
         })();
@@ -1386,7 +1386,7 @@ export const bookingRoutes = new Hono()
           .set({ status: "cancelled", updated_at: new Date() })
           .where(inArray(lessonBookings.id, pendingIds));
 
-        void notifyTelegram(
+        notifyTelegramAsync(
           `❌ <b>Booking cancelled</b>\n${escapeTelegramHtml(studentName)} · ${date} · ${lessonStart}–${lessonEnd}`
         );
       }
@@ -1397,7 +1397,7 @@ export const bookingRoutes = new Hono()
           .set({ status: "cancel_requested", updated_at: new Date() })
           .where(inArray(lessonBookings.id, approvedIds));
 
-        void notifyTelegram(
+        notifyTelegramAsync(
           `⚠️ <b>Cancellation requested</b>\n${escapeTelegramHtml(studentName)} wants to cancel ${date} · ${lessonStart}–${lessonEnd}`
         );
       }
@@ -1450,7 +1450,7 @@ export const bookingRoutes = new Hono()
           .where(eq(profiles.id, studentId))
           .limit(1);
         const studentName = studentRow?.name ?? "Student";
-        await notifyTelegram(
+        notifyTelegramAsync(
           `❌ <b>Booking cancelled</b>\n${escapeTelegramHtml(studentName)} · ${updated!.date} · ${updated!.start_time}–${updated!.end_time}`
         );
       })();
@@ -1473,7 +1473,7 @@ export const bookingRoutes = new Hono()
           .where(eq(profiles.id, studentId))
           .limit(1);
         const studentName = studentRow?.name ?? "Student";
-        await notifyTelegram(
+        notifyTelegramAsync(
           `⚠️ <b>Cancellation requested</b>\n${escapeTelegramHtml(studentName)} wants to cancel ${updated!.date} · ${updated!.start_time}–${updated!.end_time}`
         );
       })();

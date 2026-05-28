@@ -9,6 +9,8 @@
  * without Telegram configured don't crash.
  */
 
+import { waitUntil } from "@vercel/functions";
+
 /**
  * Escape user-supplied text before embedding in a Telegram HTML message.
  * Telegram's HTML parser only cares about &, <, >.
@@ -85,5 +87,31 @@ export async function notifyTelegram(message: string): Promise<void> {
     if (!fallbackSent) {
       console.warn("[notify] Plain text fallback also failed — no Telegram sent");
     }
+  }
+}
+
+/**
+ * Fire-and-forget Telegram notification.
+ *
+ * On Vercel: registered with `waitUntil` so the function stays alive after
+ * `c.json()` returns until Telegram delivery completes (or fails).
+ * Outside Vercel (local dev, tests): degrades to a plain fire-and-forget
+ * promise — the `.catch()` below guarantees no unhandled rejection.
+ *
+ * Failures are logged but never thrown — Telegram is a side-channel
+ * notification, never on the critical path of a user-facing response.
+ */
+export function notifyTelegramAsync(message: string): void {
+  const promise = notifyTelegram(message).catch((err) => {
+    console.warn(
+      `[notify] background Telegram failed: ${(err as Error).message}`
+    );
+  });
+  try {
+    waitUntil(promise);
+  } catch {
+    // No Vercel request context (local dev / tests / standalone Node).
+    // The promise above is already isolated with .catch(), so it will
+    // run to completion in the background without crashing the process.
   }
 }
