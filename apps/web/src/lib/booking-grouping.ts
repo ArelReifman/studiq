@@ -78,6 +78,15 @@ export interface BookingLike {
    * (student_id + date + consecutive-time + course_id) in that case.
    */
   gcal_event_id?: string | null;
+  /**
+   * Calendar background-sync status (Phase 3B-2). Surfaced on teacher
+   * lessons whose Google Calendar event is processed off-request:
+   *   'not_required' | 'synced' → no badge
+   *   'pending'                 → "מסתנכרן ליומן…"
+   *   'failed'                  → "סנכרון ליומן נכשל"
+   * All rows in a group share the same value.
+   */
+  calendar_sync_status?: "not_required" | "pending" | "synced" | "failed";
 }
 
 export interface BookingGroup<T extends BookingLike = BookingLike> {

@@ -37,6 +37,8 @@ interface BookingRow {
   course_id?: string | null;
   /** GCal event id — needed so groupConsecutiveBookings splits distinct lessons. */
   gcal_event_id?: string | null;
+  /** Calendar background-sync status (Phase 3B-2). */
+  calendar_sync_status?: "not_required" | "pending" | "synced" | "failed";
 }
 
 type Attendance = "attended" | "no_show" | null;
@@ -448,6 +450,24 @@ export default function TeacherSchedulePage() {
                       >
                         {t(`booking.${g.status}`)}
                       </span>
+                      {/* Calendar background-sync badge (Phase 3B-2).
+                          Only shown when the worker is still in progress
+                          or has parked the row; 'synced' and 'not_required'
+                          render nothing. All rows in the group share the
+                          status, so reading the first one is enough. */}
+                      {g.bookings[0]?.calendar_sync_status === "pending" && (
+                        <span className="text-xs text-gray-500 whitespace-nowrap">
+                          ⏳ מסתנכרן ליומן…
+                        </span>
+                      )}
+                      {g.bookings[0]?.calendar_sync_status === "failed" && (
+                        <span
+                          className="text-xs text-red-600 whitespace-nowrap"
+                          title={t("teacher.calendarSyncFailedHint") || ""}
+                        >
+                          ⚠️ סנכרון ליומן נכשל
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>

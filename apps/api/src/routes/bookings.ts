@@ -16,6 +16,8 @@ import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { notifyTelegramAsync, escapeTelegramHtml } from "../lib/notify.js";
 import { ensureDefaultSlots } from "../services/scheduling/ensure-default-slots.js";
 import { createCalendarEvent, deleteCalendarEvent, updateCalendarEvent } from "../services/google-calendar.js";
+import { syncBookingsByIds } from "../services/calendar-sync-worker.js";
+import { waitUntil } from "@vercel/functions";
 import { getIsraelToday, isSlotInPastIsrael } from "../lib/time.js";
 import { uuidParamSchema } from "../lib/validators.js";
 
@@ -419,6 +421,10 @@ export const bookingRoutes = new Hono()
         // lessons apart even when they're back-to-back. All slots created in
         // one teacher action share one id.
         gcal_event_id: lessonBookings.gcal_event_id,
+        // Surface so the UI can render a "syncing"/"failed" badge for
+        // teacher-created lessons whose GCal event is processed in
+        // background (Phase 3B-2).
+        calendar_sync_status: lessonBookings.calendar_sync_status,
       })
       .from(lessonBookings)
       .innerJoin(profiles, eq(profiles.id, lessonBookings.student_id))
@@ -900,28 +906,39 @@ export const bookingRoutes = new Hono()
           .limit(1),
       ]);
 
-      // Create ONE GCal event for the full span.
-      // A gcal failure must never roll back the already-committed booking.
-      try {
-        const eventId = await createCalendarEvent({
-          date,
-          start_time,
-          end_time:    lessonEnd,
-          student_id,
-          teacher_id:  teacherId,
-          ...(courseName                ? { course_name:   courseName                } : {}),
-          ...(teacherRow?.teacher_name  ? { teacher_name:  teacherRow.teacher_name  } : {}),
-        });
+      // Calendar sync — Phase 3B-2 hybrid path.
+      // Mark every row in the group as 'pending', then trigger the
+      // group-aware worker via `waitUntil`. The worker opens a
+      // transaction, locks the whole group with SELECT … FOR UPDATE,
+      // calls createCalendarEvent ONCE for the full span, and writes
+      // the same gcal_event_id to every row. The daily Vercel Cron is
+      // only a safety net.
+      // teacherRow / studentRow stay in scope for the Telegram block below.
+      void teacherRow;
+      await db
+        .update(lessonBookings)
+        .set({
+          calendar_sync_status: "pending",
+          calendar_sync_error: null,
+          calendar_next_retry_at: null,
+          updated_at: new Date(),
+        })
+        .where(inArray(lessonBookings.id, createdIds));
+      created.forEach((b) => { b.calendar_sync_status = "pending"; });
 
-        if (eventId) {
-          await db
-            .update(lessonBookings)
-            .set({ gcal_event_id: eventId, updated_at: new Date() })
-            .where(inArray(lessonBookings.id, createdIds));
-          created.forEach((b) => { b.gcal_event_id = eventId; });
-        }
-      } catch (err) {
-        console.error("[teacher-lesson POST] GCal event creation failed:", err);
+      try {
+        waitUntil(
+          syncBookingsByIds(createdIds).catch((err) => {
+            console.error(
+              "[teacher-lesson POST] background calendar sync failed:",
+              err
+            );
+          })
+        );
+      } catch {
+        // Outside Vercel runtime (local dev / tests): the promise above
+        // is already fire-and-forget with .catch(), so it will run to
+        // completion in the Node process without crashing.
       }
 
       // Telegram: one notification per teacher-created lesson.
