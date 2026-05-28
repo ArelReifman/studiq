@@ -667,7 +667,21 @@ export const bookingRoutes = new Hono()
 
       const updated = await db
         .update(lessonBookings)
-        .set({ status, teacher_note: note ?? null, updated_at: new Date() })
+        .set({
+          status,
+          teacher_note: note ?? null,
+          updated_at: new Date(),
+          // Only when approving — mark the rows for background GCal sync
+          // so the worker picks them up. For 'rejected' / 'cancelled' the
+          // column keeps its prior value (no spread, no behavior change).
+          ...(status === "approved"
+            ? {
+                calendar_sync_status: "pending" as const,
+                calendar_sync_error: null,
+                calendar_next_retry_at: null,
+              }
+            : {}),
+        })
         .where(inArray(lessonBookings.id, ids))
         .returning();
 
@@ -676,41 +690,25 @@ export const bookingRoutes = new Hono()
       );
 
       if (status === "approved") {
-        // Create ONE gcal event spanning the full lesson.
-        // Wrapped in try/catch: a gcal failure must never roll back the approval.
+        // Calendar sync runs in background — the rows above were marked
+        // `calendar_sync_status='pending'` in the same UPDATE, and the
+        // worker opens a transaction, locks the group with SELECT … FOR
+        // UPDATE, calls createCalendarEvent ONCE for the full span, and
+        // writes the same gcal_event_id to every row. The daily Vercel
+        // Cron is only a safety net.
         try {
-          const lessonStart = sorted[0]!.start_time;
-          const lessonEnd = sorted[sorted.length - 1]!.end_time;
-          const studentId = sorted[0]!.student_id;
-
-          // Resolve course name and teacher name in parallel — they're
-          // independent reads and both feed into the same gcal payload.
-          const [courseName, [teacherRow]] = await Promise.all([
-            resolveCourseName(sorted[0]?.course_id, studentId),
-            db
-              .select({ teacher_name: profiles.full_name })
-              .from(profiles)
-              .where(eq(profiles.id, teacherId))
-              .limit(1),
-          ]);
-
-          const eventId = await createCalendarEvent({
-            date: sorted[0]!.date ?? "",
-            start_time: lessonStart,
-            end_time: lessonEnd,
-            student_id: studentId,
-            teacher_id: teacherId,
-            ...(courseName               ? { course_name:  courseName               } : {}),
-            ...(teacherRow?.teacher_name ? { teacher_name: teacherRow.teacher_name } : {}),
-          });
-          if (eventId) {
-            await db
-              .update(lessonBookings)
-              .set({ gcal_event_id: eventId })
-              .where(inArray(lessonBookings.id, ids));
-          }
-        } catch (err) {
-          console.error("[batch-status] gcal event creation failed (booking approved):", err);
+          waitUntil(
+            syncBookingsByIds(ids).catch((err) => {
+              console.error(
+                "[batch-status approve] background calendar sync failed:",
+                err
+              );
+            })
+          );
+        } catch {
+          // Outside Vercel runtime (local dev / tests): the promise above
+          // is already fire-and-forget with .catch(), so it runs to
+          // completion in the Node process without crashing.
         }
       }
 
