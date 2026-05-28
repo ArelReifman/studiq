@@ -4,5 +4,11 @@
   "outputDirectory": "apps/web/.next",
   "installCommand": "pnpm install",
   "framework": "nextjs",
-  "devCommand": "pnpm --filter @studiq/web dev"
+  "devCommand": "pnpm --filter @studiq/web dev",
+  "crons": [
+    {
+      "path": "/api/cron/sync-calendar",
+      "schedule": "* * * * *"
+    }
+  ]
 }

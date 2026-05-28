@@ -669,6 +669,22 @@ export const lessonBookings = pgTable(
     // wires up the course selector in LessonFormModal.
     course_id: uuid("course_id").references(() => courses.id, { onDelete: "set null" }),
     gcal_event_id: text("gcal_event_id"), // Google Calendar event ID, set on approval
+    // Calendar background-sync (Phase 3B-1 scaffolding).
+    // 'not_required' = pending booking (no event yet expected).
+    // 'pending'      = approved/teacher-created, worker still needs to act.
+    // 'synced'       = gcal_event_id reflects the live Google event.
+    // 'failed'       = exhausted retries; teacher must retry manually.
+    // No existing flow writes anything other than 'not_required' yet — the
+    // inline await createCalendarEvent path in bookings.ts is unchanged.
+    calendar_sync_status: text("calendar_sync_status")
+      .$type<"not_required" | "pending" | "synced" | "failed">()
+      .notNull()
+      .default("not_required"),
+    calendar_sync_error: text("calendar_sync_error"),
+    calendar_retry_count: integer("calendar_retry_count").notNull().default(0),
+    calendar_next_retry_at: timestamp("calendar_next_retry_at", {
+      withTimezone: true,
+    }),
     attendance: lessonAttendanceEnum("attendance"), // Null until teacher marks
     created_at: timestamp("created_at", { withTimezone: true })
       .notNull()
