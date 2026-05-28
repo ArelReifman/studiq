@@ -134,8 +134,16 @@ export default function ApprovalsPage() {
     onMutate: async (vars) => {
       setActionState((s) => ({ ...s, [vars.groupKey]: vars.action }));
 
-      // Non-approve paths: keep current (non-optimistic) behavior.
-      if (vars.action !== "approve" || vars.status !== "approved") {
+      // Optimistic UI engages for two click paths only:
+      //   approve-booking     = action "approve" + status "approved"
+      //   confirm-cancellation= action "approve" + status "cancelled"
+      // Reject-booking ("reject"/"rejected") and keep-lesson
+      // ("reject"/"approved") remain non-optimistic.
+      const isApproveBooking =
+        vars.action === "approve" && vars.status === "approved";
+      const isConfirmCancellation =
+        vars.action === "approve" && vars.status === "cancelled";
+      if (!isApproveBooking && !isConfirmCancellation) {
         return { optimistic: false as const };
       }
 
@@ -152,30 +160,50 @@ export default function ApprovalsPage() {
       // it needs. The real shape comes back on the next refetch.
       const bookSnapshot = qc.getQueryData<unknown[]>(bookKey);
 
-      // Build the rows that should appear in the teacher's schedule.
-      // Carry over every field already loaded for approvals so the
-      // schedule's grouping (student_id + date + consecutive times +
-      // gcal_event_id + course_id) still collapses multi-slot lessons
-      // correctly. Only mutate: status (→ approved), calendar_sync_status
-      // (→ pending so the schedule shows "⏳ מסתנכרן ליומן…"), and
-      // teacher_note (if provided).
-      const approvedRows = (apprSnapshot ?? [])
-        .filter((r) => vars.ids.includes(r.id))
-        .map((r) => ({
-          ...r,
-          status: "approved" as const,
-          calendar_sync_status: "pending" as const,
-          attendance: null,
-          teacher_note: vars.note?.trim() ? vars.note.trim() : null,
-        }));
-
+      // Both paths remove the affected request rows from the approvals
+      // list: an approve-booking row leaves the "pending" section, a
+      // confirm-cancellation row leaves the "cancellation requests" section.
       qc.setQueryData<PendingBooking[]>(apprKey, (prev) =>
         (prev ?? []).filter((r) => !vars.ids.includes(r.id))
       );
-      qc.setQueryData<unknown[]>(bookKey, (prev) => [
-        ...approvedRows,
-        ...(prev ?? []),
-      ]);
+
+      if (isApproveBooking) {
+        // Insert approved rows into the teacher's schedule cache with
+        // calendar_sync_status = 'pending' so the schedule shows
+        // "⏳ מסתנכרן ליומן…" until the background worker writes the
+        // real gcal_event_id. Carrying every other field forward keeps
+        // groupConsecutiveBookings collapsing multi-slot lessons.
+        const approvedRows = (apprSnapshot ?? [])
+          .filter((r) => vars.ids.includes(r.id))
+          .map((r) => ({
+            ...r,
+            status: "approved" as const,
+            calendar_sync_status: "pending" as const,
+            attendance: null,
+            teacher_note: vars.note?.trim() ? vars.note.trim() : null,
+          }));
+        qc.setQueryData<unknown[]>(bookKey, (prev) => [
+          ...approvedRows,
+          ...(prev ?? []),
+        ]);
+      } else {
+        // Confirm-cancellation: flip the matching schedule rows' status
+        // from 'cancel_requested' to 'cancelled'. Don't drop them — the
+        // backend UPDATEs (not DELETEs), and a future "cancelled history"
+        // view stays consistent. The schedule's upcoming filter already
+        // hides cancelled rows, so the visible result is identical to a
+        // remove until the real refetch lands. `gcal_event_id` is left
+        // intact; `deleteCalendarEvent` runs in the background server-side
+        // and does not depend on client state.
+        qc.setQueryData<unknown[]>(bookKey, (prev) =>
+          (prev ?? []).map((r) => {
+            const row = r as { id: string };
+            return vars.ids.includes(row.id)
+              ? { ...row, status: "cancelled", attendance: null }
+              : r;
+          })
+        );
+      }
 
       return { optimistic: true as const, apprSnapshot, bookSnapshot };
     },
