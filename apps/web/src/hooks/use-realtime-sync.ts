@@ -63,6 +63,9 @@ export function useRealtimeSync() {
         { event: "*", schema: "public", table: "lesson_sessions" },
         () => {
           qc.invalidateQueries({ queryKey: ["lessons"] });
+          // Creating/deleting a lesson changes the topic's lessons_total /
+          // latest_lesson_id / progress on the learning map.
+          qc.invalidateQueries({ queryKey: ["learning-map"] });
         }
       )
       // ─── Homework ─────────────────────────────────────────────
@@ -72,6 +75,8 @@ export function useRealtimeSync() {
         (payload) => {
           qc.invalidateQueries({ queryKey: ["homework"] });
           qc.invalidateQueries({ queryKey: ["lessons"] });
+          // Task completion percentages feed topic progress on the map.
+          qc.invalidateQueries({ queryKey: ["learning-map"] });
         }
       )
       // ─── Todos ────────────────────────────────────────────────
@@ -81,6 +86,8 @@ export function useRealtimeSync() {
         () => {
           qc.invalidateQueries({ queryKey: ["todos"] });
           qc.invalidateQueries({ queryKey: ["lessons"] });
+          // Task completion percentages feed topic progress on the map.
+          qc.invalidateQueries({ queryKey: ["learning-map"] });
         }
       )
       // ─── Students ─────────────────────────────────────────────
@@ -97,6 +104,9 @@ export function useRealtimeSync() {
         { event: "*", schema: "public", table: "profiles" },
         () => {
           qc.invalidateQueries({ queryKey: ["students"] });
+          // A new student registration shows up as a profile row pending
+          // approval — surface it in the teacher's approvals list live.
+          qc.invalidateQueries({ queryKey: ["approvals-registrations"] });
         }
       )
       // ─── Student AI Profiles ──────────────────────────────────
@@ -113,6 +123,9 @@ export function useRealtimeSync() {
         { event: "*", schema: "public", table: "difficulty_reports" },
         () => {
           qc.invalidateQueries({ queryKey: ["difficulties"] });
+          // Student cards show an "unreviewed_difficulties" badge derived
+          // from this table — refresh the roster so the count is live.
+          qc.invalidateQueries({ queryKey: ["students"] });
         }
       )
       // ─── Teacher Availability ─────────────────────────────────
