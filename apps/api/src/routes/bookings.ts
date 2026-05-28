@@ -321,7 +321,7 @@ export const bookingRoutes = new Hono()
     // Telegram: notify the teacher of the new booking request.
     // The frontend fires N parallel POSTs for N consecutive hours. We coalesce
     // them into ONE merged ping like "14:00–17:00 · 3h" by:
-    //   1. Wait 700ms inside the request so parallel siblings all commit.
+    //   1. Wait 300ms inside the request so parallel siblings all commit.
     //   2. Read all pending bookings by this student on this date created in
     //      the last 10s, sort by start_time, find the consecutive group that
     //      contains this booking.
@@ -329,7 +329,7 @@ export const bookingRoutes = new Hono()
     //
     // This must run BEFORE c.json() — Vercel freezes the function immediately
     // after the response is sent, so deferred async work gets killed.
-    await new Promise((r) => setTimeout(r, 700));
+    await new Promise((r) => setTimeout(r, 300));
 
     const recentCutoff = new Date(Date.now() - 10_000);
     const recent = await db
@@ -677,14 +677,16 @@ export const bookingRoutes = new Hono()
           const lessonEnd = sorted[sorted.length - 1]!.end_time;
           const studentId = sorted[0]!.student_id;
 
-          // Resolve course name: booking.course_id → primary_course_id → sole entry.
-          const courseName = await resolveCourseName(sorted[0]?.course_id, studentId);
-
-          const [teacherRow] = await db
-            .select({ teacher_name: profiles.full_name })
-            .from(profiles)
-            .where(eq(profiles.id, teacherId))
-            .limit(1);
+          // Resolve course name and teacher name in parallel — they're
+          // independent reads and both feed into the same gcal payload.
+          const [courseName, [teacherRow]] = await Promise.all([
+            resolveCourseName(sorted[0]?.course_id, studentId),
+            db
+              .select({ teacher_name: profiles.full_name })
+              .from(profiles)
+              .where(eq(profiles.id, teacherId))
+              .limit(1),
+          ]);
 
           const eventId = await createCalendarEvent({
             date: sorted[0]!.date ?? "",
@@ -881,19 +883,26 @@ export const bookingRoutes = new Hono()
 
       const createdIds = created.map((b) => b.id);
 
-      // Resolve course name once — used by both GCal and Telegram below.
-      // Falls back through primary_course_id → sole student_courses entry → "".
-      const courseName = await resolveCourseName(validatedCourseId, student_id);
+      // Resolve course name + teacher + student rows in parallel — all three
+      // are independent reads consumed by GCal and/or Telegram below.
+      // Course name falls back through primary_course_id → sole student_courses entry → "".
+      const [courseName, [teacherRow], [studentRow]] = await Promise.all([
+        resolveCourseName(validatedCourseId, student_id),
+        db
+          .select({ teacher_name: profiles.full_name })
+          .from(profiles)
+          .where(eq(profiles.id, teacherId))
+          .limit(1),
+        db
+          .select({ name: profiles.full_name })
+          .from(profiles)
+          .where(eq(profiles.id, student_id))
+          .limit(1),
+      ]);
 
       // Create ONE GCal event for the full span.
       // A gcal failure must never roll back the already-committed booking.
       try {
-        const [teacherRow] = await db
-          .select({ teacher_name: profiles.full_name })
-          .from(profiles)
-          .where(eq(profiles.id, teacherId))
-          .limit(1);
-
         const eventId = await createCalendarEvent({
           date,
           start_time,
@@ -920,12 +929,8 @@ export const bookingRoutes = new Hono()
       // pending→approval step), so this is the only notification point for them.
       // Awaited before the response — Vercel closes the execution context
       // immediately after c.json() returns, so fire-and-forget is unreliable.
+      // (studentRow was fetched in parallel above.)
       try {
-        const [studentRow] = await db
-          .select({ name: profiles.full_name })
-          .from(profiles)
-          .where(eq(profiles.id, student_id))
-          .limit(1);
         const studentName = studentRow?.name ?? "Student";
         const courseTag = courseName ? ` · ${escapeTelegramHtml(courseName)}` : "";
         await notifyTelegram(
