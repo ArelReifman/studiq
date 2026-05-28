@@ -193,6 +193,8 @@ export default function StudentBookPage() {
       setError(null);
       qc.invalidateQueries({ queryKey: ["booking-slots"] });
       qc.invalidateQueries({ queryKey: ["my-bookings"] });
+      // New booking creates a pending approval row on the teacher side.
+      qc.invalidateQueries({ queryKey: ["approvals-bookings"] });
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -205,6 +207,10 @@ export default function StudentBookPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-bookings"] });
       qc.invalidateQueries({ queryKey: ["booking-slots"] });
+      // Cancelling frees the teacher's availability + removes from the
+      // teacher's lesson list (if a teacher tab is open).
+      qc.invalidateQueries({ queryKey: ["my-availability"] });
+      qc.invalidateQueries({ queryKey: ["my-bookings-as-teacher"] });
     },
   });
 

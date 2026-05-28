@@ -57,6 +57,8 @@ export function StudentContextCard({
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["students", studentId] });
+      // Roster page renders ai_summary from the student list query — keep it fresh.
+      qc.invalidateQueries({ queryKey: ["students"] });
       setBgSaved(true);
       setTimeout(() => setBgSaved(false), 2000);
     },

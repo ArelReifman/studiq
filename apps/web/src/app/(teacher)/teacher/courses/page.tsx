@@ -22,7 +22,12 @@ export default function CoursesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/courses/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["courses"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["courses"] });
+      // Deleting a course unenrolls students from it and clears any map state.
+      qc.invalidateQueries({ queryKey: ["students"] });
+      qc.invalidateQueries({ queryKey: ["learning-map"] });
+    },
   });
 
   return (

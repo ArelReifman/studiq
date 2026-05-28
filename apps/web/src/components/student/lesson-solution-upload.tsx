@@ -42,6 +42,10 @@ export function LessonSolutionUpload({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["lessons", lessonId] });
       qc.invalidateQueries({ queryKey: ["lessons"] });
+      // Uploading a solution flips tasks to pending and affects teacher views.
+      qc.invalidateQueries({ queryKey: ["learning-map"] });
+      qc.invalidateQueries({ queryKey: ["students"] });
+      qc.invalidateQueries({ queryKey: ["todos"] });
     },
   });
 
