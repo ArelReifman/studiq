@@ -53,7 +53,11 @@ export interface SyncResult {
  * Returns counts so the cron endpoint can surface them in its response.
  */
 export async function runCalendarSyncBatch(): Promise<SyncResult> {
-  const now = new Date();
+  // postgres-js's `db.execute(sql\`...\`)` template does NOT auto-serialize
+  // JS Date objects — passing one throws
+  // "The string argument must be of type string or … Received an instance of Date".
+  // We bind ISO strings explicitly; `timestamptz` columns parse them natively.
+  const nowIso = new Date().toISOString();
 
   // Claim a batch of pending/failed rows whose retry window has come due.
   // `FOR UPDATE SKIP LOCKED` ensures concurrent workers each grab disjoint
@@ -78,7 +82,7 @@ export async function runCalendarSyncBatch(): Promise<SyncResult> {
            course_id, gcal_event_id, calendar_retry_count
       FROM lesson_bookings
      WHERE calendar_sync_status IN ('pending','failed')
-       AND (calendar_next_retry_at IS NULL OR calendar_next_retry_at <= ${now})
+       AND (calendar_next_retry_at IS NULL OR calendar_next_retry_at <= ${nowIso})
      ORDER BY calendar_next_retry_at NULLS FIRST
      LIMIT ${BATCH_SIZE}
      FOR UPDATE SKIP LOCKED
@@ -152,13 +156,13 @@ export async function runCalendarSyncBatch(): Promise<SyncResult> {
         result.parked++;
       } else {
         const backoff = BACKOFF_MS[Math.min(nextCount - 1, BACKOFF_MS.length - 1)]!;
-        const nextRetryAt = new Date(Date.now() + backoff);
+        const nextRetryAtIso = new Date(Date.now() + backoff).toISOString();
         await db.execute(sql`
           UPDATE lesson_bookings
              SET calendar_sync_status   = 'pending',
                  calendar_sync_error    = ${message},
                  calendar_retry_count   = ${nextCount},
-                 calendar_next_retry_at = ${nextRetryAt},
+                 calendar_next_retry_at = ${nextRetryAtIso},
                  updated_at             = NOW()
            WHERE id = ${row.id}
         `);
