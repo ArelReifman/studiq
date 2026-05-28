@@ -107,6 +107,8 @@ export function useRealtimeSync() {
           // A new student registration shows up as a profile row pending
           // approval — surface it in the teacher's approvals list live.
           qc.invalidateQueries({ queryKey: ["approvals-registrations"] });
+          // Keep the sidebar approvals badge live across navigations.
+          qc.invalidateQueries({ queryKey: ["approvals-count"] });
         }
       )
       // ─── Student AI Profiles ──────────────────────────────────
@@ -148,6 +150,8 @@ export function useRealtimeSync() {
           qc.invalidateQueries({ queryKey: ["my-bookings-as-teacher"] });
           qc.invalidateQueries({ queryKey: ["my-bookings"] });
           qc.invalidateQueries({ queryKey: ["booking-slots"] });
+          // Keep the sidebar approvals badge live across navigations.
+          qc.invalidateQueries({ queryKey: ["approvals-count"] });
         }
       )
       // ─── Teacher AI Feedback ──────────────────────────────────

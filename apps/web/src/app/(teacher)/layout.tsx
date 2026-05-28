@@ -24,7 +24,6 @@ export default function TeacherLayout({
   const t = useT();
   useRealtimeSync();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [pendingCount, setPendingCount] = useState(0);
 
   // Sum of unreviewed difficulties across all students. Reuses the same
   // ["students"] query the dashboard fetches, so React Query dedupes — no
@@ -46,20 +45,32 @@ export default function TeacherLayout({
   }, [pathname]);
 
   // Pending approvals badge — sums registration requests + booking requests.
-  // Refreshed on every route change so the count stays accurate after the
-  // teacher acts on the approvals page. No realtime: low-volume signal.
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([
-      api.get<{ count: number }>("/approvals/count").catch(() => ({ count: 0 })),
-      api.get<{ count: number }>("/bookings/requests/count").catch(() => ({ count: 0 })),
-    ]).then(([reg, book]) => {
-      if (!cancelled) setPendingCount(reg.count + book.count);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [pathname]);
+  // Backed by React Query so realtime invalidations on `lesson_bookings` and
+  // `profiles` (see use-realtime-sync.ts) refresh the count live, without
+  // waiting for the teacher to navigate to a new route.
+  const { data: approvalsCount } = useQuery<{
+    registrations: number;
+    bookings: number;
+    total: number;
+  }>({
+    queryKey: ["approvals-count"],
+    queryFn: async () => {
+      const [reg, book] = await Promise.all([
+        api
+          .get<{ count: number }>("/approvals/count")
+          .catch(() => ({ count: 0 })),
+        api
+          .get<{ count: number }>("/bookings/requests/count")
+          .catch(() => ({ count: 0 })),
+      ]);
+      return {
+        registrations: reg.count,
+        bookings: book.count,
+        total: reg.count + book.count,
+      };
+    },
+  });
+  const pendingCount = approvalsCount?.total ?? 0;
 
   const nav = [
     {
