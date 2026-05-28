@@ -68,6 +68,35 @@ function timeToMin(hhmm: string): number {
   return h * 60 + m;
 }
 
+function addMin(hhmm: string, mins: number): string {
+  const total = timeToMin(hhmm) + mins;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/**
+ * Minimal shape used by the schedule's `["my-bookings-as-teacher"]` cache
+ * and by `groupConsecutiveBookings`. Defined inline (instead of imported)
+ * so this component stays independent of the schedule page's local type.
+ */
+interface OptimisticBookingRow {
+  id: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  status: "approved";
+  student_note: null;
+  teacher_note: string | null;
+  attendance: null;
+  student_name: string;
+  student_id: string;
+  created_at: string;
+  course_id: string | null;
+  gcal_event_id: null;
+  calendar_sync_status: "pending";
+}
+
 function inferDuration(startTime: string, endTime: string): Duration {
   const min = timeToMin(endTime) - timeToMin(startTime);
   return (DURATIONS as readonly number[]).includes(min) ? (min as Duration) : 60;
@@ -331,6 +360,12 @@ export function LessonFormModal({
   }
 
   // ── mutations ───────────────────────────────────────────────────────────────
+  // Create flow uses an optimistic UI: the modal closes immediately, the
+  // schedule shows the new lesson with a "⏳ מסתנכרן ליומן…" badge, and the
+  // real DB response (still 3-4s on cold paths) refetches and replaces the
+  // temp rows transparently. On error we restore the snapshot and surface
+  // a clear alert — the form is gone (modal already closed), so the user
+  // has to reopen it; that trade-off is acceptable for the rare error path.
   const createMutation = useMutation({
     mutationFn: () =>
       api.post("/bookings/teacher-lesson", {
@@ -341,6 +376,54 @@ export function LessonFormModal({
         ...(note.trim() ? { note: note.trim() } : {}),
         ...(courseId ? { course_id: courseId } : {}),
       }),
+    onMutate: async () => {
+      const bookingsKey = ["my-bookings-as-teacher"] as const;
+      // Cancel any concurrent refetch so it can't overwrite our optimistic
+      // snapshot mid-mutation.
+      await qc.cancelQueries({ queryKey: bookingsKey });
+
+      const snapshot = qc.getQueryData<OptimisticBookingRow[]>(bookingsKey);
+
+      // Build one temp row per 30-min slot. Consecutive end_time→start_time
+      // and matching student/date/status/gcal_event_id=null/course_id let
+      // `groupConsecutiveBookings` collapse them into a single visible lesson.
+      const tempPrefix = `temp-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
+      const slotCount = duration / 30;
+      const nowIso = new Date().toISOString();
+      const studentName = fixedStudentName ?? "";
+      const tempRows: OptimisticBookingRow[] = [];
+      for (let i = 0; i < slotCount; i++) {
+        tempRows.push({
+          id: `${tempPrefix}-${i}`,
+          date,
+          start_time: addMin(startTime, i * 30),
+          end_time: addMin(startTime, (i + 1) * 30),
+          status: "approved",
+          student_note: null,
+          teacher_note: note.trim() ? note.trim() : null,
+          attendance: null,
+          student_name: studentName,
+          student_id: studentId,
+          created_at: nowIso,
+          course_id: courseId || null,
+          gcal_event_id: null,
+          calendar_sync_status: "pending",
+        });
+      }
+
+      qc.setQueryData<OptimisticBookingRow[]>(bookingsKey, (prev) => [
+        ...tempRows,
+        ...(prev ?? []),
+      ]);
+
+      // Close the modal immediately — the rest of the work happens in the
+      // background and is reflected by the temp rows we just inserted.
+      onClose();
+
+      return { snapshot };
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-bookings-as-teacher"] });
       // A teacher-created lesson also creates a lesson session + affects the
@@ -350,9 +433,24 @@ export function LessonFormModal({
       qc.invalidateQueries({ queryKey: ["my-availability"] });
       qc.invalidateQueries({ queryKey: ["booking-slots"] });
       onSuccess();
-      onClose();
+      // NOTE: onClose() already fired in onMutate — don't call it again.
     },
-    onError: (e: Error) => setFormError(mapBookingError(e.message)),
+    onError: (err: Error, _vars, context) => {
+      // Roll back the optimistic insert by restoring the previous cache.
+      // Then surface the error: the modal is already unmounted, so we can
+      // no longer use setFormError — use a plain alert with the i18n-mapped
+      // message.
+      const bookingsKey = ["my-bookings-as-teacher"] as const;
+      if (context?.snapshot !== undefined) {
+        qc.setQueryData(bookingsKey, context.snapshot);
+      } else {
+        // No prior snapshot (cache was empty) — strip just the temp rows.
+        qc.setQueryData<OptimisticBookingRow[]>(bookingsKey, (prev) =>
+          (prev ?? []).filter((r) => !r.id.startsWith("temp-"))
+        );
+      }
+      window.alert(mapBookingError(err.message));
+    },
   });
 
   const editMutation = useMutation({
