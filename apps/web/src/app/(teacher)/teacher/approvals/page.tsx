@@ -110,6 +110,12 @@ export default function ApprovalsPage() {
   // `action` ("approve" | "reject") is independent of `status` because in the
   // cancel section "Keep lesson" sends status=approved but visually maps to a
   // reject of the cancellation request.
+  //
+  // Optimistic UI is engaged ONLY for the original "approve a new pending
+  // request" path (action === "approve" && status === "approved"). All other
+  // combinations (reject, confirm-cancellation, keep-lesson) keep the
+  // previous behavior — the action-state spinner is the only optimistic
+  // touch, and the real cache updates land on `onSuccess` after refetch.
   const respondBookingGroup = useMutation({
     mutationFn: async ({
       ids,
@@ -125,8 +131,68 @@ export default function ApprovalsPage() {
       // One atomic request for the whole group → one gcal event on approval
       await api.patch("/bookings/batch-status", { ids, status, note });
     },
-    onMutate: ({ groupKey, action }) =>
-      setActionState((s) => ({ ...s, [groupKey]: action })),
+    onMutate: async (vars) => {
+      setActionState((s) => ({ ...s, [vars.groupKey]: vars.action }));
+
+      // Non-approve paths: keep current (non-optimistic) behavior.
+      if (vars.action !== "approve" || vars.status !== "approved") {
+        return { optimistic: false as const };
+      }
+
+      const apprKey = ["approvals-bookings"] as const;
+      const bookKey = ["my-bookings-as-teacher"] as const;
+      // Cancel any concurrent refetches so they can't overwrite our
+      // optimistic snapshots mid-mutation.
+      await qc.cancelQueries({ queryKey: apprKey });
+      await qc.cancelQueries({ queryKey: bookKey });
+
+      const apprSnapshot = qc.getQueryData<PendingBooking[]>(apprKey);
+      // We don't import the schedule page's BookingRow type — cache it as
+      // an array of unknown so the schedule page can read whatever fields
+      // it needs. The real shape comes back on the next refetch.
+      const bookSnapshot = qc.getQueryData<unknown[]>(bookKey);
+
+      // Build the rows that should appear in the teacher's schedule.
+      // Carry over every field already loaded for approvals so the
+      // schedule's grouping (student_id + date + consecutive times +
+      // gcal_event_id + course_id) still collapses multi-slot lessons
+      // correctly. Only mutate: status (→ approved), calendar_sync_status
+      // (→ pending so the schedule shows "⏳ מסתנכרן ליומן…"), and
+      // teacher_note (if provided).
+      const approvedRows = (apprSnapshot ?? [])
+        .filter((r) => vars.ids.includes(r.id))
+        .map((r) => ({
+          ...r,
+          status: "approved" as const,
+          calendar_sync_status: "pending" as const,
+          attendance: null,
+          teacher_note: vars.note?.trim() ? vars.note.trim() : null,
+        }));
+
+      qc.setQueryData<PendingBooking[]>(apprKey, (prev) =>
+        (prev ?? []).filter((r) => !vars.ids.includes(r.id))
+      );
+      qc.setQueryData<unknown[]>(bookKey, (prev) => [
+        ...approvedRows,
+        ...(prev ?? []),
+      ]);
+
+      return { optimistic: true as const, apprSnapshot, bookSnapshot };
+    },
+    onError: (err: Error, _vars, context) => {
+      // Roll back both caches if we touched them optimistically.
+      if (context?.optimistic) {
+        if (context.apprSnapshot !== undefined) {
+          qc.setQueryData(["approvals-bookings"], context.apprSnapshot);
+        }
+        if (context.bookSnapshot !== undefined) {
+          qc.setQueryData(["my-bookings-as-teacher"], context.bookSnapshot);
+        }
+      }
+      // Surface the backend's reason — no internal-error leakage path is
+      // involved because batch-status returns its own clean messages.
+      window.alert(err.message);
+    },
     onSettled: (_d, _e, { groupKey }) =>
       setActionState((s) => ({ ...s, [groupKey]: undefined })),
     onSuccess: () => {
