@@ -769,19 +769,68 @@ export const bookingRoutes = new Hono()
         return c.json({ error: "Cannot schedule a lesson in the past" }, 400);
       }
 
-      // Student must belong to this teacher
-      const [student] = await db
-        .select({ id: students.id })
-        .from(students)
-        .where(and(eq(students.id, student_id), eq(students.teacher_id, teacherId)))
-        .limit(1);
+      // Build slot list up front — pure arithmetic, no DB calls. We need
+      // `lessonEnd` for the parallel conflict probes below.
+      const slotCount = duration_minutes / 30;
+      const slotTimes: { start_time: string; end_time: string }[] = [];
+      for (let i = 0; i < slotCount; i++) {
+        slotTimes.push({
+          start_time: addMinutes(start_time, i * 30),
+          end_time:   addMinutes(start_time, (i + 1) * 30),
+        });
+      }
+      const lessonEnd = slotTimes[slotTimes.length - 1]!.end_time;
+
+      // Run three independent reads in parallel — student ownership probe
+      // plus the two conflict probes. They share no inputs and never write,
+      // so concurrency is safe. Saves ~one DB round-trip versus the prior
+      // sequential ownership-then-conflicts flow (≈300ms on cold paths).
+      //
+      // Error precedence is preserved by *checking* in the same order as
+      // before: ownership 404 → (sequential course validation) → teacher
+      // 409 → student 409. Conflict queries that ran needlessly when
+      // ownership fails are cheap and never write.
+      const [[student], [teacherConflict], [studentConflict]] = await Promise.all([
+        db
+          .select({ id: students.id })
+          .from(students)
+          .where(and(eq(students.id, student_id), eq(students.teacher_id, teacherId)))
+          .limit(1),
+        db
+          .select({ id: lessonBookings.id })
+          .from(lessonBookings)
+          .where(
+            and(
+              eq(lessonBookings.teacher_id, teacherId),
+              eq(lessonBookings.date, date),
+              inArray(lessonBookings.status, ["approved", "pending", "cancel_requested"]),
+              lt(lessonBookings.start_time, lessonEnd),
+              gt(lessonBookings.end_time, start_time)
+            )
+          )
+          .limit(1),
+        db
+          .select({ id: lessonBookings.id })
+          .from(lessonBookings)
+          .where(
+            and(
+              eq(lessonBookings.student_id, student_id),
+              eq(lessonBookings.date, date),
+              inArray(lessonBookings.status, ["approved", "pending", "cancel_requested"]),
+              lt(lessonBookings.start_time, lessonEnd),
+              gt(lessonBookings.end_time, start_time)
+            )
+          )
+          .limit(1),
+      ]);
       if (!student) {
         return c.json({ error: "Student not found or does not belong to you" }, 404);
       }
 
       // Validate course_id when provided: must belong to the teacher AND be
-      // assigned to this student. Prevents a teacher from tagging a lesson with
-      // a course that isn't theirs or that the student hasn't enrolled in.
+      // assigned to this student. Logic unchanged from before — only its
+      // position moved (now after the parallel ownership/conflicts probe)
+      // so its sequential cost no longer compounds with ownership.
       let validatedCourseId: string | null = null;
       if (course_id) {
         const [courseCheck] = await db
@@ -822,50 +871,6 @@ export const bookingRoutes = new Hono()
         validatedCourseId = course_id;
       }
 
-      // Build slot list: one 30-min slot per increment
-      const slotCount = duration_minutes / 30;
-      const slotTimes: { start_time: string; end_time: string }[] = [];
-      for (let i = 0; i < slotCount; i++) {
-        slotTimes.push({
-          start_time: addMinutes(start_time, i * 30),
-          end_time:   addMinutes(start_time, (i + 1) * 30),
-        });
-      }
-      const lessonEnd = slotTimes[slotTimes.length - 1]!.end_time;
-
-      // No overlapping active booking for the teacher or for the student.
-      // Run both conflict probes in parallel — they're independent reads and
-      // each is the bottleneck of the pre-insert path. If both conflict, the
-      // teacher message still wins so the visible error is identical to the
-      // previous sequential ordering.
-      const [[teacherConflict], [studentConflict]] = await Promise.all([
-        db
-          .select({ id: lessonBookings.id })
-          .from(lessonBookings)
-          .where(
-            and(
-              eq(lessonBookings.teacher_id, teacherId),
-              eq(lessonBookings.date, date),
-              inArray(lessonBookings.status, ["approved", "pending", "cancel_requested"]),
-              lt(lessonBookings.start_time, lessonEnd),
-              gt(lessonBookings.end_time, start_time)
-            )
-          )
-          .limit(1),
-        db
-          .select({ id: lessonBookings.id })
-          .from(lessonBookings)
-          .where(
-            and(
-              eq(lessonBookings.student_id, student_id),
-              eq(lessonBookings.date, date),
-              inArray(lessonBookings.status, ["approved", "pending", "cancel_requested"]),
-              lt(lessonBookings.start_time, lessonEnd),
-              gt(lessonBookings.end_time, start_time)
-            )
-          )
-          .limit(1),
-      ]);
       if (teacherConflict) {
         return c.json({ error: "Teacher has a conflicting booking at this time" }, 409);
       }
@@ -873,20 +878,23 @@ export const bookingRoutes = new Hono()
         return c.json({ error: "Student has a conflicting booking at this time" }, 409);
       }
 
-      // Insert all slots as approved — every slot in the group gets the same course_id.
+      // Insert all slots — every slot in the group gets the same course_id,
+      // and `calendar_sync_status` is set to 'pending' inline (saves a
+      // dedicated UPDATE round-trip the worker used to follow up with).
       const created = await db
         .insert(lessonBookings)
         .values(
           slotTimes.map((s) => ({
             student_id,
-            teacher_id:       teacherId,
-            availability_id:  null,
+            teacher_id:           teacherId,
+            availability_id:      null,
             date,
-            start_time:       s.start_time,
-            end_time:         s.end_time,
-            status:           "approved" as const,
-            teacher_note:     note ?? null,
-            course_id:        validatedCourseId,
+            start_time:           s.start_time,
+            end_time:             s.end_time,
+            status:               "approved" as const,
+            teacher_note:         note ?? null,
+            course_id:            validatedCourseId,
+            calendar_sync_status: "pending" as const,
           }))
         )
         .returning();
@@ -894,23 +902,13 @@ export const bookingRoutes = new Hono()
       const createdIds = created.map((b) => b.id);
 
       // Calendar sync — Phase 3B-2 hybrid path.
-      // Mark every row in the group as 'pending' (so the badge shows up on
-      // the next list refresh), then trigger the group-aware worker via
-      // `waitUntil`. The worker opens a transaction, locks the whole group
-      // with SELECT … FOR UPDATE, calls createCalendarEvent ONCE for the
-      // full span, and writes the same gcal_event_id to every row. The
-      // daily Vercel Cron is only a safety net.
-      await db
-        .update(lessonBookings)
-        .set({
-          calendar_sync_status: "pending",
-          calendar_sync_error: null,
-          calendar_next_retry_at: null,
-          updated_at: new Date(),
-        })
-        .where(inArray(lessonBookings.id, createdIds));
-      created.forEach((b) => { b.calendar_sync_status = "pending"; });
-
+      // The INSERT above already wrote `calendar_sync_status='pending'`
+      // (saving one round-trip vs the prior separate UPDATE), so we go
+      // straight to scheduling the worker via `waitUntil`. The worker
+      // opens a transaction, locks the whole group with SELECT … FOR
+      // UPDATE, calls createCalendarEvent ONCE for the full span, and
+      // writes the same gcal_event_id to every row. The daily Vercel
+      // Cron is only a safety net.
       try {
         waitUntil(
           syncBookingsByIds(createdIds).catch((err) => {
