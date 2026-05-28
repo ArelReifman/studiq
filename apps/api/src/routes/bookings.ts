@@ -833,38 +833,42 @@ export const bookingRoutes = new Hono()
       }
       const lessonEnd = slotTimes[slotTimes.length - 1]!.end_time;
 
-      // No overlapping active booking for the teacher
-      const [teacherConflict] = await db
-        .select({ id: lessonBookings.id })
-        .from(lessonBookings)
-        .where(
-          and(
-            eq(lessonBookings.teacher_id, teacherId),
-            eq(lessonBookings.date, date),
-            inArray(lessonBookings.status, ["approved", "pending", "cancel_requested"]),
-            lt(lessonBookings.start_time, lessonEnd),
-            gt(lessonBookings.end_time, start_time)
+      // No overlapping active booking for the teacher or for the student.
+      // Run both conflict probes in parallel — they're independent reads and
+      // each is the bottleneck of the pre-insert path. If both conflict, the
+      // teacher message still wins so the visible error is identical to the
+      // previous sequential ordering.
+      const [[teacherConflict], [studentConflict]] = await Promise.all([
+        db
+          .select({ id: lessonBookings.id })
+          .from(lessonBookings)
+          .where(
+            and(
+              eq(lessonBookings.teacher_id, teacherId),
+              eq(lessonBookings.date, date),
+              inArray(lessonBookings.status, ["approved", "pending", "cancel_requested"]),
+              lt(lessonBookings.start_time, lessonEnd),
+              gt(lessonBookings.end_time, start_time)
+            )
           )
-        )
-        .limit(1);
+          .limit(1),
+        db
+          .select({ id: lessonBookings.id })
+          .from(lessonBookings)
+          .where(
+            and(
+              eq(lessonBookings.student_id, student_id),
+              eq(lessonBookings.date, date),
+              inArray(lessonBookings.status, ["approved", "pending", "cancel_requested"]),
+              lt(lessonBookings.start_time, lessonEnd),
+              gt(lessonBookings.end_time, start_time)
+            )
+          )
+          .limit(1),
+      ]);
       if (teacherConflict) {
         return c.json({ error: "Teacher has a conflicting booking at this time" }, 409);
       }
-
-      // No overlapping active booking for the student
-      const [studentConflict] = await db
-        .select({ id: lessonBookings.id })
-        .from(lessonBookings)
-        .where(
-          and(
-            eq(lessonBookings.student_id, student_id),
-            eq(lessonBookings.date, date),
-            inArray(lessonBookings.status, ["approved", "pending", "cancel_requested"]),
-            lt(lessonBookings.start_time, lessonEnd),
-            gt(lessonBookings.end_time, start_time)
-          )
-        )
-        .limit(1);
       if (studentConflict) {
         return c.json({ error: "Student has a conflicting booking at this time" }, 409);
       }
@@ -889,32 +893,13 @@ export const bookingRoutes = new Hono()
 
       const createdIds = created.map((b) => b.id);
 
-      // Resolve course name + teacher + student rows in parallel — all three
-      // are independent reads consumed by GCal and/or Telegram below.
-      // Course name falls back through primary_course_id → sole student_courses entry → "".
-      const [courseName, [teacherRow], [studentRow]] = await Promise.all([
-        resolveCourseName(validatedCourseId, student_id),
-        db
-          .select({ teacher_name: profiles.full_name })
-          .from(profiles)
-          .where(eq(profiles.id, teacherId))
-          .limit(1),
-        db
-          .select({ name: profiles.full_name })
-          .from(profiles)
-          .where(eq(profiles.id, student_id))
-          .limit(1),
-      ]);
-
       // Calendar sync — Phase 3B-2 hybrid path.
-      // Mark every row in the group as 'pending', then trigger the
-      // group-aware worker via `waitUntil`. The worker opens a
-      // transaction, locks the whole group with SELECT … FOR UPDATE,
-      // calls createCalendarEvent ONCE for the full span, and writes
-      // the same gcal_event_id to every row. The daily Vercel Cron is
-      // only a safety net.
-      // teacherRow / studentRow stay in scope for the Telegram block below.
-      void teacherRow;
+      // Mark every row in the group as 'pending' (so the badge shows up on
+      // the next list refresh), then trigger the group-aware worker via
+      // `waitUntil`. The worker opens a transaction, locks the whole group
+      // with SELECT … FOR UPDATE, calls createCalendarEvent ONCE for the
+      // full span, and writes the same gcal_event_id to every row. The
+      // daily Vercel Cron is only a safety net.
       await db
         .update(lessonBookings)
         .set({
@@ -941,20 +926,39 @@ export const bookingRoutes = new Hono()
         // completion in the Node process without crashing.
       }
 
-      // Telegram: one notification per teacher-created lesson.
-      // Teacher-initiated lessons are inserted as "approved" immediately (no
-      // pending→approval step), so this is the only notification point for them.
-      // Awaited before the response — Vercel closes the execution context
-      // immediately after c.json() returns, so fire-and-forget is unreliable.
-      // (studentRow was fetched in parallel above.)
+      // Telegram — runs entirely in the background.
+      // The two reads it needs (course name + student name) used to be
+      // awaited on the response path; they're moved here behind `waitUntil`
+      // so the handler can return as soon as the booking is committed.
+      // Failures are logged and swallowed — Telegram is never on the
+      // critical path of a user-facing response.
       try {
-        const studentName = studentRow?.name ?? "Student";
-        const courseTag = courseName ? ` · ${escapeTelegramHtml(courseName)}` : "";
-        notifyTelegramAsync(
-          `📚 <b>Lesson scheduled</b>\n${escapeTelegramHtml(studentName)} · ${date} · ${start_time}–${lessonEnd} · ${formatDurationMin(duration_minutes)}${courseTag}`
+        waitUntil(
+          (async () => {
+            const [courseName, studentRows] = await Promise.all([
+              resolveCourseName(validatedCourseId, student_id),
+              db
+                .select({ name: profiles.full_name })
+                .from(profiles)
+                .where(eq(profiles.id, student_id))
+                .limit(1),
+            ]);
+            const studentName = studentRows[0]?.name ?? "Student";
+            const courseTag = courseName
+              ? ` · ${escapeTelegramHtml(courseName)}`
+              : "";
+            notifyTelegramAsync(
+              `📚 <b>Lesson scheduled</b>\n${escapeTelegramHtml(studentName)} · ${date} · ${start_time}–${lessonEnd} · ${formatDurationMin(duration_minutes)}${courseTag}`
+            );
+          })().catch((err) => {
+            console.error(
+              "[teacher-lesson POST] background Telegram prep failed:",
+              err
+            );
+          })
         );
-      } catch (err) {
-        console.error("[teacher-lesson POST] Telegram notification failed:", err);
+      } catch {
+        // Outside Vercel runtime — same fallback story as above.
       }
 
       return c.json(created, 201);
