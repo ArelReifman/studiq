@@ -65,6 +65,9 @@ export function ProfileForm() {
       setConfirmPassword("");
       setCurrentPassword("");
       qc.invalidateQueries({ queryKey: ["profile"] });
+      // Teachers list students with profile info — refresh that view too so
+      // a name/email change shows immediately on the teacher side.
+      qc.invalidateQueries({ queryKey: ["students"] });
 
       // Update local auth store so the sidebar name & email refresh instantly.
       if (user && token) {

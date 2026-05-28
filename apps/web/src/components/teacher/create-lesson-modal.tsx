@@ -164,6 +164,8 @@ export function CreateLessonModal({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["lessons"] });
       qc.invalidateQueries({ queryKey: ["learning-map"] });
+      // A new lesson changes the student card's completion stats and weak topics.
+      qc.invalidateQueries({ queryKey: ["students"] });
       onClose();
     },
   });

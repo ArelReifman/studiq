@@ -234,6 +234,8 @@ export default function StudentDetailPage() {
       // latest_lesson_id — refresh the map so the topic action flips back
       // from "open lesson" to "create lesson" when the last one is gone.
       qc.invalidateQueries({ queryKey: ["learning-map"] });
+      // Student card stats (completion rate, weak topics) recompute.
+      qc.invalidateQueries({ queryKey: ["students"] });
     },
   });
 

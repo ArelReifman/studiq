@@ -85,6 +85,8 @@ export function LessonReviewModal({ lesson, onClose }: LessonReviewModalProps) {
       qc.invalidateQueries({ queryKey: ["students", lesson.student_id, "profile"] });
       qc.invalidateQueries({ queryKey: ["difficulties"] });
       qc.invalidateQueries({ queryKey: ["learning-map"] });
+      qc.invalidateQueries({ queryKey: ["homework"] });
+      qc.invalidateQueries({ queryKey: ["todos"] });
       onClose();
     },
   });

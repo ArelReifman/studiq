@@ -1,10 +1,40 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/store/auth";
 import type { RealtimeChannel } from "@supabase/supabase-js";
+
+// Only refetch queries the user is currently looking at — avoids a full-cache
+// invalidation that caused a global loading flash on every Realtime reconnect.
+const CRITICAL_KEYS: ReadonlyArray<string> = [
+  "lessons",
+  "homework",
+  "todos",
+  "students",
+  "learning-map",
+  "bookings",
+  "approvals-bookings",
+  "approvals-registrations",
+  "my-bookings-as-teacher",
+  "my-bookings",
+  "my-availability",
+  "booking-slots",
+  "difficulties",
+  "learning-resources",
+  "reports",
+  "ai-feedback",
+];
+
+function refetchCriticalActive(qc: QueryClient) {
+  for (const key of CRITICAL_KEYS) {
+    qc.invalidateQueries({
+      queryKey: [key],
+      refetchType: "active",
+    });
+  }
+}
 
 /**
  * Subscribe to Supabase Realtime changes on key tables.
@@ -91,6 +121,8 @@ export function useRealtimeSync() {
         { event: "*", schema: "public", table: "teacher_availability" },
         () => {
           qc.invalidateQueries({ queryKey: ["availability"] });
+          qc.invalidateQueries({ queryKey: ["my-availability"] });
+          qc.invalidateQueries({ queryKey: ["booking-slots"] });
         }
       )
       // ─── Lesson Bookings ──────────────────────────────────────
@@ -123,9 +155,10 @@ export function useRealtimeSync() {
       )
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
-          // On (re)connect, refetch everything so UI is guaranteed fresh even
-          // if we missed events while disconnected.
-          qc.invalidateQueries();
+          // On (re)connect, refetch only the critical active data instead of
+          // blowing away the whole cache (which caused a UI-wide loading flash
+          // on every reconnect).
+          refetchCriticalActive(qc);
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           console.warn(`Realtime ${status.toLowerCase()} — will auto-reconnect`);
         }
@@ -134,7 +167,7 @@ export function useRealtimeSync() {
     channelRef.current = channel;
 
     // Also refetch when the tab comes back online, even without Realtime events.
-    const handleOnline = () => qc.invalidateQueries();
+    const handleOnline = () => refetchCriticalActive(qc);
     window.addEventListener("online", handleOnline);
 
     return () => {

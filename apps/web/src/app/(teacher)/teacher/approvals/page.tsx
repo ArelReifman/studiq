@@ -88,14 +88,21 @@ export default function ApprovalsPage() {
     },
     onMutate: (id) => setActionState((s) => ({ ...s, [id]: "approve" })),
     onSettled: (_d, _e, id) => setActionState((s) => ({ ...s, [id]: undefined })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["approvals-registrations"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["approvals-registrations"] });
+      // Approving a registration adds a new student → refresh roster lists.
+      qc.invalidateQueries({ queryKey: ["students"] });
+    },
   });
 
   const rejectReg = useMutation({
     mutationFn: (id: string) => api.post(`/approvals/${id}/reject`, {}),
     onMutate: (id) => setActionState((s) => ({ ...s, [id]: "reject" })),
     onSettled: (_d, _e, id) => setActionState((s) => ({ ...s, [id]: undefined })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["approvals-registrations"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["approvals-registrations"] });
+      qc.invalidateQueries({ queryKey: ["students"] });
+    },
   });
 
   // ── Booking approval (acts on every slot in a consecutive group) ─────────

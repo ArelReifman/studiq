@@ -343,6 +343,12 @@ export function LessonFormModal({
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-bookings-as-teacher"] });
+      // A teacher-created lesson also creates a lesson session + affects the
+      // student's learning map and availability/booking slots.
+      qc.invalidateQueries({ queryKey: ["lessons"] });
+      qc.invalidateQueries({ queryKey: ["learning-map"] });
+      qc.invalidateQueries({ queryKey: ["my-availability"] });
+      qc.invalidateQueries({ queryKey: ["booking-slots"] });
       onSuccess();
       onClose();
     },
@@ -361,6 +367,12 @@ export function LessonFormModal({
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-bookings-as-teacher"] });
+      // A teacher-created lesson also creates a lesson session + affects the
+      // student's learning map and availability/booking slots.
+      qc.invalidateQueries({ queryKey: ["lessons"] });
+      qc.invalidateQueries({ queryKey: ["learning-map"] });
+      qc.invalidateQueries({ queryKey: ["my-availability"] });
+      qc.invalidateQueries({ queryKey: ["booking-slots"] });
       onSuccess();
       onClose();
     },
