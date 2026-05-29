@@ -54,6 +54,44 @@ export function useRealtimeSync() {
     // the authenticated user — RLS policies require auth.uid().
     supabase.realtime.setAuth(token);
 
+    // ─── lesson_bookings invalidation batching ─────────────────────────
+    // Postgres emits one Realtime event per row changed, so a multi-slot
+    // UPDATE (e.g. approving a 90-min lesson = 3 rows) used to fire the
+    // full 6-key invalidation cascade three times in a row. Combined with
+    // a follow-up UPDATE from the background calendar sync worker, a single
+    // teacher click could trigger 30-50 refetches and trip the
+    // `/bookings/*` rate limit. Coalesce events arriving within 250ms into
+    // a single invalidation wave to keep the network traffic sane while
+    // still feeling instant to the user.
+    //
+    // `refetchType: "active"` skips queries that aren't currently mounted
+    // (e.g. schedule's queries while the teacher is on the approvals page),
+    // turning their refetch into a "mark stale" — even cheaper.
+    const BOOKING_KEYS = [
+      "bookings",
+      "approvals-bookings",
+      "my-bookings-as-teacher",
+      "my-bookings",
+      "booking-slots",
+      "approvals-count",
+    ] as const;
+    const pendingBookingKeys = new Set<string>();
+    let bookingDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const queueBookingInvalidation = () => {
+      for (const k of BOOKING_KEYS) pendingBookingKeys.add(k);
+      if (bookingDebounceTimer !== null) return;
+      bookingDebounceTimer = setTimeout(() => {
+        for (const key of pendingBookingKeys) {
+          qc.invalidateQueries({
+            queryKey: [key],
+            refetchType: "active",
+          });
+        }
+        pendingBookingKeys.clear();
+        bookingDebounceTimer = null;
+      }, 250);
+    };
+
     // One channel with multiple table listeners
     const channel = supabase
       .channel("realtime-sync")
@@ -141,17 +179,15 @@ export function useRealtimeSync() {
         }
       )
       // ─── Lesson Bookings ──────────────────────────────────────
+      // All six keys are queued through `queueBookingInvalidation` so a
+      // burst of per-row events (multi-slot UPDATE + background sync
+      // UPDATE) collapses into one invalidation wave 250ms after the
+      // last event in the burst.
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "lesson_bookings" },
         () => {
-          qc.invalidateQueries({ queryKey: ["bookings"] });
-          qc.invalidateQueries({ queryKey: ["approvals-bookings"] });
-          qc.invalidateQueries({ queryKey: ["my-bookings-as-teacher"] });
-          qc.invalidateQueries({ queryKey: ["my-bookings"] });
-          qc.invalidateQueries({ queryKey: ["booking-slots"] });
-          // Keep the sidebar approvals badge live across navigations.
-          qc.invalidateQueries({ queryKey: ["approvals-count"] });
+          queueBookingInvalidation();
         }
       )
       // ─── Teacher AI Feedback ──────────────────────────────────
@@ -189,6 +225,10 @@ export function useRealtimeSync() {
 
     return () => {
       window.removeEventListener("online", handleOnline);
+      if (bookingDebounceTimer !== null) {
+        clearTimeout(bookingDebounceTimer);
+        bookingDebounceTimer = null;
+      }
       channel.unsubscribe();
       channelRef.current = null;
     };
