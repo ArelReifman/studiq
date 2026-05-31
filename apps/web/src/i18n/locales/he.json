@@ -629,6 +629,7 @@
   "resources.fileLabel": "קובץ",
   "resources.scopeLabel": "שיוך",
   "resources.scopeWholeCourse": "כל הקורס",
+  "resources.scopeCourseLevel": "כלל הקורס",
   "resources.scopeTopicPrefix": "נושא:",
   "resources.visibilityLabel": "נראות",
   "resources.visibilityTeacher": "פרטי - רק אני",

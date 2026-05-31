@@ -629,6 +629,7 @@
   "resources.fileLabel": "File",
   "resources.scopeLabel": "Scope",
   "resources.scopeWholeCourse": "Whole course",
+  "resources.scopeCourseLevel": "Course-wide",
   "resources.scopeTopicPrefix": "Topic:",
   "resources.visibilityLabel": "Visibility",
   "resources.visibilityTeacher": "Private - only me",

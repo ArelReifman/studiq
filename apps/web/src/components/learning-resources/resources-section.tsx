@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { learningResourcesApi } from "@/lib/api";
@@ -51,18 +51,47 @@ export function ResourcesSection(props: Props) {
     },
   ] as const;
 
+  // The Learning Map renders this section at the *parent* topic level, but
+  // resources can be attached to child subtopics too. So whenever a topic is in
+  // scope we fetch the whole course/student scope (no topic_id sent to the API)
+  // and filter client-side to this parent's subtree below. The query key stays
+  // scoped by topicId so each parent topic keeps its own cache entry.
   const { data: resources, isLoading } = useQuery({
     queryKey,
     queryFn: () =>
       role === "teacher"
         ? learningResourcesApi.listForTeacher(
             courseId,
-            topicId ?? undefined,
+            undefined,
             studentId ?? undefined
           )
-        : learningResourcesApi.listForStudent(courseId, topicId ?? undefined),
+        : learningResourcesApi.listForStudent(courseId, undefined),
     enabled: !!courseId,
   });
+
+  // topic_id → display name, built from the topics passed by the parent (the
+  // active topic + its children). Used to badge each resource.
+  const topicNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const tp of topics) m.set(tp.id, tp.name);
+    return m;
+  }, [topics]);
+
+  // When a topic is in scope, show only this parent's subtree (parent + its
+  // children) plus course-level resources (topic_id === null). In the course
+  // tab (no topicId) we leave the list untouched.
+  const visibleResources = useMemo(() => {
+    if (!resources || !topicId) return resources;
+    const allowed = new Set<string>([topicId, ...topics.map((tp) => tp.id)]);
+    return resources.filter(
+      (r) => r.topic_id === null || allowed.has(r.topic_id)
+    );
+  }, [resources, topicId, topics]);
+
+  const topicLabelFor = (topicId: string | null): string | null =>
+    topicId === null
+      ? t("resources.scopeCourseLevel")
+      : topicNameById.get(topicId) ?? null;
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => learningResourcesApi.delete(id),
@@ -108,7 +137,7 @@ export function ResourcesSection(props: Props) {
 
       {isLoading ? (
         <div className="text-xs text-gray-400">…</div>
-      ) : !resources || resources.length === 0 ? (
+      ) : !visibleResources || visibleResources.length === 0 ? (
         <div className="text-xs text-gray-400 px-1">
           {role === "teacher"
             ? t("resources.empty")
@@ -116,11 +145,12 @@ export function ResourcesSection(props: Props) {
         </div>
       ) : (
         <div className="space-y-1.5">
-          {resources.map((r: LearningResource) => (
+          {visibleResources.map((r: LearningResource) => (
             <ResourceItem
               key={r.id}
               resource={r}
               canManage={role === "teacher"}
+              topicLabel={topicLabelFor(r.topic_id)}
               onDelete={
                 role === "teacher" ? (id) => deleteMutation.mutate(id) : undefined
               }
