@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -51,6 +51,15 @@ export function UploadResourceModal({
   const [visibility, setVisibility] =
     useState<LearningResourceVisibility>("teacher_only");
   const [error, setError] = useState<string | null>(null);
+
+  // Keep the selected topic in sync with the active topic/subtopic the modal
+  // was opened from. Without this, `topicId` is captured once at mount and can
+  // hold a stale topic id from a previously active topic, causing the resource
+  // to be saved under the wrong topic. Manual dropdown selections are preserved
+  // because `defaultTopicId` is stable while the modal is open.
+  useEffect(() => {
+    setTopicId(defaultTopicId ?? "");
+  }, [defaultTopicId]);
 
   const upload = useMutation({
     mutationFn: () => {
