@@ -389,7 +389,7 @@ export default function StudentBookPage() {
 
           {/* Lesson pill */}
           <div className="mb-4">
-            <span className="inline-flex items-center gap-2 bg-brand-50 border border-brand-200 text-brand-800 rounded-lg px-4 py-2.5 text-sm font-medium">
+            <span dir="ltr" className="inline-flex items-center gap-2 bg-brand-50 border border-brand-200 text-brand-800 rounded-lg px-4 py-2.5 text-sm font-medium">
               <Clock size={14} className="text-brand-500 flex-shrink-0" />
               <span className="font-medium">{formatDate(selectedDate!, locale)}</span>
               <span className="text-brand-300">·</span>
