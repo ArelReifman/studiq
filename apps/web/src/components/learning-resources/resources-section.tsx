@@ -46,7 +46,6 @@ export function ResourcesSection(props: Props) {
     role,
     {
       course_id: courseId,
-      topic_id: topicId ?? null,
       student_id: studentId ?? null,
     },
   ] as const;
