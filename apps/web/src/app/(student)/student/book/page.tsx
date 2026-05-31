@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { useT } from "@/i18n";
+import { useT, useLocaleStore } from "@/i18n";
 import { Card } from "@/components/ui/card";
 import { Calendar, type TimeSlot } from "@/components/calendar/calendar";
 import { Send, X, Clock } from "lucide-react";
@@ -38,8 +38,12 @@ function addMinutes(t: string, mins: number): string {
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
-function formatDate(s: string): string {
-  return new Date(s + "T00:00:00").toLocaleDateString(undefined, {
+// Locale-aware date formatter. Mirrors the teacher schedule's helper:
+// passing the active app locale forces the correct script ("יום א׳ 31 במאי"
+// in Hebrew) instead of the browser's default, which on iOS Safari often
+// stays English even when the app is set to Hebrew.
+function formatDate(s: string, locale: "he" | "en"): string {
+  return new Date(s + "T00:00:00").toLocaleDateString(locale, {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -80,6 +84,7 @@ function buildLessonChain(
 
 export default function StudentBookPage() {
   const t = useT();
+  const locale = useLocaleStore((s) => s.locale);
   const qc = useQueryClient();
 
   const [selectedDate, setSelectedDate] = useState<string | undefined>();
@@ -386,7 +391,7 @@ export default function StudentBookPage() {
           <div className="mb-4">
             <span className="inline-flex items-center gap-2 bg-brand-50 border border-brand-200 text-brand-800 rounded-lg px-4 py-2.5 text-sm font-medium">
               <Clock size={14} className="text-brand-500 flex-shrink-0" />
-              <span className="font-medium">{formatDate(selectedDate!)}</span>
+              <span className="font-medium">{formatDate(selectedDate!, locale)}</span>
               <span className="text-brand-300">·</span>
               <span className="font-mono font-semibold">
                 {selectedStartTime}–{lessonEndTime}
@@ -448,8 +453,13 @@ export default function StudentBookPage() {
                 }
               >
                 <div className="min-w-0">
-                  <p className="font-medium text-gray-800 text-sm">
-                    {formatDate(g.date)}
+                  {/* dir="ltr" on the summary line keeps the date · time ·
+                      duration order visually intact in Hebrew UI — Hebrew
+                      strong characters still render as RTL runs internally,
+                      but the line as a whole reads left-to-right so the LTR
+                      time range (18:00–20:00) is no longer scanned tail-first. */}
+                  <p dir="ltr" className="font-medium text-gray-800 text-sm">
+                    {formatDate(g.date, locale)}
                     {" · "}
                     <span dir="ltr">{g.start_time}–{g.end_time}</span>
                     {g.hours >= 1 && (
@@ -532,8 +542,8 @@ export default function StudentBookPage() {
                         key={g.ids.join("-")}
                         className="border border-gray-100 rounded-lg p-3 opacity-55"
                       >
-                        <p className="font-medium text-gray-700 text-sm">
-                          {formatDate(g.date)}
+                        <p dir="ltr" className="font-medium text-gray-700 text-sm">
+                          {formatDate(g.date, locale)}
                           {" · "}
                           <span dir="ltr">{g.start_time}–{g.end_time}</span>
                           {g.hours >= 1 && (
