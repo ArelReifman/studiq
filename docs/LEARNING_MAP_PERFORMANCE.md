@@ -595,3 +595,58 @@ production, warm/cold mix.
   - Teacher (separate session) still sees the solution appear via Realtime.
 - **Rollback plan:** single-commit `git revert` (one component + this doc
   subsection). No DB/auth/cache side-effects.
+
+### 12.2 Phase 2F follow-up — instant delete (optimistic local removal)
+
+- **Status:** **implemented — pending verification.**
+- **Problem:** removing an uploaded solution felt slow. The `remove` mutation
+  had no optimistic UI: the card kept showing the file (the `X` button merely
+  dimmed via `disabled`) for the full `DELETE /upload/lesson/:id/solution`
+  round-trip (~1s) plus the follow-up `["lessons", lessonId]` refetch
+  (~`860ms`–`1.6s`) before the file disappeared.
+- **Bottleneck:** the blocking request is the `DELETE` itself — the UI waited
+  for it (and then the refetch flipping the prop to `null`) before hiding the
+  file. No work happens client-side until then, so it reads as a frozen delay.
+- **Local fix (this follow-up):** added an `optimisticRemoved` boolean state.
+  `remove.onMutate` sets it `true` → the card hides the file **immediately**;
+  the existing `DELETE` is still sent unchanged. `effectiveUrl`/`effectiveName`
+  now short-circuit to `null` when `optimisticRemoved` is set, so the empty
+  upload state shows instantly. The `DELETE` + `["lessons", lessonId]`
+  invalidation continue in the background.
+- **Rollback on failure:** `remove.onError` sets `optimisticRemoved` back to
+  `false`, restoring the file in the UI; the existing `remove.isError` message
+  surfaces the error. No data is lost because the server prop (`solutionUrl`)
+  was never cleared on failure.
+- **Not blocking future uploads:** `upload.onMutate` resets
+  `optimisticRemoved` to `false`, so a new upload after a delete is never
+  hidden by a stale removal flag.
+- **Remove invalidation trimmed (symmetry with upload):** the `remove`
+  `onSuccess` previously fired both `["lessons", lessonId]` **and** the broad
+  `["lessons"]` prefix. The broad one was redundant — it overlaps
+  `["lessons", lessonId]` and duplicate-refetches the mounted detail query (the
+  exact issue already fixed on upload), and the only `["lessons"]`-exact list
+  queries (`student/dashboard` and `student/map`) return `LessonSession[]` and
+  render `status`/`topic_id`/`id` only — they never show
+  `student_solution_url`/`name`, so a solution removal doesn't affect them. The
+  Realtime `lesson_sessions` echo also already covers any other surface. So
+  `remove` now keeps **only** `qc.invalidateQueries({ queryKey: ["lessons", lessonId] })`.
+- **Preserved / not changed:** upload/sign/confirm behaviour unchanged; the
+  required `qc.invalidateQueries({ queryKey: ["lessons", lessonId] })` is kept
+  on both upload and remove; `use-realtime-sync.ts` unchanged; no
+  backend / DB / auth / RLS changes; `task-item.tsx` and teacher flows
+  untouched.
+- **Why teacher visibility stays safe:** the `DELETE` is still sent to the
+  backend exactly as before, and the teacher continues to see the removal via
+  their **own** Realtime `lesson_sessions` subscription. `optimisticRemoved` is
+  purely the student's local render state and never reaches the teacher's
+  browser.
+- **Test plan:**
+  - Click delete → the file disappears **instantly**; no frozen wait.
+  - On `DELETE` success the card stays empty after the refetch lands.
+  - Simulated `DELETE` failure → the file reappears and an error is shown.
+  - Upload again after delete → the new file shows normally (no stale hide).
+  - Teacher (separate session) still sees the removal via Realtime.
+- **Verification gate:** Phase 2F should be marked **verified** only after
+  **both** upload **and** delete are confirmed in production.
+- **Rollback plan:** single-commit `git revert` (one component + this doc
+  subsection). No DB/auth/cache side-effects.

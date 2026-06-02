@@ -44,6 +44,11 @@ export function LessonSolutionUpload({
     url: string;
     name: string;
   } | null>(null);
+  // Optimistic removal flag. The DELETE request can take ~1s; without this the
+  // card keeps showing the file (button just dimmed) until the request + refetch
+  // finish, which feels slow. We hide the file immediately on click and only
+  // roll back if the DELETE fails.
+  const [optimisticRemoved, setOptimisticRemoved] = useState(false);
 
   const upload = useMutation({
     mutationFn: (file: File) =>
@@ -52,6 +57,11 @@ export function LessonSolutionUpload({
         `/upload/lesson/${lessonId}/solution/confirm`,
         file
       ),
+    onMutate: () => {
+      // A fresh upload supersedes any prior optimistic removal so the new file
+      // is never hidden by a stale "removed" flag.
+      setOptimisticRemoved(false);
+    },
     onSuccess: (data) => {
       // Show the uploaded file right away, before the refetch arrives.
       setJustUploaded({
@@ -72,11 +82,25 @@ export function LessonSolutionUpload({
 
   const remove = useMutation({
     mutationFn: () => api.delete(`/upload/lesson/${lessonId}/solution`),
+    onMutate: () => {
+      // Hide the file instantly; the DELETE + refetch finish in the background.
+      setOptimisticRemoved(true);
+    },
     onSuccess: () => {
       // Drop the local override so the card follows the server (now empty).
       setJustUploaded(null);
+      // Only this lesson's detail query needs refreshing — removing a solution
+      // only clears lesson_sessions.student_solution_url/name, which the
+      // dashboard/map ["lessons"] lists don't render. The broad ["lessons"]
+      // prefix was redundant (it overlaps ["lessons", lessonId] → duplicate
+      // refetch of the mounted detail query, same issue fixed on upload) and
+      // the Realtime lesson_sessions echo already covers any other surface.
       qc.invalidateQueries({ queryKey: ["lessons", lessonId] });
-      qc.invalidateQueries({ queryKey: ["lessons"] });
+    },
+    onError: () => {
+      // DELETE failed — restore the file. The existing remove.isError message
+      // surfaces the error to the student.
+      setOptimisticRemoved(false);
     },
     onSettled: () => {
       isRemoving.current = false;
@@ -85,8 +109,13 @@ export function LessonSolutionUpload({
 
   // Server data wins once it arrives; the local fallback only covers the gap
   // between a successful upload and the refetch/Realtime echo catching up.
-  const effectiveUrl = solutionUrl ?? justUploaded?.url ?? null;
-  const effectiveName = solutionName ?? justUploaded?.name ?? null;
+  // `optimisticRemoved` overrides both so deletion feels instant.
+  const effectiveUrl = optimisticRemoved
+    ? null
+    : solutionUrl ?? justUploaded?.url ?? null;
+  const effectiveName = optimisticRemoved
+    ? null
+    : solutionName ?? justUploaded?.name ?? null;
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
