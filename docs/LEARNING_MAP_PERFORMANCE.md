@@ -511,7 +511,8 @@ production, warm/cold mix.
 
 - **Phase name:** Student lesson-solution upload — reduce redundant refetch /
   flicker (frontend-only).
-- **Status:** **implemented — pending verification.**
+- **Status:** **verified** (production, commit `2486c03`). See §12.3 for the QA
+  result.
 - **Problem:** After a student uploads their solution PDF/image on the student
   lesson page, the same `GET /lessons/:id` is refetched several times in quick
   succession (observed ≈ `638ms` / `1.25s` / `1.69s` staggered), and the card /
@@ -553,7 +554,7 @@ production, warm/cold mix.
 
 ### 12.1 Phase 2F follow-up — local anti-flicker UI state
 
-- **Status:** **follow-up implemented — pending verification.**
+- **Status:** **verified** (production, commit `2486c03`).
 - **What the first cut already fixed:** the broad invalidations
   (`["lessons"]` prefix, `["learning-map"]`, `["students"]`, `["todos"]`) were
   removed, collapsing the post-upload cascade from five invalidation sources to
@@ -598,7 +599,7 @@ production, warm/cold mix.
 
 ### 12.2 Phase 2F follow-up — instant delete (optimistic local removal)
 
-- **Status:** **implemented — pending verification.**
+- **Status:** **verified** (production, commit `2486c03`).
 - **Problem:** removing an uploaded solution felt slow. The `remove` mutation
   had no optimistic UI: the card kept showing the file (the `X` button merely
   dimmed via `disabled`) for the full `DELETE /upload/lesson/:id/solution`
@@ -650,3 +651,26 @@ production, warm/cold mix.
   **both** upload **and** delete are confirmed in production.
 - **Rollback plan:** single-commit `git revert` (one component + this doc
   subsection). No DB/auth/cache side-effects.
+
+### 12.3 Phase 2F — QA result (verified in production)
+
+- **Verified on:** commit `2486c03` (Vercel Ready).
+- **Result:** **verified in production.** Both the upload anti-flicker (§12.1)
+  and the delete optimistic removal (§12.2) behave as intended.
+- **Test 1 — upload a solution:** `sign ≈ 1.44s`, `PDF upload ≈ 2.62s`,
+  `confirm ≈ 817ms`, lesson refetches after confirm `≈ 807ms` + `≈ 1.56s`.
+  Upload succeeded, the file appeared correctly, and the UI **did not** flip
+  back to the empty/no-file state during the background refetch.
+- **Test 2 — delete the solution:** `DELETE ≈ 1.25s`, lesson refetches after
+  delete `≈ 631ms` + `≈ 1.15s`. The file **disappeared immediately**, the
+  delete completed, and the file stayed removed after the refetch.
+- **Test 3 — teacher visibility:** the teacher sees the correct upload/delete
+  state (via their own Realtime subscription).
+- **Remaining duplicate `GET /lessons/:id`:** still present (one manual
+  `["lessons", lessonId]` invalidation + the Supabase Realtime `lesson_sessions`
+  echo of the same write). This is **expected** and **acceptable** — the UI no
+  longer flickers, so the second background refetch is invisible to the user.
+- **`use-realtime-sync.ts` intentionally not changed:** the global Realtime
+  echo was deliberately left untouched (suppressing/debouncing it would risk
+  teacher visibility and the learning-map live refresh). The flicker was solved
+  purely with local component state on the student side.
