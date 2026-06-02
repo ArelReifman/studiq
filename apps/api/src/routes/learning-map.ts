@@ -77,20 +77,33 @@ export const learningMapRoutes = new Hono()
       studentId = studentIdParam;
     }
 
+    // ── Wave 1 ── independent lookups that only need studentId.
     // Resolve which course the map shows. Only ACTIVE course assignments
     // count. Old lesson_sessions still reference archived courses, so we must
     // NOT infer the course from them — otherwise hiding a student's last
     // course would keep surfacing its archived map.
-    const activeCourses = await db
-      .select({ course_id: studentCourses.course_id })
-      .from(studentCourses)
-      .where(
-        and(
-          eq(studentCourses.student_id, studentId),
-          eq(studentCourses.is_active, true)
+    //
+    // The primary-course lookup is fetched unconditionally so it can run in
+    // parallel with the active-course list. Its value is only consumed in the
+    // no-course_id branch below, so reading it eagerly is behaviour-neutral —
+    // it just lets the two reads share a single round-trip.
+    const [activeCourses, primaryRows] = await Promise.all([
+      db
+        .select({ course_id: studentCourses.course_id })
+        .from(studentCourses)
+        .where(
+          and(
+            eq(studentCourses.student_id, studentId),
+            eq(studentCourses.is_active, true)
+          )
         )
-      )
-      .orderBy(studentCourses.added_at);
+        .orderBy(studentCourses.added_at),
+      db
+        .select({ primary_course_id: students.primary_course_id })
+        .from(students)
+        .where(eq(students.id, studentId))
+        .limit(1),
+    ]);
     const activeCourseIds = new Set(activeCourses.map((r) => r.course_id));
 
     if (courseId) {
@@ -101,16 +114,9 @@ export const learningMapRoutes = new Hono()
     } else {
       // No course_id: prefer the student's primary course when it is still
       // active, else the oldest active course. Never infer from old lessons.
-      const [student] = await db
-        .select({ primary_course_id: students.primary_course_id })
-        .from(students)
-        .where(eq(students.id, studentId))
-        .limit(1);
-      if (
-        student?.primary_course_id &&
-        activeCourseIds.has(student.primary_course_id)
-      ) {
-        courseId = student.primary_course_id;
+      const primaryCourseId = primaryRows[0]?.primary_course_id;
+      if (primaryCourseId && activeCourseIds.has(primaryCourseId)) {
+        courseId = primaryCourseId;
       } else if (activeCourses.length > 0) {
         courseId = activeCourses[0]!.course_id;
       } else {
@@ -118,42 +124,69 @@ export const learningMapRoutes = new Hono()
       }
     }
 
-    // 1. Fetch course
-    const [course] = await db
-      .select({
-        id: courses.id,
-        name: courses.name,
-        exam_date: courses.exam_date,
-      })
-      .from(courses)
-      .where(eq(courses.id, courseId))
-      .limit(1);
-    if (!course) return c.json({ error: "Course not found" }, 404);
-
-    // Per-student override (migration 020). When present, it wins over the
-    // course-level default — different students may take the same course at
-    // different universities or on different mo'eds.
-    const [override] = await db
-      .select({ exam_date: studentCourseExamDates.exam_date })
-      .from(studentCourseExamDates)
-      .where(
-        and(
-          eq(studentCourseExamDates.student_id, studentId),
-          eq(studentCourseExamDates.course_id, courseId)
+    // ── Wave 2 ── once courseId is resolved, these four reads are mutually
+    // independent (each depends only on courseId / studentId), so run them in
+    // a single parallel batch instead of four serial round-trips:
+    //   1. course        — name + default exam_date
+    //   2. exam override — per-student exam date (migration 020); when present
+    //                      it wins over the course-level default, since
+    //                      different students may sit the same course at
+    //                      different universities or mo'eds.
+    //   3. topics        — all course topics (both levels)
+    //   4. lessons       — this student's lessons for this course, newest
+    //                      first so the first lesson per topic is the latest
+    //                      one (used to populate latest_lesson_id).
+    const [courseRows, overrideRows, topics, lessons] = await Promise.all([
+      db
+        .select({
+          id: courses.id,
+          name: courses.name,
+          exam_date: courses.exam_date,
+        })
+        .from(courses)
+        .where(eq(courses.id, courseId))
+        .limit(1),
+      db
+        .select({ exam_date: studentCourseExamDates.exam_date })
+        .from(studentCourseExamDates)
+        .where(
+          and(
+            eq(studentCourseExamDates.student_id, studentId),
+            eq(studentCourseExamDates.course_id, courseId)
+          )
         )
-      )
-      .limit(1);
+        .limit(1),
+      db
+        .select()
+        .from(courseTopics)
+        .where(eq(courseTopics.course_id, courseId)),
+      db
+        .select({
+          id: lessonSessions.id,
+          topic_id: lessonSessions.topic_id,
+          status: lessonSessions.status,
+          completed_at: lessonSessions.completed_at,
+          teacher_decision: lessonSessions.teacher_decision,
+          teacher_reviewed_at: lessonSessions.teacher_reviewed_at,
+        })
+        .from(lessonSessions)
+        .where(
+          and(
+            eq(lessonSessions.student_id, studentId),
+            eq(lessonSessions.course_id, courseId)
+          )
+        )
+        .orderBy(desc(lessonSessions.generated_at)),
+    ]);
+
+    const [course] = courseRows;
+    if (!course) return c.json({ error: "Course not found" }, 404);
+    const [override] = overrideRows;
 
     const effectiveExamDate = override?.exam_date ?? course.exam_date;
     const examDateIso = effectiveExamDate
       ? effectiveExamDate.toISOString()
       : null;
-
-    // 2. Fetch all topics for this course (both levels)
-    const topics = await db
-      .select()
-      .from(courseTopics)
-      .where(eq(courseTopics.course_id, courseId));
 
     if (topics.length === 0) {
       return c.json({
@@ -172,30 +205,10 @@ export const learningMapRoutes = new Hono()
       } satisfies LearningMap);
     }
 
-    // 3. Fetch this student's lessons for this course
-    const lessons = await db
-      .select({
-        id: lessonSessions.id,
-        topic_id: lessonSessions.topic_id,
-        status: lessonSessions.status,
-        completed_at: lessonSessions.completed_at,
-        teacher_decision: lessonSessions.teacher_decision,
-        teacher_reviewed_at: lessonSessions.teacher_reviewed_at,
-      })
-      .from(lessonSessions)
-      .where(
-        and(
-          eq(lessonSessions.student_id, studentId),
-          eq(lessonSessions.course_id, courseId)
-        )
-      )
-      // Newest first so the first lesson we see per topic is the latest —
-      // used to populate latest_lesson_id for the "open lesson" action.
-      .orderBy(desc(lessonSessions.generated_at));
-
     const lessonIds = lessons.map((l) => l.id);
 
-    // 4. Fetch homework + todos for those lessons
+    // ── Wave 3 ── homework + todos for those lessons (depends on lessonIds).
+    // Fetch homework + todos for those lessons
     const [hw, td] = await Promise.all([
       lessonIds.length
         ? db

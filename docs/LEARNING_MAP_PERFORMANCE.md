@@ -81,7 +81,7 @@ Ordered, but not all are committed-to yet. Each is expanded using the template i
   `/exam-date`, `/learning-resources`, and the student page's `/lessons`
   (currently fired on mount despite being needed only on a "continue" click).
 
-- **Phase 2C — Optimize `GET /learning-map` backend.**
+- **Phase 2C — Optimize `GET /learning-map` backend.** *(implemented — see §8)*
   Parallelize the independent sequential DB queries in
   `apps/api/src/routes/learning-map.ts`, combine the ownership + active-courses
   lookups, and verify indexes on the filtered columns. No behaviour change —
@@ -158,4 +158,86 @@ Every future phase entry must include all of the following fields.
   it touches no fetch/cache logic.
 - **Rollback plan:** single-commit `git revert` (new component + two branch
   swaps + this doc section). No DB/auth/cache side-effects.
+- **Status:** implemented, pending commit.
+
+---
+
+## 8. Phase 2C — Parallelize `GET /learning-map` DB queries
+
+- **Phase name:** `GET /learning-map` query-wave parallelization (backend).
+- **Goal:** Cut the `GET /learning-map` server time by collapsing the chain of
+  independent sequential DB round-trips into a few parallel batches, without any
+  change to the response, the computed values, or the security/404 behaviour.
+- **Problem:** The handler in `apps/api/src/routes/learning-map.ts` issued ~7
+  DB reads strictly one-after-another, even though most do not depend on each
+  other. Against the Supabase IPv4 transaction pooler each round-trip pays fixed
+  network + auth overhead, so serializing independent reads multiplies that
+  fixed cost. Indexes already exist on every filtered column (verified in
+  `apps/api/src/db/schema.ts`), so the bottleneck is round-trip *count*, not
+  per-query work.
+- **Scope:** Backend-only, single file (`learning-map.ts`) + this doc.
+  **In scope:** reordering independent reads into `Promise.all` waves.
+  **Out of scope (unchanged):** response shape, progress/rollup/locked/status
+  logic, error semantics & 404s, the teacher-ownership security gate, auth
+  middleware, DB schema/migrations, indexes, and all frontend / React Query /
+  resources code.
+- **Files touched:**
+  - `apps/api/src/routes/learning-map.ts`
+  - `docs/LEARNING_MAP_PERFORMANCE.md`
+- **Exact changes — handler restructured into ordered waves:**
+  - **Wave 0 (unchanged, sequential):** teacher-ownership check stays *first*
+    and *blocking*. The security gate is neither weakened nor reordered — for a
+    teacher we still resolve `studentId` only after confirming ownership.
+  - **Wave 1 (`Promise.all`):** the active-course list and the student's
+    `primary_course_id` are now fetched together. `primary_course_id` is read
+    unconditionally so it can share the round-trip; its value is still only
+    *consumed* in the no-`course_id` branch, so eager reading is
+    behaviour-neutral. `courseId` resolution / validation (active-set
+    membership, primary-vs-oldest fallback, the `No course found` 404) is
+    byte-for-byte the same.
+  - **Wave 2 (`Promise.all`):** after `courseId` is resolved & validated, the
+    four independent reads — course row, per-student exam override, topics, and
+    this student's lessons (newest-first) — run in one batch instead of four
+    serial reads. The `Course not found` 404, the
+    `override ?? course.exam_date` precedence, and the empty-`topics` early
+    return are all preserved exactly.
+  - **Wave 3 (unchanged, `Promise.all`):** homework + todo reads still run after
+    `lessonIds` is known (they genuinely depend on it), and were already
+    batched.
+- **Before / after handler structure:**
+
+  ```text
+  BEFORE (serial)                AFTER (waved)
+  ─────────────────────────────  ─────────────────────────────
+  await owner (teacher only)     Wave 0: await owner (teacher only)   ← unchanged
+  await activeCourses            Wave 1: Promise.all([
+  await primaryCourse (cond.)              activeCourses, primaryCourse ])
+  await course                   Wave 2: Promise.all([
+  await examOverride                       course, examOverride,
+  await topics                             topics, lessons ])
+  await lessons
+  await Promise.all([hw, td])    Wave 3: Promise.all([hw, td])        ← unchanged
+  ```
+
+  Round-trips on the critical path drop from ~7 serial to **4** (teacher) /
+  **3** (student): Wave 0 (teacher only) → Wave 1 → Wave 2 → Wave 3.
+- **Before network behavior:** one `GET /learning-map`, ~5–5.9s observed; server
+  time dominated by serial DB round-trips.
+- **After network behavior:** identical request/response (same URL, same JSON,
+  same status codes). Expected server-time reduction ~0.5–1.5s from fewer serial
+  round-trips. The remaining floor is the per-request auth tax (Phase 2D,
+  separate, security-sensitive).
+- **Test plan:**
+  - `pnpm typecheck` (api) — green.
+  - `pnpm vitest run` for `learning-map-rollup`, `learning-map-recovery`,
+    `learning-map.fallback` — **20/20 passed**.
+  - Manual QA: load student map and teacher map; confirm identical data, course
+    switching, exam-date precedence, locked/empty/404 paths.
+- **Risks:** Low. No logic/branch changed — only the *order* in which
+  independent reads are awaited. Eagerly reading `primary_course_id` and the
+  lessons list (even when `topics` is later found empty) is harmless: those
+  results are simply discarded by the existing early returns. No cache/staleness
+  impact, so contract §4/§5 invalidation is untouched (read-path only).
+- **Rollback plan:** single-commit `git revert` (one source file + this doc
+  section). No schema/auth/cache side-effects.
 - **Status:** implemented, pending commit.
