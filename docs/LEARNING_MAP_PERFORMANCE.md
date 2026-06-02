@@ -550,3 +550,48 @@ production, warm/cold mix.
   - Remove solution still works and refreshes the student's view.
 - **Rollback plan:** single-commit `git revert` (one component + this doc
   section). No DB/auth/cache side-effects.
+
+### 12.1 Phase 2F follow-up — local anti-flicker UI state
+
+- **Status:** **follow-up implemented — pending verification.**
+- **What the first cut already fixed:** the broad invalidations
+  (`["lessons"]` prefix, `["learning-map"]`, `["students"]`, `["todos"]`) were
+  removed, collapsing the post-upload cascade from five invalidation sources to
+  a single `["lessons", lessonId]` refetch.
+- **Remaining (expected) behaviour:** even with only one manual invalidation,
+  there are still **two** `GET /lessons/:id` after `confirm` (observed ≈ `613ms`
+  + `596ms`). The second one is the **Supabase Realtime `lesson_sessions`
+  echo** of the student's own write, which invalidates the `["lessons"]` prefix.
+  This is expected from the Realtime architecture and is intentionally **not**
+  suppressed (suppressing/debouncing it globally would risk teacher visibility
+  and the learning-map live refresh — that listener is the exact mechanism the
+  teacher relies on).
+- **Why the flicker remained:** `LessonSolutionUpload` renders from the
+  `solutionUrl` / `solutionName` **props** (fed by the parent
+  `["lessons", lessonId]` query). Between a successful `confirm` and the
+  refetch landing, the props still say "no solution", so the card briefly flips
+  back to the empty upload state → visible flicker.
+- **Local fix (this follow-up):** added a small local component state
+  `justUploaded` ({ url, name }) set in the `upload` `onSuccess` from the
+  confirm response. Render now uses `effectiveUrl`/`effectiveName =
+  prop ?? justUploaded`, so the card shows the uploaded file **immediately** and
+  holds it through the background refetch/echo. **Server props win once they
+  arrive** (`prop ?? local`), so the real lesson data is always the source of
+  truth; the local value only covers the gap. `remove` clears `justUploaded`
+  so deletion still follows the server to the empty state.
+- **Preserved / not changed:** the required
+  `qc.invalidateQueries({ queryKey: ["lessons", lessonId] })` is kept;
+  `use-realtime-sync.ts` is intentionally **unchanged** (no global Realtime
+  suppression/debounce); no backend / DB / auth / RLS changes; `task-item.tsx`
+  and teacher upload flows untouched; error handling
+  (`upload.isError` / `remove.isError`) unchanged. Teacher visibility remains
+  safe — the change is purely the student's local render state.
+- **Test plan:**
+  - Upload a solution → during upload shows "uploading"; on `confirm` success
+    the uploaded file appears **immediately** with **no** flip back to the
+    empty/loading state during the background refetch + Realtime echo.
+  - Once the refreshed lesson data arrives, the card uses the real server data.
+  - Remove still works and returns the card to the empty state.
+  - Teacher (separate session) still sees the solution appear via Realtime.
+- **Rollback plan:** single-commit `git revert` (one component + this doc
+  subsection). No DB/auth/cache side-effects.

@@ -9,7 +9,7 @@
  * Independent of per-task homework attachments (those still live on
  * each individual task).
  */
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileText, Upload, X, Paperclip } from "lucide-react";
 import { api } from "@/lib/api";
@@ -32,6 +32,19 @@ export function LessonSolutionUpload({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isRemoving = useRef(false);
 
+  // Anti-flicker local state. The component is fed `solutionUrl`/`solutionName`
+  // from the parent ["lessons", lessonId] query. After a successful upload the
+  // mutation triggers a background refetch (plus the Realtime lesson_sessions
+  // echo), but until the refreshed lesson data lands the props still say
+  // "no solution", which would briefly flip the card back to the empty
+  // upload state — the visible flicker. We hold the confirmed file locally so
+  // the card shows the uploaded state immediately and stays put through the
+  // refetch. Server props remain the source of truth (see effective* below).
+  const [justUploaded, setJustUploaded] = useState<{
+    url: string;
+    name: string;
+  } | null>(null);
+
   const upload = useMutation({
     mutationFn: (file: File) =>
       api.uploadDirect<{ student_solution_url: string; student_solution_name: string }>(
@@ -39,7 +52,12 @@ export function LessonSolutionUpload({
         `/upload/lesson/${lessonId}/solution/confirm`,
         file
       ),
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // Show the uploaded file right away, before the refetch arrives.
+      setJustUploaded({
+        url: data.student_solution_url,
+        name: data.student_solution_name,
+      });
       // The confirm endpoint only updates this lesson's lesson_sessions row
       // (student_solution_url/name) — it does NOT touch tasks/homework/todos.
       // So refetching this single lesson is enough for the student's own view.
@@ -55,6 +73,8 @@ export function LessonSolutionUpload({
   const remove = useMutation({
     mutationFn: () => api.delete(`/upload/lesson/${lessonId}/solution`),
     onSuccess: () => {
+      // Drop the local override so the card follows the server (now empty).
+      setJustUploaded(null);
       qc.invalidateQueries({ queryKey: ["lessons", lessonId] });
       qc.invalidateQueries({ queryKey: ["lessons"] });
     },
@@ -63,13 +83,18 @@ export function LessonSolutionUpload({
     },
   });
 
+  // Server data wins once it arrives; the local fallback only covers the gap
+  // between a successful upload and the refetch/Realtime echo catching up.
+  const effectiveUrl = solutionUrl ?? justUploaded?.url ?? null;
+  const effectiveName = solutionName ?? justUploaded?.name ?? null;
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) upload.mutate(file);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const hasSolution = !!solutionUrl;
+  const hasSolution = !!effectiveUrl;
 
   return (
     <Card className="mb-6">
@@ -83,12 +108,12 @@ export function LessonSolutionUpload({
         <div className="flex items-center gap-2 bg-gray-50 rounded-md px-3 py-2">
           <FileText size={16} className="text-brand-500 flex-shrink-0" />
           <a
-            href={solutionUrl}
+            href={effectiveUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="text-sm text-brand-600 hover:underline truncate flex-1"
           >
-            {solutionName || t("student.yourSolution")}
+            {effectiveName || t("student.yourSolution")}
           </a>
           <button
             onClick={() => {
