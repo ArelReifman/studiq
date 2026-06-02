@@ -87,11 +87,18 @@ Ordered, but not all are committed-to yet. Each is expanded using the template i
   lookups, and verify indexes on the filtered columns. No behaviour change —
   same response, fewer serial round-trips.
 
-- **Phase 2D — Auth / global latency investigation (investigation only).**
+- **Phase 2D-A — Region / infrastructure alignment (deployed / verified — see §9).**
+  Global API latency caused by a Vercel↔Supabase region mismatch (functions were
+  in `fra1`/Frankfurt, DB+Auth in `ap-northeast-1`/Tokyo). Infra/config only — no
+  code, no auth, no schema. **Done:** Vercel function region moved
+  `fra1 → hnd1` (Tokyo); measured ~4–5× global latency reduction.
+
+- **Phase 2D-B — Auth / per-request latency investigation (investigation only).**
   Investigate the per-request `supabase.auth.getUser()` round-trip + profile DB
   query in `apps/api/src/middleware/auth.ts`, which taxes **every** endpoint.
   Security-sensitive and broad — **investigation and proposal only**, no code
-  changes under this phase without separate explicit approval.
+  changes under this phase without separate explicit approval. Do only **after**
+  2D-A, since region alignment may shrink this tax on its own.
 
 ---
 
@@ -249,4 +256,90 @@ Every future phase entry must include all of the following fields.
   unrelated endpoints are similarly slow in the same session
   (`student details ≈ 4.60s`, `courses ≈ 3.86s`, `students ≈ 4.22s`,
   `*/count ≈ 4.07s`), which points at a per-request global tax rather than any
-  single route. This is the subject of Phase 2D (investigation only).
+  single route. This is the subject of Phase 2D-A (region) / 2D-B (auth).
+
+---
+
+## 9. Phase 2D-A — Vercel ↔ Supabase region alignment (deployed / verified)
+
+- **Phase name:** Region/infrastructure alignment (Vercel function region).
+- **Goal:** Reduce the per-request global API latency that affects *every*
+  authenticated endpoint (not just `/learning-map`) by running the Vercel
+  serverless function in the region closest to the Supabase DB + Auth, instead
+  of on the opposite side of the planet.
+- **Problem:** Every authenticated request makes serial cross-region round-trips
+  (`supabase.auth.getUser()` → `profiles` query → route queries). With the
+  function and the database thousands of km apart, each round-trip pays a large
+  fixed RTT, which compounds across the several serial hops per request.
+- **Verified findings (manual, from dashboards — confirmed by Arel):**
+  - **Supabase project region:** `ap-northeast-1` — Northeast Asia / **Tokyo**.
+    (Also independently confirmed by the pooler host
+    `aws-1-ap-northeast-1.pooler.supabase.com`.) Supabase Auth (GoTrue) lives in
+    the same project region → also Tokyo.
+  - **Vercel Function Region (before this phase):** `fra1` — Europe /
+    **Frankfurt**.
+  - **Confirmed mismatch:** functions in `fra1` (Frankfurt) vs DB+Auth in
+    `ap-northeast-1` (Tokyo) — roughly **9,000 km / ~230–260 ms RTT** per
+    round-trip, multiplied by the serial auth + profile + route hops.
+  - **Repo config:** no function region is set anywhere in the repo
+    (`vercel.json` has no `regions`/`functions`; no `preferredRegion`/`runtime`
+    in `apps/web/src/app/api/[...path]/route.ts`; none in `next.config.ts`). The
+    `fra1` selection lives only in the Vercel dashboard project settings.
+- **Change (applied — see "Applied change" below):** in the **Vercel
+  dashboard** (Project → Settings → Functions → Region), the function region was
+  moved from `fra1` to the closest region to Tokyo — **`hnd1` (Tokyo)**.
+  (Nearest alternatives, had `hnd1` been unavailable, would have been `icn1`
+  Seoul or `sin1` Singapore.) Dashboard-only; **no repo/code/`vercel.json`
+  edit.**
+- **Scope:** Infra/config only. No code, no auth, no DB schema, no RLS/GRANT, no
+  frontend, no React Query, no learning-map logic. Contract §4/§5 invalidation
+  is untouched (this changes *where* code runs, not *what* it does or *when*
+  caches invalidate).
+- **Pre-change checklist:**
+  - Confirm `hnd1` (Tokyo) is offered for this Vercel plan; if not, pick the
+    nearest available APAC region.
+  - Note the current region (`fra1`) so rollback is exact.
+  - Confirm the change applies on the next deployment (region changes take
+    effect on redeploy) and that the cron (`/api/cron/sync-calendar`) is
+    unaffected.
+- **Post-change test plan:**
+  - Redeploy, confirm Vercel **Ready**.
+  - Verify the new region via the `x-vercel-id` response header on
+    `/api/health` (prefix should reflect the new region, e.g. `hnd1::…`).
+  - Re-measure the same endpoints in the Network panel: `GET /learning-map`,
+    `students`, `courses`, `student details`, `*/count`. Expect a broad drop
+    across all of them (the tax is global, so the win is global).
+  - Smoke-test auth-gated flows (student map, teacher map, login) to confirm no
+    functional regression.
+- **Applied change (dashboard):** Vercel Function Region changed
+  **`fra1` (Frankfurt) → `hnd1` (Tokyo, Japan / Northeast — `ap-northeast-1`)**,
+  now co-located with the Supabase project region (`ap-northeast-1` / Tokyo,
+  unchanged). Dashboard-only — no repo/code/`vercel.json` change.
+- **Measured before/after (production, after redeploy):**
+
+  | Endpoint | Before (`fra1`) | After (`hnd1`) |
+  |----------|-----------------|----------------|
+  | `GET /learning-map` | ~5.23s | **~0.93s** |
+  | student details | ~4.60s | **~0.80s** |
+  | `courses` | ~3.86s | **~0.89s** |
+  | `students` | ~4.22s | **~1.08s** |
+  | `*/count` | ~4.07s | **~0.91–1.13s** |
+  | `exam-date` | ~2.20s | **~0.62s** |
+  | `learning-resources` | (n/a captured) | **~1.61s** |
+
+  Roughly a **4–5× reduction** across the board.
+- **Result:** **global** API latency dropped dramatically — confirming the
+  dominant bottleneck was the Vercel↔Supabase region mismatch, not any single
+  route's logic. Because almost every authenticated route calls Supabase
+  Auth (`getUser`) + the DB, this win is **system-wide**, not Learning-Map
+  specific: every authenticated endpoint that was paying the cross-region tax
+  benefits.
+- **Risks:** Low and already realized. Infra/config, fully reversible, no
+  code/auth/data surface. Mild caveat: end users far from Tokyo see a slightly
+  longer client→function leg, but since DB latency dominates, aligning the
+  function to the DB is a clear net win (borne out by the measurements above).
+- **Rollback plan:** revert the Vercel dashboard Function Region back to `fra1`
+  and redeploy. Instant, no data/auth/schema impact, no repo change to revert.
+- **Status:** **deployed / verified.** Region changed to `hnd1` in the Vercel
+  dashboard, redeployed, and re-measured — confirmed ~4–5× global latency
+  reduction. Supabase remains `ap-northeast-1` / Tokyo.
