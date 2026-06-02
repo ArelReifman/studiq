@@ -54,11 +54,23 @@ export default function ApprovalsPage() {
   const { data: registrations, isLoading: regLoading } = useQuery<{ pending: PendingProfile[] }>({
     queryKey: ["approvals-registrations"],
     queryFn: () => api.get("/approvals"),
+    // Realtime marks this key stale while the page is unmounted, but the
+    // global `refetchOnMount: false` default would then serve the stale
+    // (empty) cache on navigation back. Force a fresh fetch on mount so a
+    // request that arrived while away shows up without a manual refresh.
+    refetchOnMount: "always",
+    staleTime: 0,
   });
 
   const { data: bookings = [], isLoading: bookLoading } = useQuery<PendingBooking[]>({
     queryKey: ["approvals-bookings"],
     queryFn: () => api.get("/bookings/requests"),
+    // Same reason as above: a student cancellation request (status →
+    // cancel_requested) invalidates this key via realtime, but without an
+    // on-mount refetch the list would keep showing the cached empty state
+    // while the sidebar badge updates. This keeps the list in sync.
+    refetchOnMount: "always",
+    staleTime: 0,
   });
 
   const pendingRegs = registrations?.pending ?? [];
