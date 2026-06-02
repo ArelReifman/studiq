@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { LearningMapView } from "@/components/learning-map/learning-map-view";
+import { LearningMapSkeleton } from "@/components/learning-map/learning-map-skeleton";
 import { LearningMapHero } from "@/components/learning-map/learning-map-hero";
 import { useT } from "@/i18n";
 import { useAuthStore } from "@/store/auth";
@@ -51,8 +52,8 @@ export default function StudentLearningMapPage() {
       />
 
       {isLoading && (
-        <div className="text-gray-400 text-sm py-10 text-center">
-          {t("map.loading")}
+        <div className="flex-1 min-h-0 flex flex-col">
+          <LearningMapSkeleton />
         </div>
       )}
 

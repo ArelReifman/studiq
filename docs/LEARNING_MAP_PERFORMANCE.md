@@ -72,10 +72,9 @@ we are optimizing against.
 Ordered, but not all are committed-to yet. Each is expanded using the template in
 §6 when it is picked up.
 
-- **Phase 2A — Frontend perceived-performance improvement.**
-  Make the map *feel* faster before the network completes (e.g. skeletons,
-  optimistic map updates, deferring the resource section render until a topic
-  detail is actually opened).
+- **Phase 2A — Frontend perceived-performance improvement.** *(implemented — see §7)*
+  Make the map *feel* faster before the network completes via a loading
+  skeleton that mirrors the map layout.
 
 - **Phase 2B — Reduce non-critical initial requests.**
   Defer or gate requests that are not needed for first paint:
@@ -114,3 +113,49 @@ Every future phase entry must include all of the following fields.
 - **Risks:** correctness, cache/staleness (must check against contract §4/§5), regression surface.
 - **Rollback plan:** how to revert safely (single commit revert? feature flag?).
 - **Status:** planned / in progress / deployed / verified / reverted.
+
+---
+
+## 7. Phase 2A — Learning Map loading skeleton
+
+- **Phase name:** Learning Map loading skeleton (perceived-performance).
+- **Goal:** Make the Learning Map *feel* responsive immediately by showing a
+  visual skeleton that mirrors the map layout while `GET /learning-map` is in
+  flight, instead of a blank stage with a small centered "loading…" text.
+- **Problem:** During load, both map pages rendered only a tiny centered text
+  (`map.loading` / `map.loadingMap`) over an empty stage for the full
+  ~4–5.5s `GET /learning-map` round-trip, so the page looked frozen/blank.
+- **Scope:** Frontend-only, presentational. No data logic, no network, no
+  React Query keys, no backend/auth/DB. Error and empty states left unchanged.
+- **Files touched:**
+  - `apps/web/src/components/learning-map/learning-map-skeleton.tsx` *(new)*
+  - `apps/web/src/app/(student)/student/map/page.tsx`
+  - `apps/web/src/app/(teacher)/teacher/students/[id]/map/page.tsx`
+  - `docs/LEARNING_MAP_PERFORMANCE.md`
+- **Exact changes:**
+  - Added a presentational `<LearningMapSkeleton />` component (no props, no
+    fetch) that renders gray `animate-pulse` placeholders matching the real
+    `<LearningMapView>` chrome: topbar + stat chips, side panel, horizontal
+    topic-card row, and the detail panel.
+  - Student map page: replaced the `isLoading` text block with
+    `<LearningMapSkeleton />` wrapped in a `flex-1 min-h-0 flex flex-col`
+    container.
+  - Teacher map page: same replacement in its `isLoading` block.
+  - `error` / empty (`!effectiveCourseId`) states unchanged.
+- **Before network behavior:** unchanged — same requests, same timings. (This
+  is a perceived-speed change only; it adds **zero** network requests.)
+- **After network behavior:** unchanged — identical request pattern and
+  timings. Only the loading visual differs.
+- **Test plan:**
+  - `pnpm typecheck` green.
+  - Manual QA: load student map and teacher map; confirm the skeleton appears
+    immediately and is swapped cleanly for the real map when data arrives.
+  - Confirm error and empty states (course without topics, teacher without
+    courses) still show their existing text, not a stuck skeleton.
+  - Network panel: confirm no new requests were introduced.
+- **Risks:** Very low. Purely visual, isolated in one new component plus two
+  `isLoading`-branch swaps. Cannot affect contract §4/§5 invalidation because
+  it touches no fetch/cache logic.
+- **Rollback plan:** single-commit `git revert` (new component + two branch
+  swaps + this doc section). No DB/auth/cache side-effects.
+- **Status:** implemented, pending commit.

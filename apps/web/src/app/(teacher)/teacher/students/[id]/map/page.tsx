@@ -7,6 +7,7 @@ import Link from "next/link";
 import { ArrowLeft, CalendarDays, Check, X, Pencil } from "lucide-react";
 import { api } from "@/lib/api";
 import { LearningMapView } from "@/components/learning-map/learning-map-view";
+import { LearningMapSkeleton } from "@/components/learning-map/learning-map-skeleton";
 import { LearningMapHero } from "@/components/learning-map/learning-map-hero";
 import { CreateLessonModal } from "@/components/teacher/create-lesson-modal";
 import { useT } from "@/i18n";
@@ -134,8 +135,8 @@ export default function TeacherLearningMapPage() {
       )}
 
       {isLoading && (
-        <div className="text-gray-400 text-sm py-10 text-center">
-          {t("map.loadingMap")}
+        <div className="flex-1 min-h-0 flex flex-col">
+          <LearningMapSkeleton />
         </div>
       )}
 
