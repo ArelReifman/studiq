@@ -40,12 +40,15 @@ export function LessonSolutionUpload({
         file
       ),
     onSuccess: () => {
+      // The confirm endpoint only updates this lesson's lesson_sessions row
+      // (student_solution_url/name) — it does NOT touch tasks/homework/todos.
+      // So refetching this single lesson is enough for the student's own view.
+      // Cross-surface refresh (teacher map/student list) is handled by the
+      // teacher's separate Realtime subscription, not by invalidating the
+      // student's own cache here. Broad invalidations were redundant and
+      // collided with the Realtime echo of this same write, causing repeated
+      // GET /lessons/:id refetches and visible flicker.
       qc.invalidateQueries({ queryKey: ["lessons", lessonId] });
-      qc.invalidateQueries({ queryKey: ["lessons"] });
-      // Uploading a solution flips tasks to pending and affects teacher views.
-      qc.invalidateQueries({ queryKey: ["learning-map"] });
-      qc.invalidateQueries({ queryKey: ["students"] });
-      qc.invalidateQueries({ queryKey: ["todos"] });
     },
   });
 

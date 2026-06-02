@@ -506,3 +506,47 @@ production, warm/cold mix.
   and the PDF path keeps the modal open with staged "יוצר…" → "מעלה…" progress.
   Learning Map invalidation preserved; no optimistic map mutation; booking/AI
   flows untouched.
+
+## 12. Phase 2F — Student solution upload over-invalidation / flicker
+
+- **Phase name:** Student lesson-solution upload — reduce redundant refetch /
+  flicker (frontend-only).
+- **Status:** **implemented — pending verification.**
+- **Problem:** After a student uploads their solution PDF/image on the student
+  lesson page, the same `GET /lessons/:id` is refetched several times in quick
+  succession (observed ≈ `638ms` / `1.25s` / `1.69s` staggered), and the card /
+  lesson view visibly flickers before settling.
+- **Root cause:** `lesson-solution-upload.tsx` `upload` `onSuccess` fired **five**
+  manual invalidations — `["lessons", lessonId]`, the broad `["lessons"]`
+  prefix, `["learning-map"]`, `["students"]`, and `["todos"]`. These overlap
+  with the Supabase Realtime `lesson_sessions` echo of the *same* write (the
+  client's own write echoes back through its subscription, which itself
+  invalidates `["lessons"]` + `["learning-map"]`). The two mechanisms fire at
+  staggered times → repeated same-id refetches. The `["todos"]` key and the
+  stale comment ("Uploading a solution flips tasks to pending") were also
+  factually wrong: `POST /upload/lesson/:id/solution/confirm`
+  (`apps/api/src/routes/upload.ts`) updates **only** the `lessonSessions` row
+  (`student_solution_url`, `student_solution_name`) — it never touches
+  `todo_items` / `homework_items`.
+- **Change:** In `apps/web/src/components/student/lesson-solution-upload.tsx`,
+  the `upload` `onSuccess` now keeps **only**
+  `qc.invalidateQueries({ queryKey: ["lessons", lessonId] })` and replaces the
+  stale comment with an accurate one. The broad `["lessons"]`, `["learning-map"]`,
+  `["students"]`, and `["todos"]` invalidations were removed.
+- **Why teacher visibility is still safe:** the student's `qc.invalidateQueries`
+  only mutates the **student's own** React Query cache — it never reaches the
+  teacher's browser. The teacher already sees the new solution through their
+  **own** Realtime subscription (`use-realtime-sync.ts`, `lesson_sessions`
+  listener → `["lessons"]` + `["learning-map"]`), which is unchanged. So dropping
+  the student-side broad invalidations has zero effect on what the teacher sees.
+- **Not changed:** no backend / DB / migration / auth / RLS / Realtime-hook
+  changes. `use-realtime-sync.ts` and `task-item.tsx` untouched. The `remove`
+  mutation's invalidations were left as-is (out of scope for this step).
+- **Test plan:**
+  - Student uploads a solution → card shows the file; confirm only **one**
+    `GET /lessons/:id` fires (no staggered duplicates); no flicker.
+  - Teacher (separate session) sees the uploaded solution appear via Realtime
+    without a manual refresh.
+  - Remove solution still works and refreshes the student's view.
+- **Rollback plan:** single-commit `git revert` (one component + this doc
+  section). No DB/auth/cache side-effects.
