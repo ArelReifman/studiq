@@ -343,3 +343,115 @@ Every future phase entry must include all of the following fields.
 - **Status:** **deployed / verified.** Region changed to `hnd1` in the Vercel
   dashboard, redeployed, and re-measured — confirmed ~4–5× global latency
   reduction. Supabase remains `ap-northeast-1` / Tokyo.
+
+---
+
+## 10. Post-region global baseline (after Phase 2D-A)
+
+System-wide network timings captured **after** the `fra1 → hnd1` region
+alignment. This is the new reference baseline against which any further
+performance work (Phase 2E onward) is measured. Numbers are per-screen,
+production, warm/cold mix.
+
+| Screen | Request | Timing |
+|--------|---------|--------|
+| Dashboard | `requests` | ~1.98s |
+| Dashboard | `students` | ~1.63s |
+| Dashboard | `*/count` | ~1.57s |
+| Students | `students` | ~1.33s |
+| Students | `*/count` | ~1.29–1.49s |
+| Student profile | `insights` / `details` / `profile` / `lessons` | ~0.94–0.98s |
+| Learning Map | `learning-map` | ~1.30s |
+| Learning Map | `courses` | ~1.56s |
+| Learning Map | `exam-date` | ~895ms |
+| Learning Map | `learning-resources` | ~1.12s |
+| Approvals | `approvals` | ~1.62s |
+| Approvals | `requests` | ~2.07s |
+| Courses | route / data | ~339–652ms |
+| Schedule | `status` | ~1.40s |
+| Schedule | `availability` | ~1.63s |
+| Schedule | `requests` | ~1.89s |
+| Upload / resource flow | `create` | ~896ms |
+| Upload / resource flow | `sign` | ~1.48s |
+| Upload / resource flow | PDF upload | ~2.65s |
+| Upload / resource flow | `confirm` | ~1.06s |
+
+- **Conclusion:** most API calls are now around **~0.5s–1.5s** — a healthy
+  baseline after region alignment.
+- **Remaining future candidates (not urgent):**
+  - `requests` around **~2s** (Dashboard ~1.98s, Approvals ~2.07s, Schedule
+    ~1.89s).
+  - `availability` around **~1.6s** (Schedule).
+  These are tracked as future candidates only; they are **not** scheduled for
+  Phase 2E and are not on the Learning Map critical path.
+
+---
+
+## 11. Phase 2E — Manual content-lesson creation perceived performance
+
+- **Phase name:** Manual content-lesson creation — perceived-performance
+  (frontend-only).
+- **Goal:** Make manual **content** lesson creation *feel* fast. Today the
+  Create-Lesson modal stays open and "busy" for the full network chain; when a
+  PDF is attached this is ~6s of a seemingly frozen modal.
+- **Problem:**
+  - `apps/web/src/components/teacher/create-lesson-modal.tsx` runs its
+    `mutationFn` (lines ~129–171) serially: `POST /lessons/create` (~896ms) and,
+    if a file is attached, `sign` (~1.48s) + PDF upload (~2.65s) + `confirm`
+    (~1.06s). `onClose()` is only called in `onSuccess` (line ~169), so the
+    modal blocks until the whole chain resolves.
+  - The follow-up refetches are **not** the problem: the `invalidateQueries`
+    calls (lines ~165–168) are fire-and-forget (not awaited), so
+    `["lessons"]` / `["learning-map"]` / `["students"]` refetch in the
+    background and do not block the modal close.
+- **Relevant flow (in scope):** `POST /lessons/create` → writes to
+  `lesson_sessions` → **affects the Learning Map** (this is the slow,
+  map-relevant content flow).
+- **Non-relevant flow (out of scope, unchanged):** `POST /bookings/teacher-lesson`
+  → writes to `lesson_bookings` → **must not affect the Learning Map**
+  (Contract §1). It already closes optimistically (`LessonFormModal`); Phase 2E
+  does not touch it. (Verify-only: confirm `LessonFormModal` does **not**
+  invalidate `["learning-map"]`; no change expected.)
+- **Scope:** Frontend-only, primarily
+  `apps/web/src/components/teacher/create-lesson-modal.tsx`.
+  **Out of scope (unchanged):** backend, DB/schema, auth, RLS/GRANT, the upload
+  rollback semantics, the booking/calendar flow, the AI-generate flow, and the
+  Learning Map calculation logic.
+- **Planned safe approach:**
+  - **No-file path:** allow an optimistic / faster modal close (close in
+    `onMutate` instead of waiting for the POST), snapshotting form state and
+    surfacing any error via a toast/alert (mirrors the booking flow precedent).
+    The POST + invalidations continue in the background; the lesson appears on
+    the map once `["learning-map"]` refetches.
+  - **File path:** keep the modal **open** (the upload can fail and triggers a
+    rollback `DELETE /lessons/:id` — lines ~152–159 — so an early close is
+    unsafe), but show clearer staged progress, e.g. "יוצר שיעור…" then
+    "מעלה חומר…", so the ~6s reads as progress rather than a frozen modal.
+- **Contract compliance:**
+  - **Do not** optimistically update the Learning Map itself — the frontend
+    never recomputes progress (Contract intro + §2). Only `["learning-map"]`
+    invalidation is used, exactly as today.
+  - Preserve the `["learning-map"]` invalidation on create (Contract §4/§5,
+    create-lesson row) — it remains in `onSuccess`/`onSettled`.
+- **Before network behavior:** modal blocks for the full chain — ~0.9s with no
+  file, ~6s with a PDF.
+- **After network behavior:** identical requests/timings on the wire (no network
+  change); only the modal close-timing (no-file) and the in-modal progress
+  feedback (file) change. The map still updates via the same invalidation.
+- **Test plan:**
+  - `pnpm typecheck` green.
+  - Manual QA: create a content lesson **without** a file → modal closes
+    immediately, lesson appears on the map after the background refetch.
+  - Create a content lesson **with** a PDF → modal stays open, shows
+    "יוצר שיעור…" then "מעלה חומר…", closes on success; on a forced upload
+    failure the rollback still deletes the lesson and an error is surfaced.
+  - Confirm the booking/calendar flow and the AI-generate flow are unchanged.
+  - Network panel: confirm no new/removed requests, and that `["learning-map"]`
+    still refetches after create.
+- **Risks:** Low. Frontend-only, isolated to one modal component. Main caveat:
+  optimistic close on the no-file path loses typed form state if the POST fails
+  — mitigated by snapshot + a clear error toast. No cache/staleness risk
+  (invalidation unchanged), so Contract §4/§5 is preserved.
+- **Rollback plan:** single-commit `git revert` (one component + these doc
+  sections). No DB/auth/cache side-effects.
+- **Status:** **planned — pending implementation approval.**
