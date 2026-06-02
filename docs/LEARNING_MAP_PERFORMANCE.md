@@ -240,4 +240,13 @@ Every future phase entry must include all of the following fields.
   impact, so contract §4/§5 invalidation is untouched (read-path only).
 - **Rollback plan:** single-commit `git revert` (one source file + this doc
   section). No schema/auth/cache side-effects.
-- **Status:** implemented, pending commit.
+- **Observed before/after (production, commit `7ecf61a` Ready on Vercel):**
+  - `GET /learning-map` **before ≈ 5.90s → after ≈ 5.23s** (modest improvement,
+    ~0.6–0.7s, consistent with the ~7→4 serial-round-trip reduction).
+- **Status:** **verified — modest improvement.** Deployed (`7ecf61a`), Vercel
+  Ready, CI green. The Learning Map is still slow: the remaining bottleneck is
+  **global API latency**, not `/learning-map` query serialization. Other,
+  unrelated endpoints are similarly slow in the same session
+  (`student details ≈ 4.60s`, `courses ≈ 3.86s`, `students ≈ 4.22s`,
+  `*/count ≈ 4.07s`), which points at a per-request global tax rather than any
+  single route. This is the subject of Phase 2D (investigation only).
