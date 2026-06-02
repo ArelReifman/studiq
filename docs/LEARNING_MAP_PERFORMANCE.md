@@ -489,6 +489,20 @@ production, warm/cold mix.
   (invalidation unchanged), so Contract §4/§5 is preserved.
 - **Rollback plan:** single-commit `git revert` (one component + these doc
   sections). No DB/auth/cache side-effects.
-- **Status:** **implemented — pending verification.** Code landed in
-  `create-lesson-modal.tsx`; `tsc --noEmit` green. Awaiting production QA
-  (no-file optimistic close, PDF staged progress, forced-failure alert).
+- **Observed QA (production, commit `ddf6474` Ready on Vercel):**
+  - **Test 1 — manual lesson without PDF:** modal closes quickly right after
+    submit; lesson created; map updates after refetch; no errors.
+    `create ≈ 889ms`, `learning-map refetch ≈ 819ms`,
+    `students refetch ≈ 657ms`, `student details ≈ 836ms`.
+  - **Test 2 — manual lesson with PDF:** modal stays open through
+    creation/upload; progress label changes "יוצר…" → "מעלה…"; modal closes at
+    the end; lesson + PDF saved; map updates after refetch; no errors.
+    `create ≈ 1.41s`, `sign ≈ 1.67s`, `PDF upload ≈ 2.31s`, `confirm ≈ 1.11s`,
+    `lessons refetch ≈ 557–609ms`, `learning-map refetch ≈ 653–922ms`,
+    `students / student details ≈ 821–822ms`.
+- **Status:** **verified.** Deployed (`ddf6474`), Vercel Ready, CI green, and
+  QA-confirmed in production: the no-file path closes the modal immediately
+  (perceived-instant) while the POST + invalidations finish in the background,
+  and the PDF path keeps the modal open with staged "יוצר…" → "מעלה…" progress.
+  Learning Map invalidation preserved; no optimistic map mutation; booking/AI
+  flows untouched.
