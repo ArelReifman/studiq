@@ -427,6 +427,36 @@ production, warm/cold mix.
     rollback `DELETE /lessons/:id` — lines ~152–159 — so an early close is
     unsafe), but show clearer staged progress, e.g. "יוצר שיעור…" then
     "מעלה חומר…", so the ~6s reads as progress rather than a frozen modal.
+- **Implemented frontend behavior (Phase 2E):** all changes are confined to
+  `apps/web/src/components/teacher/create-lesson-modal.tsx`. No i18n catalog,
+  backend, DB, auth, or React Query-key changes.
+  - **Shared helpers added:** `buildPayload()` (single source of truth for the
+    `/lessons/create` body, used by both paths so they can't drift) and
+    `invalidateAfterCreate()` (invalidates `["lessons"]`, `["learning-map"]`,
+    `["students"]` — the exact contract §4/§5 set, unchanged).
+  - **No-file path (optimistic close):** a new `handleCreate()` submit handler
+    snapshots the payload, calls `onClose()` **immediately**, then runs
+    `POST /lessons/create` + `invalidateAfterCreate()` in a background
+    `void (async …)()`. Because `qc` / `api` / `window` are provider- and
+    module-level stable refs, the in-flight promise completes even after the
+    modal unmounts. On failure it surfaces `window.alert(err.message)` so the
+    create never fails silently. The map updates via the normal
+    `["learning-map"]` refetch — **no optimistic map mutation.**
+  - **File path (modal stays open):** still routed through `createMutation`.
+    The modal stays open through `sign` → upload → `confirm`; the existing
+    rollback (`DELETE /lessons/:id` on upload failure) is unchanged. A new
+    `uploading` state flips the busy button label from
+    `t("createLesson.creating")` ("יוצר…") to `t("upload.uploading")`
+    ("מעלה…") when the upload phase begins, giving the staged progress
+    feedback. (These two **existing** i18n keys are reused so the bilingual
+    catalog is untouched; the intent matches the planned
+    "יוצר שיעור…" → "מעלה חומר…".) On success it calls
+    `invalidateAfterCreate()` + `onClose()`; `onSettled` resets `uploading`,
+    and on failure the inline `createMutation.isError` message stays visible
+    because the modal is still open.
+- **Booking/calendar flow:** untouched — Phase 2E does not modify
+  `LessonFormModal` or any booking key, so bookings remain decoupled from the
+  map (Contract §1).
 - **Contract compliance:**
   - **Do not** optimistically update the Learning Map itself — the frontend
     never recomputes progress (Contract intro + §2). Only `["learning-map"]`
@@ -439,19 +469,26 @@ production, warm/cold mix.
   change); only the modal close-timing (no-file) and the in-modal progress
   feedback (file) change. The map still updates via the same invalidation.
 - **Test plan:**
-  - `pnpm typecheck` green.
+  - `pnpm typecheck` (web) — **green** (`tsc --noEmit` clean). Typecheck is
+    sufficient here: the change is an isolated client component edit (no route,
+    schema, or server-bundle surface), so a full `next build` adds no
+    type-coverage beyond `tsc`.
   - Manual QA: create a content lesson **without** a file → modal closes
     immediately, lesson appears on the map after the background refetch.
   - Create a content lesson **with** a PDF → modal stays open, shows
-    "יוצר שיעור…" then "מעלה חומר…", closes on success; on a forced upload
+    "יוצר…" then "מעלה…", closes on success; on a forced upload
     failure the rollback still deletes the lesson and an error is surfaced.
+  - Force a no-file POST failure → modal already closed, a `window.alert`
+    surfaces the error (no silent failure).
   - Confirm the booking/calendar flow and the AI-generate flow are unchanged.
   - Network panel: confirm no new/removed requests, and that `["learning-map"]`
     still refetches after create.
 - **Risks:** Low. Frontend-only, isolated to one modal component. Main caveat:
   optimistic close on the no-file path loses typed form state if the POST fails
-  — mitigated by snapshot + a clear error toast. No cache/staleness risk
+  — mitigated by snapshot + a clear error alert. No cache/staleness risk
   (invalidation unchanged), so Contract §4/§5 is preserved.
 - **Rollback plan:** single-commit `git revert` (one component + these doc
   sections). No DB/auth/cache side-effects.
-- **Status:** **planned — pending implementation approval.**
+- **Status:** **implemented — pending verification.** Code landed in
+  `create-lesson-modal.tsx`; `tsc --noEmit` green. Awaiting production QA
+  (no-file optimistic close, PDF staged progress, forced-failure alert).

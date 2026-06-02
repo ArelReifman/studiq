@@ -40,6 +40,10 @@ export function CreateLessonModal({
     { title: "", description: "" },
   ]);
   const [file, setFile] = useState<File | null>(null);
+  // Phase 2E: when a PDF is attached the modal stays open through the upload.
+  // `uploading` flips the busy label from "creating" to "uploading" so the
+  // ~few-second upload reads as progress rather than a frozen modal.
+  const [uploading, setUploading] = useState(false);
   const [courseId, setCourseId] = useState<string>(initialCourseId ?? "");
   const [topicId, setTopicId] = useState<string>(initialTopicId ?? "");
   const { data: allCourses = [] } = useQuery<Course[]>({
@@ -126,23 +130,45 @@ export function CreateLessonModal({
     }
   }, [topicId, courseDetail, titleAutoFilled]);
 
+  // Single source of truth for the create payload, shared by the optimistic
+  // no-file path and the modal-blocking file path so the two can never drift.
+  const buildPayload = () => {
+    const validTasks = tasks.filter((td) => td.title.trim());
+    return {
+      student_id: studentId,
+      title: title.trim(),
+      todos: validTasks.map((td) => ({
+        title: td.title.trim(),
+        description: td.description.trim() || undefined,
+      })),
+      course_id: courseId || null,
+      topic_id: topicId || null,
+    };
+  };
+
+  // Contract-preserving invalidations (LEARNING_MAP_CONTRACT §4/§5): a new
+  // content lesson affects the map, the lessons list, and the student card.
+  // We invalidate (refetch) — we never optimistically recompute map data.
+  const invalidateAfterCreate = () => {
+    qc.invalidateQueries({ queryKey: ["lessons"] });
+    qc.invalidateQueries({ queryKey: ["learning-map"] });
+    // A new lesson changes the student card's completion stats and weak topics.
+    qc.invalidateQueries({ queryKey: ["students"] });
+  };
+
+  // File/PDF path only. The modal must stay open here because the upload can
+  // fail and trigger a rollback delete, so an early close would be unsafe.
+  // The staged `uploading` flag drives the "creating" → "uploading" label.
   const createMutation = useMutation({
     mutationFn: async () => {
-      const validTasks = tasks.filter((td) => td.title.trim());
-
-      const lesson = await api.post<{ id: string }>("/lessons/create", {
-        student_id: studentId,
-        title: title.trim(),
-        todos: validTasks.map((td) => ({
-          title: td.title.trim(),
-          description: td.description.trim() || undefined,
-        })),
-        course_id: courseId || null,
-        topic_id: topicId || null,
-      });
+      const lesson = await api.post<{ id: string }>(
+        "/lessons/create",
+        buildPayload()
+      );
 
       // Upload material PDF if provided — direct to Supabase, bypassing Vercel's body limit.
       if (file && lesson.id) {
+        setUploading(true);
         try {
           await api.uploadDirect(
             `/upload/lesson/${lesson.id}/sign`,
@@ -162,13 +188,42 @@ export function CreateLessonModal({
       return lesson;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["lessons"] });
-      qc.invalidateQueries({ queryKey: ["learning-map"] });
-      // A new lesson changes the student card's completion stats and weak topics.
-      qc.invalidateQueries({ queryKey: ["students"] });
+      invalidateAfterCreate();
       onClose();
     },
+    // Reset the staged label whether the upload succeeded or failed; on
+    // failure the inline `createMutation.isError` message stays visible
+    // because the modal is still open.
+    onSettled: () => setUploading(false),
   });
+
+  // Submit handler — splits the two Phase 2E paths.
+  const handleCreate = () => {
+    if (!isValid || createMutation.isPending) return;
+
+    // File path: keep the modal open and run through the mutation so the
+    // staged progress label and rollback semantics are preserved.
+    if (file) {
+      createMutation.mutate();
+      return;
+    }
+
+    // No-file path: optimistic close. Snapshot the payload, close the modal
+    // immediately, and run the POST + invalidations in the background. `qc`,
+    // `api` and `window` are provider/module-level stable refs, so the
+    // in-flight promise completes even after this modal unmounts. On failure
+    // we surface an alert so the create never fails silently.
+    const payload = buildPayload();
+    onClose();
+    void (async () => {
+      try {
+        await api.post("/lessons/create", payload);
+        invalidateAfterCreate();
+      } catch (err) {
+        window.alert((err as Error).message);
+      }
+    })();
+  };
 
   const addTask = () => setTasks([...tasks, { title: "", description: "" }]);
   const removeTask = (i: number) => setTasks(tasks.filter((_, idx) => idx !== i));
@@ -427,10 +482,12 @@ export function CreateLessonModal({
           </Button>
           <Button
             disabled={!isValid || createMutation.isPending}
-            onClick={() => createMutation.mutate()}
+            onClick={handleCreate}
           >
             {createMutation.isPending
-              ? t("createLesson.creating")
+              ? uploading
+                ? t("upload.uploading")
+                : t("createLesson.creating")
               : t("createLesson.create")}
           </Button>
           {createMutation.isError && (
