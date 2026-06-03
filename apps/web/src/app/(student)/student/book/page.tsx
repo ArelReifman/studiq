@@ -230,7 +230,11 @@ export default function StudentBookPage() {
 
   function handleChangeDuration(d: Duration) {
     setDuration(d);
-    setSelectedStartTime(undefined); // start time may no longer be valid
+    // Keep the chosen start time if it still forms a valid consecutive
+    // chain for the new duration; only clear it when it no longer fits.
+    if (selectedStartTime && !buildLessonChain(selectedStartTime, d, slotsForDate)) {
+      setSelectedStartTime(undefined);
+    }
     setError(null);
   }
 

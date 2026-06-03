@@ -816,3 +816,33 @@ history.
   - The text/link fallback remains in place for failed document delivery or
     files too large for Telegram's URL fetch (~20 MB) — not exercised in this QA
     run but unchanged and intact.
+
+## 15. Booking — selected start time lost when changing duration (UX fix)
+
+- **Bug:** in the student booking page, after picking a start time and then
+  changing the lesson duration, the selected start time was always cleared. The
+  student had to re-pick the same time even when it was still a valid slot for
+  the new duration.
+- **Root cause:** `handleChangeDuration` in
+  `apps/web/src/app/(student)/student/book/page.tsx` called
+  `setSelectedStartTime(undefined)` **unconditionally** on every duration
+  change.
+- **Fix:** preserve `selectedStartTime` when it still forms a valid consecutive
+  slot chain for the new duration — reuse the existing
+  `buildLessonChain(selectedStartTime, newDuration, slotsForDate)` to decide
+  validity, and only clear when it returns `null`.
+- **Scope:** frontend-only, student booking page only. No backend / API / DB /
+  schema / auth / Telegram changes. The teacher `LessonFormModal` flow was not
+  touched (it uses a free-form time select with no slot-chain reset and was
+  never affected).
+- **Test plan (manual QA):**
+  - Pick a start time at 1h, switch to 1.5h while the slot is still valid →
+    start time stays selected, summary updates to the new end time.
+  - Pick a start time near end-of-day with too few following slots, extend the
+    duration → start time is cleared and the option greys out.
+  - Shrink duration (1.5h → 1h) → start time is always kept.
+  - Changing the **date** still clears the start time (`handleSelectDate`
+    unchanged).
+  - Submitting after a preserved start time sends the correct
+    `availability_ids`.
+- **Status:** implemented, pending verification.
