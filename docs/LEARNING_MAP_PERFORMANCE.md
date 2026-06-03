@@ -695,7 +695,8 @@ history.
 
 ## 13. Lesson edit — moving a lesson to *today* felt blocked (UX fix)
 
-- **Status:** **implemented, pending verification** (frontend-only).
+- **Status:** **verified** (production, commit `4d5dfaa`, Vercel Ready, CI
+  green). See the QA result at the end of this section.
 - **Bug:** When editing an existing lesson and changing its date to **today**,
   saving could fail and feel as though "scheduling for the same day is blocked".
 - **Root cause:** In `apps/web/src/components/teacher/LessonFormModal.tsx`, the
@@ -730,3 +731,11 @@ history.
     on `<input type="date">` is not reliably enforced.
 - **Rollback plan:** single-commit `git revert` (one component + this doc
   section). No backend / DB / auth side-effects.
+- **QA result (verified in production):** on commit `4d5dfaa` (Vercel Ready,
+  CI green):
+  - Opened an existing lesson for edit and changed the date to **today**.
+  - When the previously-selected time was already in the past, the time field
+    **reset** as intended.
+  - Picked a future time → **save succeeded**.
+  - A past time chosen for today is **still blocked**.
+  - No errors observed. Bug 1 is **verified**.
