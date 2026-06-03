@@ -845,4 +845,12 @@ history.
     unchanged).
   - Submitting after a preserved start time sends the correct
     `availability_ids`.
-- **Status:** implemented, pending verification.
+- **Status:** **verified in production.**
+- **QA result (verified in production):** on commit `6f01578` (Vercel Ready):
+  - Opened the student booking flow, picked a date, then picked a start time.
+  - Changed duration from 1h to 1.5h while the start time was still valid → the
+    start time **stayed selected** and the lesson summary updated to the new end
+    time.
+  - With a start time that was no longer valid for the new duration → it was
+    **cleared** as expected.
+  - No errors observed. Bug 3 is **verified**.
