@@ -739,3 +739,66 @@ history.
   - Picked a future time → **save succeeded**.
   - A past time chosen for today is **still blocked**.
   - No errors observed. Bug 1 is **verified**.
+
+## 14. Telegram solution notification — attach the uploaded file (not just a link)
+
+- **Status:** **implemented, pending verification** (API notification flow only).
+- **Bug:** When a student uploads a lesson solution file, the teacher's Telegram
+  notification contained only a **text message with a link** — the file itself
+  was never attached.
+- **Root cause:** `apps/api/src/lib/notify.ts` exposed only `notifyTelegram`,
+  which calls Telegram's `sendMessage` (text). There was no `sendDocument`
+  helper, so `notifyLessonSolutionSubmission`
+  (`apps/api/src/routes/upload.ts`) could only build an `<a href>` text/link
+  message. The link did resolve (the `uploads` bucket is public), but the file
+  was not delivered inline.
+- **Fix (notification flow only):**
+  - Added `sendTelegramDocument(documentUrl, caption?): Promise<boolean>` to
+    `notify.ts`. It calls Telegram's `sendDocument` with `document: documentUrl`
+    (Telegram fetches the public URL itself) plus an optional HTML caption. It
+    mirrors `notifyTelegram`'s env handling (missing `TELEGRAM_BOT_TOKEN` /
+    `TELEGRAM_CHAT_ID` → no-op, returns `false`), catches/logs every failure,
+    **never throws**, and returns `true` only on a successful send.
+  - `notifyLessonSolutionSubmission` is now **document-first**: it attempts
+    `sendTelegramDocument(fileUrl, caption)`; only if that returns `false` does
+    it fall back to the original `notifyTelegram` text/link message. The two are
+    mutually exclusive — no duplicate notification.
+- **waitUntil usage:** `sendDocument` makes Telegram fetch the file, which can
+  outlast the HTTP response. The notification call after `solution/confirm`
+  (`upload.ts`) is now registered with `waitUntil` (imported from
+  `@vercel/functions`, already a project dependency used by `notify.ts`) so the
+  Vercel function stays alive until delivery completes. The `waitUntil` call is
+  wrapped in `try/catch`; outside a Vercel request context (local dev / tests)
+  it degrades to plain fire-and-forget (`void notifyPromise`).
+- **Telegram failure can never break upload-confirm:** the DB write happens and
+  the `200` response is returned *before* the notification runs in the
+  background; the notify function has an internal `try/catch`, `sendTelegramDocument`
+  never throws, and `waitUntil` is itself guarded. A Telegram outage, oversized
+  file, or missing env affects only the side-channel notification.
+- **Size handling / fallback:** Telegram's URL-fetch path caps documents at
+  ~20 MB while uploads may be up to 50 MB (`MAX_FILE_SIZE`, `upload.ts`). For a
+  too-large file Telegram returns an API error → `sendTelegramDocument` returns
+  `false` → the text/link fallback message is sent instead. The confirm endpoint
+  does not receive the file size, so we rely on Telegram's response rather than
+  a pre-check.
+- **Security note:** the `uploads` bucket is **public**, so both the existing
+  link and the Telegram-fetched document are reachable by anyone holding the
+  URL. This fix does **not** change bucket privacy or storage behaviour. Moving
+  solutions to a private bucket with time-limited signed URLs (`createSignedUrl`)
+  is a broader, cross-route improvement and is **explicitly out of scope** here —
+  tracked as future work.
+- **Not changed:** no DB / schema / migration / auth / RLS / GRANT / storage /
+  bucket-privacy changes. `notifyHomeworkSubmission` (the parallel homework
+  notification, same text/link pattern) was intentionally **left untouched** in
+  this commit.
+- **Test plan:**
+  - `pnpm --filter api typecheck` passes.
+  - `pnpm --filter api test` passes (no notify-specific unit tests exist;
+    Telegram is mocked away by absent env in tests, so the path no-ops safely).
+  - Manual QA: upload a small PDF → arrives as a **Telegram document** with
+    caption; upload an image → arrives as a document; upload a ~30–50 MB file →
+    arrives as a **text/link** message (document fallback); with Telegram env
+    unset → upload still succeeds with no error and nothing is sent; confirm
+    exactly **one** notification is delivered (file *or* link, never both).
+- **Rollback plan:** single-commit `git revert` (`notify.ts` + `upload.ts` +
+  this doc section). No DB / auth / storage side-effects.

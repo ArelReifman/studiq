@@ -7,7 +7,8 @@ import { courses, homeworkItems, lessonSessions, profiles } from "../db/schema.j
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { createAdminSupabase } from "../lib/supabase.js";
 import { uuidParamSchema } from "../lib/validators.js";
-import { notifyTelegram, escapeTelegramHtml } from "../lib/notify.js";
+import { notifyTelegram, sendTelegramDocument, escapeTelegramHtml } from "../lib/notify.js";
+import { waitUntil } from "@vercel/functions";
 
 // Fire-and-forget Telegram ping when a student attaches a homework file.
 // contentType is optional — when not passed (e.g. the signed-URL confirm flow),
@@ -105,18 +106,37 @@ async function notifyLessonSolutionSubmission(
     minute: "2-digit",
   });
 
-  const lines = [
+  // Caption shown beneath the attached document (no link needed — the file
+  // itself is attached). Telegram caps captions at 1024 chars; these lines are
+  // well under that.
+  const captionLines = [
     `📤 <b>Solution submitted</b>`,
     `👤 ${escapeTelegramHtml(studentName)}`,
     `📚 ${escapeTelegramHtml(lessonTitle)}`,
   ];
-  if (courseName) lines.push(`🎓 ${escapeTelegramHtml(courseName)}`);
-  lines.push(
-    `${isPdf ? "📄 PDF" : "📎 File"}: <a href="${fileUrl}">${escapeTelegramHtml(fileName)}</a>`
-  );
-  lines.push(`🕐 ${submittedAt}`);
+  if (courseName) captionLines.push(`🎓 ${escapeTelegramHtml(courseName)}`);
+  captionLines.push(`🕐 ${submittedAt}`);
 
-  await notifyTelegram(lines.join("\n"));
+  // Document-first: attach the actual file so the teacher gets it inline.
+  // Telegram fetches the public `fileUrl` itself; on any failure (file too
+  // large, unreachable URL, missing env) it returns false and we fall back to
+  // the original text/link message below — never sending both.
+  const documentSent = await sendTelegramDocument(fileUrl, captionLines.join("\n"));
+
+  if (!documentSent) {
+    const lines = [
+      `📤 <b>Solution submitted</b>`,
+      `👤 ${escapeTelegramHtml(studentName)}`,
+      `📚 ${escapeTelegramHtml(lessonTitle)}`,
+    ];
+    if (courseName) lines.push(`🎓 ${escapeTelegramHtml(courseName)}`);
+    lines.push(
+      `${isPdf ? "📄 PDF" : "📎 File"}: <a href="${fileUrl}">${escapeTelegramHtml(fileName)}</a>`
+    );
+    lines.push(`🕐 ${submittedAt}`);
+
+    await notifyTelegram(lines.join("\n"));
+  }
   } catch (err) {
     console.warn("[notify] notifyLessonSolutionSubmission failed:", (err as Error).message);
   }
@@ -706,7 +726,24 @@ export const uploadRoutes = new Hono()
 
       if (!updated) return c.json({ error: "Failed to update lesson" }, 500);
 
-      void notifyLessonSolutionSubmission(studentId, lessonId, urlData.publicUrl, file_name);
+      // Best-effort background notification. sendDocument fetches the file and
+      // can take longer than the response, so register the promise with
+      // waitUntil to keep the Vercel function alive until delivery completes.
+      // The promise already swallows its own errors (try/catch inside the
+      // function), and waitUntil itself is wrapped so a missing Vercel request
+      // context (local dev / tests) degrades to plain fire-and-forget. Telegram
+      // can never fail the upload-confirm response.
+      const notifyPromise = notifyLessonSolutionSubmission(
+        studentId,
+        lessonId,
+        urlData.publicUrl,
+        file_name
+      );
+      try {
+        waitUntil(notifyPromise);
+      } catch {
+        void notifyPromise;
+      }
 
       return c.json({
         student_solution_url: updated.student_solution_url,

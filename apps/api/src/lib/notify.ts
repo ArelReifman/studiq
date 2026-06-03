@@ -91,6 +91,74 @@ export async function notifyTelegram(message: string): Promise<void> {
 }
 
 /**
+ * Send a document to Telegram via the `sendDocument` API.
+ *
+ * Telegram fetches `documentUrl` itself (server-side), so the URL must be
+ * publicly reachable — the `uploads` bucket is public, so its `getPublicUrl`
+ * links qualify. Telegram's URL-fetch path caps documents at ~20 MB; larger
+ * files return an API error, in which case this returns `false` and the caller
+ * is expected to fall back to a plain text/link message.
+ *
+ * Mirrors `notifyTelegram`'s env handling: if either env var is missing it
+ * no-ops and returns `false`. All failures are caught and logged — this never
+ * throws, so a notification problem can never break the upload flow.
+ *
+ * @returns `true` only when Telegram accepted the document, `false` otherwise.
+ */
+export async function sendTelegramDocument(
+  documentUrl: string,
+  caption?: string
+): Promise<boolean> {
+  const token = process.env["TELEGRAM_BOT_TOKEN"];
+  const chatId = process.env["TELEGRAM_CHAT_ID"];
+
+  if (!token || !chatId) {
+    const missing = [
+      !token  && "TELEGRAM_BOT_TOKEN",
+      !chatId && "TELEGRAM_CHAT_ID",
+    ]
+      .filter(Boolean)
+      .join(", ");
+    console.warn(`[notify] Telegram document skipped — env not set: ${missing}`);
+    return false;
+  }
+
+  try {
+    const payload: Record<string, unknown> = {
+      chat_id: chatId,
+      document: documentUrl,
+    };
+    if (caption) {
+      payload["caption"] = caption;
+      payload["parse_mode"] = "HTML";
+    }
+
+    const resp = await fetch(
+      `https://api.telegram.org/bot${token}/sendDocument`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }
+    );
+    if (!resp.ok) {
+      // Common cause: file > ~20 MB (Telegram URL-fetch limit) or an
+      // unreachable URL. Log the body so it's visible in Vercel logs, then
+      // signal the caller to fall back to a text/link message.
+      const body = await resp.text();
+      console.warn(`[notify] Telegram sendDocument error: ${resp.status} ${body}`);
+      return false;
+    }
+    console.log("[notify] Telegram document delivered OK");
+    return true;
+  } catch (err) {
+    // Never crash the main request over a notification failure.
+    console.warn(`[notify] Telegram sendDocument threw: ${(err as Error).message}`);
+    return false;
+  }
+}
+
+/**
  * Fire-and-forget Telegram notification.
  *
  * On Vercel: registered with `waitUntil` so the function stays alive after
