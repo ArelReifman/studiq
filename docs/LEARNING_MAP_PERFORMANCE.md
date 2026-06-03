@@ -692,3 +692,41 @@ history.
   echo was deliberately left untouched (suppressing/debouncing it would risk
   teacher visibility and the learning-map live refresh). The flicker was solved
   purely with local component state on the student side.
+
+## 13. Lesson edit — moving a lesson to *today* felt blocked (UX fix)
+
+- **Status:** **implemented, pending verification** (frontend-only).
+- **Bug:** When editing an existing lesson and changing its date to **today**,
+  saving could fail and feel as though "scheduling for the same day is blocked".
+- **Root cause:** In `apps/web/src/components/teacher/LessonFormModal.tsx`, the
+  selected `startTime` carried over from the lesson's original (future) date when
+  only the date field was changed. If that carried-over time was already in the
+  past relative to the current Israel time, `handleSubmit` rejected the save with
+  `pastTimeError` ("time has already passed"). The teacher perceived this as a
+  same-day block, even though the validation only ever blocked **past datetimes**,
+  never the calendar day itself.
+- **Fix (frontend-only):** In the date field's `onChange`, when the new date is
+  today (`israelToday`) and the currently-selected `startTime` is already in the
+  past (`startTime <= israelNow`, Israel time), reset `startTime` to empty and
+  clear any stale `pastTimeError`. The `TimeSelect` dropdown already hides
+  past slots via `minTime`, so the teacher is then forced to pick a still-future
+  time. Today is allowed whenever the chosen time is in the future.
+- **Backend validation unchanged:** the `PATCH /bookings/teacher-lesson` past
+  check (`apps/api/src/routes/bookings.ts`) and `isSlotInPastIsrael`
+  (`apps/api/src/lib/time.ts`) are **not** touched.
+- **Past scheduling is still blocked:** both the frontend submit guard and the
+  backend continue to reject any past date/time, including a past time chosen for
+  today.
+- **Not changed:** no backend / DB / migration / auth changes; Telegram solution
+  notification (a separate, still-open bug) untouched.
+- **Test plan:**
+  - Edit a future lesson → set date to today, pick a future time → saves.
+  - Edit a lesson whose original time is now in the past → set date to today →
+    the time field resets; after picking a future time it saves.
+  - Set date to today and manually pick a time that has already passed → still
+    blocked.
+  - Set date to tomorrow → unchanged behaviour.
+  - Mobile Safari iOS — confirm the reset fires even though the native `min`
+    on `<input type="date">` is not reliably enforced.
+- **Rollback plan:** single-commit `git revert` (one component + this doc
+  section). No backend / DB / auth side-effects.

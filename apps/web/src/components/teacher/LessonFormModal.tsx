@@ -659,6 +659,16 @@ export function LessonFormModal({
                 }
                 // Clear any prior past-date error when a valid date is picked.
                 if (formError === t("teacher.pastDateError")) setFormError(null);
+                // When switching to today, a startTime carried over from the
+                // previous (future) date may now be in the past. Reset it so the
+                // teacher is forced to pick a still-future slot instead of hitting
+                // a confusing "time has already passed" error on save. The
+                // TimeSelect dropdown already hides past slots via `minTime`.
+                if (newDate === israelToday && startTime && startTime <= israelNow) {
+                  setStartTime("");
+                  // Drop a stale past-time error if one was showing.
+                  if (formError === t("teacher.pastTimeError")) setFormError(null);
+                }
                 setDate(newDate);
               }}
               // appearance-none + bg-white strip Safari iOS's native pill-style
