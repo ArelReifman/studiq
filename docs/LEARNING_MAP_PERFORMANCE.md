@@ -742,7 +742,8 @@ history.
 
 ## 14. Telegram solution notification — attach the uploaded file (not just a link)
 
-- **Status:** **implemented, pending verification** (API notification flow only).
+- **Status:** **verified** (production, commit `b57e610`, Vercel Ready, CI
+  green). See the QA result at the end of this section.
 - **Bug:** When a student uploads a lesson solution file, the teacher's Telegram
   notification contained only a **text message with a link** — the file itself
   was never attached.
@@ -802,3 +803,16 @@ history.
     exactly **one** notification is delivered (file *or* link, never both).
 - **Rollback plan:** single-commit `git revert` (`notify.ts` + `upload.ts` +
   this doc section). No DB / auth / storage side-effects.
+- **QA result (verified in production):** on commit `b57e610` (Vercel Ready,
+  CI green):
+  - A student uploaded a small PDF solution file → upload succeeded in the web
+    app.
+  - **Document-first delivery verified:** the teacher received the uploaded file
+    as a **Telegram document** (not just a link).
+  - **No duplicate message:** when document delivery succeeded, the text/link
+    message was **not** also sent.
+  - Upload-confirm was **not** affected by Telegram delivery.
+  - No errors observed. Bug 2 is **verified**.
+  - The text/link fallback remains in place for failed document delivery or
+    files too large for Telegram's URL fetch (~20 MB) — not exercised in this QA
+    run but unchanged and intact.
