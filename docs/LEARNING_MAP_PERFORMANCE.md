@@ -385,6 +385,24 @@ production, warm/cold mix.
   These are tracked as future candidates only; they are **not** scheduled for
   Phase 2E and are not on the Learning Map critical path.
 
+### 10.1 UX/cache fix — Approvals auto-refresh
+
+Not a numbered performance phase — a targeted cache/UX bugfix logged here for
+history.
+
+- **Commit:** `d643489` — `fix: refresh approvals list on mount`.
+- **Problem:** the sidebar approvals badge updated live, but the main Approvals
+  list could show a stale empty state until a manual refresh / re-navigation.
+- **Cause:** the approvals list query could mount from stale cache because the
+  global `refetchOnMount` default is `false`, so navigating to the page did not
+  re-fetch even when newer data existed.
+- **Fix:** targeted per-query `refetchOnMount: "always"` + `staleTime: 0` on the
+  Approvals page queries (`["approvals-registrations"]`, `["approvals-bookings"]`),
+  overriding only those queries — global React Query defaults untouched.
+- **Scope:** frontend-only, Approvals page only. No backend / DB / auth / RLS /
+  Realtime changes.
+- **Status:** **verified in production.**
+
 ---
 
 ## 11. Phase 2E — Manual content-lesson creation perceived performance
