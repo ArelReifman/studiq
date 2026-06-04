@@ -220,7 +220,8 @@ where noted.
    instead of inserting a second. The UI already prevents this in the happy
    path; this closes the API-level hole (§6).
 
-4. **AI lesson generation from a Learning Map topic.** ✅ *Done (Phase AI-1).*
+4. **AI lesson generation from a Learning Map topic.** ✅ *Done (Phase AI-1) —
+   verified in production.*
    `POST /lessons/generate` accepts an optional `topic_id`. `generateLesson`
    now anchors every AI lesson to a course + topic via `resolveTopic`
    (`apps/api/src/services/ai/resolve-topic.ts`) and persists both columns, so
@@ -232,6 +233,31 @@ where noted.
    in `learning-map.ts`). An explicit `topic_id` always overrides it.
    *Remaining:* wire a Learning Map button to send `topic_id`, and confirm the
    trigger invalidates `["learning-map"]` on success (§4).
+
+   **Production QA (commit `561733a`, Vercel Ready, CI green).** An explicit-
+   `topic_id` generation was exercised end-to-end against production:
+   - The generated lesson persisted the correct `course_id` + `topic_id`,
+     `ai_generated = true`, `status = active`, and its title/content matched the
+     selected topic.
+   - The map reflected it: `latest_lesson_id` pointed to the new lesson,
+     `lessons_total` increased, and the topic moved to `in_progress`.
+   - Cleanup via `DELETE /lessons/:id` fully reverted the map —
+     `latest_lesson_id → null`, `lessons_total` and `tasks_total` returned to
+     their prior values, and the topic returned to `not_started`. No QA data
+     remains.
+
+   **Operational note — migration 011 schema drift (resolved).** During QA the
+   call initially failed with a 500 because production was missing the
+   pre-existing `teachers.teaching_style_summary` and
+   `teachers.teaching_feedback_count` columns from migration
+   `011_teacher_style_profile.sql` (read by `generateLesson`). This was a DB/code
+   drift, **not** an AI-1 bug — the columns predate AI-1 and the query simply had
+   never run in production before (no UI trigger existed). The fix was applying
+   the existing idempotent `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` subset of
+   migration 011; **no code or schema change was required**. (Anthropic API
+   credit was also topped up so the Claude call could complete.) Lesson for
+   future deploys: verify that all migrations through the deployed commit are
+   actually applied in production before exercising a newly-reachable code path.
 
 5. **Status filtering robustness (optional).** Decide whether `archived` lessons
    should count toward `lessons_total`. If not, add a status filter to the
