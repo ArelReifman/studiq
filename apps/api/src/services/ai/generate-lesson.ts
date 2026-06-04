@@ -1,4 +1,4 @@
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../../db/client.js";
 import {
@@ -11,6 +11,9 @@ import {
   homeworkItems,
   todoItems,
   teachers,
+  courses,
+  courseTopics,
+  learningResources,
 } from "../../db/schema.js";
 import { callClaude } from "./claude.js";
 import { buildLessonGenerationPrompt } from "./prompts.js";
@@ -33,7 +36,101 @@ const GeneratedLessonSchema = z.object({
   ),
 });
 
-export async function generateLesson(studentId: string, teacherId: string) {
+/**
+ * Optional Learning Map anchoring. When provided, the generated lesson is
+ * persisted with course_id/topic_id (so it shows up on the map and counts
+ * toward the topic) and the prompt is enriched with course/topic context.
+ * When omitted, generation behaves exactly as before (legacy, map-invisible).
+ */
+export interface GenerateLessonOpts {
+  courseId: string;
+  topicId: string | null;
+}
+
+/**
+ * Fetches a compact slice of Learning Map context for the prompt: course name,
+ * current topic, its prerequisite names, and up to 5 relevant study-material
+ * titles. Resources are read server-side only — titles/descriptions feed the
+ * prompt, never the API response, and file URLs/paths are never touched here.
+ */
+async function fetchLearningMapContext(
+  teacherId: string,
+  opts: GenerateLessonOpts
+) {
+  const [courseRow, topicRow, resources] = await Promise.all([
+    db
+      .select({ name: courses.name })
+      .from(courses)
+      .where(eq(courses.id, opts.courseId))
+      .limit(1)
+      .then((r) => r[0]),
+    opts.topicId
+      ? db
+          .select({
+            name: courseTopics.name,
+            description: courseTopics.description,
+            prerequisite_topic_ids: courseTopics.prerequisite_topic_ids,
+          })
+          .from(courseTopics)
+          .where(eq(courseTopics.id, opts.topicId))
+          .limit(1)
+          .then((r) => r[0])
+      : Promise.resolve(undefined),
+    // Shared/course-level materials for this teacher+course, optionally
+    // narrowed to the topic. student_id IS NULL keeps per-student materials
+    // out. Titles only, capped at 5 — keeps the prompt cheap.
+    db
+      .select({
+        title: learningResources.title,
+        description: learningResources.description,
+      })
+      .from(learningResources)
+      .where(
+        and(
+          eq(learningResources.teacher_id, teacherId),
+          eq(learningResources.course_id, opts.courseId),
+          isNull(learningResources.student_id),
+          opts.topicId
+            ? or(
+                eq(learningResources.topic_id, opts.topicId),
+                isNull(learningResources.topic_id)
+              )
+            : isNull(learningResources.topic_id)
+        )
+      )
+      .orderBy(desc(learningResources.created_at))
+      .limit(5),
+  ]);
+
+  if (!courseRow) return null;
+
+  let prerequisiteNames: string[] = [];
+  const prereqIds = topicRow?.prerequisite_topic_ids ?? [];
+  if (prereqIds.length > 0) {
+    const prereqRows = await db
+      .select({ name: courseTopics.name })
+      .from(courseTopics)
+      .where(inArray(courseTopics.id, prereqIds));
+    prerequisiteNames = prereqRows.map((r) => r.name);
+  }
+
+  return {
+    courseName: courseRow.name,
+    topicName: topicRow?.name ?? null,
+    topicDescription: topicRow?.description ?? null,
+    prerequisiteNames,
+    resources: resources.map((r) => ({
+      title: r.title,
+      description: r.description,
+    })),
+  };
+}
+
+export async function generateLesson(
+  studentId: string,
+  teacherId: string,
+  opts?: GenerateLessonOpts
+) {
   // 1. Fetch all context in parallel
   const [studentRow, aiProfile, recentDifficulties, pendingFeedback, teacherRow] =
     await Promise.all([
@@ -82,6 +179,11 @@ export async function generateLesson(studentId: string, teacherId: string) {
     throw new Error(`Student ${studentId} not found or has no AI profile`);
   }
 
+  // 1b. Learning Map context — only when the caller anchored the lesson.
+  const learningMap = opts
+    ? await fetchLearningMapContext(teacherId, opts)
+    : null;
+
   // 2. Build prompt
   const prompt = buildLessonGenerationPrompt({
     studentName: studentRow.full_name,
@@ -90,6 +192,7 @@ export async function generateLesson(studentId: string, teacherId: string) {
     teacherFeedback: pendingFeedback as any,
     teacherStyleSummary: teacherRow?.teaching_style_summary ?? null,
     similarLessons: [], // Phase 2: add vector retrieval here
+    learningMap,
   });
 
   // 3. Call Claude
@@ -107,6 +210,8 @@ export async function generateLesson(studentId: string, teacherId: string) {
     },
     difficulty_count: recentDifficulties.length,
     feedback_count: pendingFeedback.length,
+    course_id: opts?.courseId ?? null,
+    topic_id: opts?.topicId ?? null,
   };
 
   const lesson = await db.transaction(async (tx) => {
@@ -120,6 +225,11 @@ export async function generateLesson(studentId: string, teacherId: string) {
         ai_generated: true,
         status: "active",
         ai_generation_context: contextSnapshot,
+        // Anchor to the Learning Map so the lesson is visible on the map and
+        // counts toward the topic (LEARNING_MAP_CONTRACT.md §3). NULL stays
+        // backward-compatible for legacy/unanchored generation.
+        course_id: opts?.courseId ?? null,
+        topic_id: opts?.topicId ?? null,
       })
       .returning();
 

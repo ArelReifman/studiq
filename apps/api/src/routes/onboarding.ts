@@ -6,6 +6,7 @@ import { db } from "../db/client.js";
 import { students, studentTopics, studentAiProfiles } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { generateLesson } from "../services/ai/generate-lesson.js";
+import { resolveTopic } from "../services/ai/resolve-topic.js";
 
 // Topics the teacher has pre-defined (could be DB-driven later)
 const DEFAULT_TOPICS = [
@@ -83,8 +84,20 @@ export const onboardingRoutes = new Hono()
         .limit(1);
 
       if (student) {
-        // Fire and forget — don't block the response
-        generateLesson(studentId, student.teacher_id).catch(console.error);
+        // Fire and forget — don't block the response. Anchor to the Learning
+        // Map when the student already has a course; otherwise fall back to
+        // legacy unanchored generation.
+        resolveTopic(studentId)
+          .then((resolved) =>
+            generateLesson(
+              studentId,
+              student.teacher_id,
+              resolved.ok
+                ? { courseId: resolved.courseId, topicId: resolved.topicId }
+                : undefined
+            )
+          )
+          .catch(console.error);
       }
 
       return c.json({ message: "Onboarding complete. Your first lesson is being prepared." });

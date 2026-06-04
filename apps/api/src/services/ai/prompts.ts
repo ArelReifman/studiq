@@ -1,5 +1,13 @@
 import type { StudentAiProfile, DifficultyReport, TeacherAiFeedback } from "@studiq/types";
 
+export interface LessonLearningMapContext {
+  courseName: string;
+  topicName: string | null;
+  topicDescription: string | null;
+  prerequisiteNames: string[];
+  resources: Array<{ title: string; description: string | null }>;
+}
+
 export function buildLessonGenerationPrompt(params: {
   studentName: string;
   profile: StudentAiProfile;
@@ -7,6 +15,9 @@ export function buildLessonGenerationPrompt(params: {
   teacherFeedback: TeacherAiFeedback[];
   teacherStyleSummary: string | null;
   similarLessons: Array<{ content: string }>;
+  // Optional Learning Map anchoring. When null, the block is omitted entirely
+  // and the prompt is byte-identical to the pre-AI-1 version.
+  learningMap?: LessonLearningMapContext | null;
 }): string {
   const {
     studentName,
@@ -15,6 +26,7 @@ export function buildLessonGenerationPrompt(params: {
     teacherFeedback,
     teacherStyleSummary,
     similarLessons,
+    learningMap,
   } = params;
 
   const difficultySummary =
@@ -38,6 +50,33 @@ export function buildLessonGenerationPrompt(params: {
     similarLessons.length > 0
       ? similarLessons.map((l) => `- ${l.content}`).join("\n")
       : "No similar past lessons found.";
+
+  // Learning Map context — only rendered when the lesson is anchored to a
+  // topic. "prerequisites" are listed as context, NOT as a mastery claim:
+  // resolveTopic does not evaluate prerequisite mastery (see its docstring),
+  // so the prompt must not assert that they are unmastered.
+  const learningMapBlock = learningMap
+    ? `
+## Learning Map Context
+- Course: ${learningMap.courseName}
+- Current topic: ${learningMap.topicName ?? "general course practice"}${
+        learningMap.topicDescription
+          ? ` — ${learningMap.topicDescription}`
+          : ""
+      }
+- Prerequisites for this topic: ${learningMap.prerequisiteNames.join(", ") || "none"}
+- Available study materials (titles only — align exercises to these, do not invent others):
+${
+  learningMap.resources.length > 0
+    ? learningMap.resources
+        .map(
+          (r) => `  • ${r.title}${r.description ? ` — ${r.description}` : ""}`
+        )
+        .join("\n")
+    : "  • none"
+}
+`
+    : "";
 
   return `You are an adaptive tutoring AI. Generate a personalized lesson for a student.
 
@@ -67,7 +106,7 @@ ${difficultySummary}
 
 ## Similar Past Lessons (for context, do not repeat these)
 ${similarLessonsSummary}
-
+${learningMapBlock}
 ## Generation Instructions
 - Focus 60% of content on weak topics, 40% on reinforcing strong topics
 - Match the student's learning style (${profile.learning_style})
@@ -76,7 +115,11 @@ ${similarLessonsSummary}
 - Include 4–6 homework items and 3–5 todo items
 - Homework items should include a brief description explaining the exercise
 - Todo items are shorter practice tasks (no description needed)
-- Do NOT repeat topics from the similar past lessons listed above
+- Do NOT repeat topics from the similar past lessons listed above${
+    learningMap
+      ? `\n- Anchor this lesson to the "Current topic" above; do not drift to unrelated material`
+      : ""
+  }
 
 Respond ONLY with valid JSON matching this schema:
 {

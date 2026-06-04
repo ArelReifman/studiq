@@ -96,7 +96,7 @@ behaviour?
 | Change `exam_date` / override | yes (deadlines) | upsert override | invalidate `["learning-map"]` |
 | Add course to student | yes (map may switch course) | join-table insert | invalidate `["learning-map"]` |
 | Remove course from student | yes | archive (soft-disable) | invalidate `["learning-map"]` |
-| AI generate lesson | yes | persist `topic_id` + `course_id` | invalidate `["learning-map"]` *(not yet wired — see §10)* |
+| AI generate lesson | yes | persist `topic_id` + `course_id` (Phase AI-1 — `generateLesson` now anchors via `resolveTopic`) | invalidate `["learning-map"]` *(server persists; client-side invalidation on the trigger button still to verify)* |
 | Schedule calendar booking | **no** | none | none — bookings never touch the map |
 
 ---
@@ -220,10 +220,18 @@ where noted.
    instead of inserting a second. The UI already prevents this in the happy
    path; this closes the API-level hole (§6).
 
-4. **AI lesson generation from a Learning Map topic.** Wire the existing
-   `POST /lessons/generate` (already accepts an optional `topic_id` in the
-   stashed change) to a Learning Map button so AI lessons attach to the topic.
-   Must also invalidate `["learning-map"]` on success (§4).
+4. **AI lesson generation from a Learning Map topic.** ✅ *Done (Phase AI-1).*
+   `POST /lessons/generate` accepts an optional `topic_id`. `generateLesson`
+   now anchors every AI lesson to a course + topic via `resolveTopic`
+   (`apps/api/src/services/ai/resolve-topic.ts`) and persists both columns, so
+   AI lessons are visible on the map and count toward the topic. The prompt is
+   also enriched with course/topic/prerequisite/study-material context.
+   `resolveTopic` is a **starting-point picker**, not a mastery calculator — it
+   relies on `is_locked` + "no completed lesson yet" and does NOT evaluate
+   `prerequisite_topic_ids` mastery (that stays the sole job of `computeStatus`
+   in `learning-map.ts`). An explicit `topic_id` always overrides it.
+   *Remaining:* wire a Learning Map button to send `topic_id`, and confirm the
+   trigger invalidates `["learning-map"]` on success (§4).
 
 5. **Status filtering robustness (optional).** Decide whether `archived` lessons
    should count toward `lessons_total`. If not, add a status filter to the

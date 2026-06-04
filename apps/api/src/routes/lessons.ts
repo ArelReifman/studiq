@@ -13,6 +13,7 @@ import {
 } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { generateLesson } from "../services/ai/generate-lesson.js";
+import { resolveTopic } from "../services/ai/resolve-topic.js";
 import { updateStudentProfile } from "../services/ai/update-profile.js";
 import { updateTeacherStyleIfDue } from "../services/ai/update-teacher-style.js";
 import { createAdminSupabase } from "../lib/supabase.js";
@@ -244,14 +245,22 @@ export const lessonRoutes = new Hono()
     }
   )
 
-  // POST /lessons/generate — teacher triggers AI generation for a student
+  // POST /lessons/generate — teacher triggers AI generation for a student.
+  // Optional topic_id anchors the lesson to a Learning Map node; when omitted,
+  // resolveTopic picks a sensible default (see its docstring).
   .post(
     "/generate",
     requireRole("teacher"),
-    zValidator("json", z.object({ student_id: z.string().uuid() })),
+    zValidator(
+      "json",
+      z.object({
+        student_id: z.string().uuid(),
+        topic_id: z.string().uuid().optional(),
+      })
+    ),
     async (c) => {
       const teacherId = c.get("userId");
-      const { student_id } = c.req.valid("json");
+      const { student_id, topic_id } = c.req.valid("json");
 
       // Verify student belongs to teacher
       const [student] = await db
@@ -264,7 +273,23 @@ export const lessonRoutes = new Hono()
 
       if (!student) return c.json({ error: "Student not found" }, 404);
 
-      const lesson = await generateLesson(student_id, teacherId);
+      // Resolve the Learning Map anchor. A topic_id that doesn't belong to the
+      // student's course is a client error; "no course" falls back to legacy
+      // (unanchored) generation so first-lesson flows keep working.
+      const resolved = await resolveTopic(student_id, {
+        explicitTopicId: topic_id ?? null,
+      });
+      if (!resolved.ok && resolved.reason === "topic_mismatch") {
+        return c.json({ error: "Topic does not belong to student's course" }, 400);
+      }
+
+      const lesson = await generateLesson(
+        student_id,
+        teacherId,
+        resolved.ok
+          ? { courseId: resolved.courseId, topicId: resolved.topicId }
+          : undefined
+      );
       return c.json(lesson, 201);
     }
   )
