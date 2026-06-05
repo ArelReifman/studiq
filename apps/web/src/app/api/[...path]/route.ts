@@ -5,8 +5,9 @@ const app = createApp("/api");
 const handler = handle(app);
 
 // Default Vercel timeout is 10s — Claude calls (report/lesson generation,
-// AI profile updates) can take 15–30s, so bump to the platform max.
-export const maxDuration = 60;
+// AI profile updates) can take longer, and Sonnet-based lesson generation can
+// run well past 60s, so raise this to the project's configured ceiling (300s).
+export const maxDuration = 300;
 
 export const GET = handler;
 export const POST = handler;
