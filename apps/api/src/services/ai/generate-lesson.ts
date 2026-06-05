@@ -21,6 +21,14 @@ import {
   type LessonRetryContext,
 } from "./prompts.js";
 
+// Phase 1A — lesson + retry generation runs on Sonnet for real pedagogical
+// depth. Shared by both flows for now (regular and retry use the same model and
+// token budget). 8192 tokens replaces the old 2048 default so a full lesson
+// (4–6 homework items with descriptions + 3–5 todos) is never truncated, while
+// still bounding latency/cost. All other AI flows keep the Haiku default.
+const LESSON_MODEL = "claude-sonnet-4-6";
+const LESSON_MAX_TOKENS = 8192;
+
 const GeneratedLessonSchema = z.object({
   title: z.string(),
   description: z.string(),
@@ -264,11 +272,21 @@ export async function generateLesson(
     retryContext,
   });
 
-  // 3. Call Claude
-  const generated = await callClaude(prompt, (text) => {
-    const parsed = JSON.parse(text);
-    return GeneratedLessonSchema.parse(parsed);
-  });
+  // 3. Call Claude. Phase 1A: full lesson + retry generation runs on Sonnet
+  // (richer pedagogy, larger token budget) while every other AI flow stays on
+  // the Haiku default inside callClaude. The flow label drives metrics logging.
+  const generated = await callClaude(
+    prompt,
+    (text) => {
+      const parsed = JSON.parse(text);
+      return GeneratedLessonSchema.parse(parsed);
+    },
+    {
+      model: LESSON_MODEL,
+      maxTokens: LESSON_MAX_TOKENS,
+      flow: opts?.retryOfLessonId ? "lesson_retry" : "lesson_regular",
+    }
+  );
 
   // 4. Persist in a transaction
   const contextSnapshot = {
