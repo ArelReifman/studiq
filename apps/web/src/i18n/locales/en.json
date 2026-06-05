@@ -532,6 +532,12 @@
   "lessonReview.save": "Save verdict",
   "lessonReview.saving": "Saving...",
   "lessonReview.saveFailed": "Save failed — try again",
+  "lessonReview.repeatSaved": "Verdict saved — repeat same level",
+  "lessonReview.retryHint": "You can now generate a retry practice lesson on the same topic and level, with fresh exercises targeting where the student struggled.",
+  "lessonReview.generateRetry": "Generate retry lesson",
+  "lessonReview.generatingRetry": "Generating lesson...",
+  "lessonReview.retrySuccess": "Retry lesson created successfully",
+  "lessonReview.retryFailed": "Lesson generation failed — try again",
 
   "studentContext.backgroundTitle": "Student background",
   "studentContext.backgroundHint": "Static context — special needs, family background, personality. Written once, edited only when life circumstances change.",
