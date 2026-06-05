@@ -94,34 +94,89 @@ ${
 `
     : "";
 
-  // Retry framing (Phase AI-0.5) — only when this lesson is a retry of a
-  // previous failed lesson. Same topic, same level, alternative exercises.
-  const retryBlock = retryContext
-    ? `
-## Retry / Practice Lesson — Teacher Decision: repeat
-This is a RETRY lesson on the SAME topic at the SAME level. After reviewing the
-student's previous submission, the teacher decided the student needs more
-practice before moving on (decision: repeat).
-- Tasks the student previously struggled with: ${
-        retryContext.failedTaskTitles.length > 0
-          ? retryContext.failedTaskTitles.join("; ")
-          : "not specified"
-      }
-- Teacher's review note: ${
-        retryContext.teacherReviewNote?.trim()
-          ? `"${retryContext.teacherReviewNote.trim()}"`
-          : "none"
-      }
-- Level: ${
-        retryContext.lessonLevel
-          ? `${retryContext.lessonLevel} — keep the retry at exactly this level`
-          : "same level as the previous lesson"
-      }
-Produce ALTERNATIVE exercises — do NOT repeat the identical tasks. Approach the
-same weak points from a different angle, with fresh examples and clearer
-explanations, keeping the difficulty at the same level.
-`
-    : "";
+  // Phase 1B — retry lessons use a SEPARATE, failure-first prompt. When the
+  // teacher chose "repeat", the general lesson-planning rules (the 60/40 split,
+  // etc.) are deliberately dropped: the whole lesson must target the specific
+  // failure point, led by the teacher's note and the failed tasks, using a
+  // different pedagogical angle. Uses ONLY data already present in retryContext
+  // today (titles, note, level) — no new fields, no new DB reads (those are
+  // Phase 1C). The regular path below is reached only for non-retry generation
+  // and stays byte-identical to before.
+  if (retryContext) {
+    const failedTitles =
+      retryContext.failedTaskTitles.length > 0
+        ? retryContext.failedTaskTitles.join("; ")
+        : "not specified";
+    const reviewNote = retryContext.teacherReviewNote?.trim()
+      ? `"${retryContext.teacherReviewNote.trim()}"`
+      : "none";
+    const levelFraming = retryContext.lessonLevel
+      ? `${retryContext.lessonLevel} — keep the retry at exactly this level`
+      : "the same level as the previous lesson";
+
+    return `You are an adaptive tutoring AI generating a REMEDIAL RETRY lesson. The student already attempted this material and did NOT master it; the teacher reviewed the submission and chose "repeat". Build a focused second pass.
+
+## PRIORITY ORDER — read this first; it governs the entire lesson
+Teacher feedback and failed tasks override all general lesson-planning guidance. Build the whole lesson around the items below, in this priority:
+1. Teacher's review note (highest priority): ${reviewNote}
+2. Tasks the student failed previously: ${failedTitles}
+3. Teacher decision = repeat — stay at ${levelFraming}; the student needs another pass before advancing.
+4. The student profile and other context further down are SECONDARY background only — never let them override 1–3.
+
+## Hard rules for this retry lesson
+- 100% of this lesson must focus on the failure point above. Do NOT apply the regular weak/strong content split (the 60/40 balance used for normal lessons) — it does not apply to retry lessons.
+- Do not simply rephrase or reorder the previous lesson. Use a different pedagogical angle.
+- The exact previous explanation method is NOT provided here — do not claim to know it. Choose a meaningfully different explanatory angle from the one likely represented by the failed tasks, and teach through a different representation or sequence (for example concrete-before-abstract, a visual model, or a fully worked numeric example first).
+- Match the student's general learning style (${profile.learning_style}) while still changing the angle from what evidently failed.
+
+## Required structure for EVERY task (no vague filler)
+Each homework item's "description" must spell out, in order:
+- the goal, tied explicitly to the failure point;
+- a short explanation;
+- a worked example (fully solved, or guided step by step);
+- a progressive hint (a smaller nudge offered before the full solution);
+- independent practice the student does on their own;
+- an understanding check the teacher can use to confirm the student actually understood.
+Every homework item AND every todo must state concretely: what the student does, what they are shown, what they must conclude or answer, and how it connects to the failure point. Todo items are short but must still be specific, actionable practice tied to the failure — never vague.
+Do NOT output vague tasks such as "practice more", "review the topic", "solve similar questions", or "understand the concept".
+Include 3–5 homework items and 2–4 todo items, all targeting the failure point.
+
+## Student: ${studentName}
+
+## Student Profile (secondary background)
+- Strong topics: ${profile.strong_topics.join(", ") || "Not yet determined"}
+- Weak topics: ${profile.weak_topics.join(", ") || "Not yet determined"}
+- Learning style: ${profile.learning_style}
+- Average completion rate: ${(Number(profile.avg_completion_rate) * 100).toFixed(0)}%
+- Total lessons completed: ${profile.total_lessons}
+
+## AI Summary (secondary background)
+${profile.ai_summary ?? "No summary yet — this may be a new student."}
+
+## Teacher's Teaching Style (secondary background)
+${teacherStyleSummary ?? "No teaching style profile yet — use general best practices."}
+
+## Teacher's Guidance for This Student (secondary background)
+${profile.teacher_feedback_summary ?? "No teacher feedback yet."}
+
+## Pending Teacher Feedback (secondary background)
+${feedbackSummary}
+
+## Recent Difficulties (secondary background)
+${difficultySummary}
+${learningMapBlock}
+Respond ONLY with valid JSON matching this schema. Do not add any prose outside the JSON:
+{
+  "title": "string",
+  "description": "string (2-3 sentences explaining what this lesson covers)",
+  "homework_items": [
+    { "title": "string", "description": "string", "order_index": number }
+  ],
+  "todo_items": [
+    { "title": "string", "order_index": number }
+  ]
+}`;
+  }
 
   return `You are an adaptive tutoring AI. Generate a personalized lesson for a student.
 
@@ -151,7 +206,7 @@ ${difficultySummary}
 
 ## Similar Past Lessons (for context, do not repeat these)
 ${similarLessonsSummary}
-${learningMapBlock}${retryBlock}
+${learningMapBlock}
 ## Generation Instructions
 - Focus 60% of content on weak topics, 40% on reinforcing strong topics
 - Match the student's learning style (${profile.learning_style})
@@ -163,10 +218,6 @@ ${learningMapBlock}${retryBlock}
 - Do NOT repeat topics from the similar past lessons listed above${
     learningMap
       ? `\n- Anchor this lesson to the "Current topic" above; do not drift to unrelated material`
-      : ""
-  }${
-    retryContext
-      ? `\n- This is a retry: give the student a fresh angle on the same weak points — new examples and exercises, never the identical previous tasks, same difficulty level`
       : ""
   }
 
