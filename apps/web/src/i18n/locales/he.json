@@ -532,6 +532,12 @@
   "lessonReview.save": "שמור החלטה",
   "lessonReview.saving": "שומר...",
   "lessonReview.saveFailed": "השמירה נכשלה — נסה שוב",
+  "lessonReview.repeatSaved": "ההחלטה נשמרה — חזרה על אותה רמה",
+  "lessonReview.retryHint": "אפשר ליצור עכשיו שיעור תרגול חוזר באותו נושא ורמה, עם תרגילים חדשים שמתמקדים בנקודות שהתלמיד התקשה בהן.",
+  "lessonReview.generateRetry": "צור שיעור תרגול חוזר",
+  "lessonReview.generatingRetry": "יוצר שיעור...",
+  "lessonReview.retrySuccess": "שיעור התרגול נוצר בהצלחה",
+  "lessonReview.retryFailed": "יצירת השיעור נכשלה — נסה שוב",
 
   "studentContext.backgroundTitle": "רקע התלמיד",
   "studentContext.backgroundHint": "הקשר קבוע — צרכים מיוחדים, רקע משפחתי, אופי. נכתב פעם אחת ומשתנה רק בנסיבות חיים.",

@@ -11,9 +11,9 @@
  * migration 013 (teacher_review_note, teacher_decision, teacher_reviewed_at).
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { X, RotateCw, ArrowUp, CheckCircle2 } from "lucide-react";
+import { X, RotateCw, ArrowUp, CheckCircle2, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/i18n";
@@ -70,6 +70,24 @@ export function LessonReviewModal({ lesson, onClose }: LessonReviewModalProps) {
   );
   const [note, setNote] = useState<string>(lesson.teacher_review_note ?? "");
 
+  // Phase AI-0.5 — after a successful `repeat` review the modal stays open and
+  // swaps the review action row for the "generate retry lesson" CTA. Other
+  // decisions (next_level / next_topic) keep the original auto-close behaviour.
+  const [showRetryCta, setShowRetryCta] = useState(false);
+
+  // Shared invalidations for any write the review/retry can affect: lesson cards
+  // (verdict + flipped task statuses), student AI profile, difficulties
+  // (auto-resolved on next_level / next_topic), the learning map (topic progress
+  // rolls up from tasks), and homework / todos.
+  const invalidateReviewQueries = () => {
+    qc.invalidateQueries({ queryKey: ["lessons"] });
+    qc.invalidateQueries({ queryKey: ["students", lesson.student_id, "profile"] });
+    qc.invalidateQueries({ queryKey: ["difficulties"] });
+    qc.invalidateQueries({ queryKey: ["learning-map"] });
+    qc.invalidateQueries({ queryKey: ["homework"] });
+    qc.invalidateQueries({ queryKey: ["todos"] });
+  };
+
   const submit = useMutation({
     mutationFn: () =>
       api.patch(`/lessons/${lesson.id}/review`, {
@@ -77,26 +95,55 @@ export function LessonReviewModal({ lesson, onClose }: LessonReviewModalProps) {
         teacher_review_note: note.trim() || undefined,
       }),
     onSuccess: () => {
-      // Invalidate everything that the review can affect: lesson cards
-      // (verdict + flipped task statuses), student AI profile,
-      // difficulties (auto-resolved on next_level / next_topic), and the
-      // learning map (topic progress rolls up from completed tasks).
-      qc.invalidateQueries({ queryKey: ["lessons"] });
-      qc.invalidateQueries({ queryKey: ["students", lesson.student_id, "profile"] });
-      qc.invalidateQueries({ queryKey: ["difficulties"] });
-      qc.invalidateQueries({ queryKey: ["learning-map"] });
-      qc.invalidateQueries({ queryKey: ["homework"] });
-      qc.invalidateQueries({ queryKey: ["todos"] });
-      onClose();
+      invalidateReviewQueries();
+      // `repeat` keeps the modal open and reveals the retry CTA; the other
+      // two decisions close immediately, exactly as before.
+      if (decision === "repeat") {
+        setShowRetryCta(true);
+      } else {
+        onClose();
+      }
     },
   });
 
+  // Phase AI-0.5 — generate a retry lesson for the same student / course / topic.
+  // The backend reads the anchor from `retry_of_lesson_id`, enforces the
+  // teacher_decision=repeat precondition and the duplicate-active guard.
+  const retry = useMutation({
+    mutationFn: () =>
+      api.post("/lessons/generate", {
+        student_id: lesson.student_id,
+        retry_of_lesson_id: lesson.id,
+      }),
+    onSuccess: () => {
+      // The retry archives the old lesson and creates a new active one, so the
+      // same query set must refresh (lessons list, schedule, learning map).
+      invalidateReviewQueries();
+    },
+  });
+
+  // After a successful retry, show the success state briefly, then close.
+  useEffect(() => {
+    if (!retry.isSuccess) return;
+    const timer = setTimeout(onClose, 1500);
+    return () => clearTimeout(timer);
+  }, [retry.isSuccess, onClose]);
+
   const canSubmit = !!decision && !submit.isPending;
+  const retryPending = retry.isPending;
+
+  // While a retry is generating, block every dismiss path (backdrop, X, footer)
+  // so the teacher doesn't lose the success feedback — and, just as important,
+  // so the component stays mounted until the mutation settles (an unmounted
+  // observer would skip the onSuccess invalidations in react-query v5).
+  const requestClose = () => {
+    if (!retryPending) onClose();
+  };
 
   return (
     <div
       className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
+      onClick={requestClose}
     >
       <div
         className="bg-white rounded-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto"
@@ -108,8 +155,9 @@ export function LessonReviewModal({ lesson, onClose }: LessonReviewModalProps) {
             <p className="text-xs text-gray-400 mt-0.5">{lesson.title}</p>
           </div>
           <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 p-1"
+            onClick={requestClose}
+            disabled={retryPending}
+            className="text-gray-400 hover:text-gray-600 p-1 disabled:opacity-40 disabled:cursor-not-allowed"
             aria-label={t("common.close")}
           >
             <X size={18} />
@@ -141,7 +189,8 @@ export function LessonReviewModal({ lesson, onClose }: LessonReviewModalProps) {
                   key={value}
                   type="button"
                   onClick={() => setDecision(value)}
-                  className={`w-full text-start border-2 rounded-lg p-3 transition-all ${
+                  disabled={showRetryCta}
+                  className={`w-full text-start border-2 rounded-lg p-3 transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
                     selected
                       ? TONE_CLASSES[tone]
                       : "border-gray-200 bg-white hover:border-gray-300"
@@ -169,12 +218,13 @@ export function LessonReviewModal({ lesson, onClose }: LessonReviewModalProps) {
             placeholder={t("lessonReview.notePlaceholder")}
             rows={3}
             maxLength={2000}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500"
+            disabled={showRetryCta}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-60 disabled:bg-gray-50"
           />
           <p className="text-xs text-gray-400 mt-1">{t("lessonReview.noteHint")}</p>
         </div>
 
-        {submit.isError && (
+        {submit.isError && !showRetryCta && (
           <p className="text-sm text-red-500 mb-3">
             {submit.error instanceof Error
               ? submit.error.message
@@ -182,17 +232,61 @@ export function LessonReviewModal({ lesson, onClose }: LessonReviewModalProps) {
           </p>
         )}
 
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose} disabled={submit.isPending}>
-            {t("common.cancel")}
-          </Button>
-          <Button
-            onClick={() => submit.mutate()}
-            disabled={!canSubmit}
-          >
-            {submit.isPending ? t("lessonReview.saving") : t("lessonReview.save")}
-          </Button>
-        </div>
+        {/* Phase AI-0.5 — retry CTA, shown only after a successful `repeat`. */}
+        {showRetryCta ? (
+          <div>
+            {retry.isSuccess ? (
+              <div className="flex items-center gap-2 rounded-lg border border-green-300 bg-green-50 p-3 text-sm text-green-700">
+                <CheckCircle2 size={16} />
+                <span>{t("lessonReview.retrySuccess")}</span>
+              </div>
+            ) : (
+              <>
+                <div className="mb-3 flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm text-orange-700">
+                  <CheckCircle2 size={16} />
+                  <span>{t("lessonReview.repeatSaved")}</span>
+                </div>
+                <p className="mb-3 text-xs text-gray-500">
+                  {t("lessonReview.retryHint")}
+                </p>
+                {retry.isError && (
+                  <p className="mb-3 text-sm text-red-500">
+                    {retry.error instanceof Error
+                      ? retry.error.message
+                      : t("lessonReview.retryFailed")}
+                  </p>
+                )}
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="secondary"
+                    onClick={onClose}
+                    disabled={retryPending}
+                  >
+                    {t("common.close")}
+                  </Button>
+                  <Button onClick={() => retry.mutate()} disabled={retryPending}>
+                    <Sparkles size={16} className="me-1.5" />
+                    {retryPending
+                      ? t("lessonReview.generatingRetry")
+                      : t("lessonReview.generateRetry")}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={onClose} disabled={submit.isPending}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              onClick={() => submit.mutate()}
+              disabled={!canSubmit}
+            >
+              {submit.isPending ? t("lessonReview.saving") : t("lessonReview.save")}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
