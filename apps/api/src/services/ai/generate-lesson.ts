@@ -16,7 +16,10 @@ import {
   learningResources,
 } from "../../db/schema.js";
 import { callClaude } from "./claude.js";
-import { buildLessonGenerationPrompt } from "./prompts.js";
+import {
+  buildLessonGenerationPrompt,
+  type LessonRetryContext,
+} from "./prompts.js";
 
 const GeneratedLessonSchema = z.object({
   title: z.string(),
@@ -45,6 +48,19 @@ const GeneratedLessonSchema = z.object({
 export interface GenerateLessonOpts {
   courseId: string;
   topicId: string | null;
+  /**
+   * Phase AI-0.5 — when set, this generation is a *retry* of a previous
+   * (failed) lesson. generateLesson then, in order:
+   *   1. enriches the prompt with the predecessor's failed-task titles +
+   *      teacher review note (text only — the student's solution file is
+   *      never read),
+   *   2. archives the predecessor and enforces the one-active-lesson invariant
+   *      inside the same insert transaction (concurrency-safe idempotency),
+   *   3. tags ai_generation_context with { mode: "retry", retry_of_lesson_id }.
+   * Ownership and active-course validation of the predecessor are the caller's
+   * responsibility (the POST /lessons/generate route) before this runs.
+   */
+  retryOfLessonId?: string | null;
 }
 
 /**
@@ -184,6 +200,58 @@ export async function generateLesson(
     ? await fetchLearningMapContext(teacherId, opts)
     : null;
 
+  // 1c. Retry context (Phase AI-0.5) — only when this is a retry. Pull the
+  // predecessor's failed task titles + teacher review note for the prompt.
+  // Text only: the student's uploaded solution file is never read.
+  let retryContext: LessonRetryContext | null = null;
+  // Preserve the predecessor's lesson_level so the retry stays at the SAME
+  // level (repeat semantics). NOTE: lesson_level is currently a dormant column
+  // — no code path writes it today, so in practice this is null. Carrying it
+  // forward makes "same level" truthful the moment levels start being set,
+  // with no behaviour change while the column stays null.
+  let predLevel: "base" | "medium" | "exam" | null = null;
+  if (opts?.retryOfLessonId) {
+    const predId = opts.retryOfLessonId;
+    const [predRow, failedHw, failedTd] = await Promise.all([
+      db
+        .select({
+          teacher_review_note: lessonSessions.teacher_review_note,
+          lesson_level: lessonSessions.lesson_level,
+        })
+        .from(lessonSessions)
+        .where(eq(lessonSessions.id, predId))
+        .limit(1)
+        .then((r) => r[0]),
+      db
+        .select({ title: homeworkItems.title })
+        .from(homeworkItems)
+        .where(
+          and(
+            eq(homeworkItems.lesson_id, predId),
+            eq(homeworkItems.status, "failed")
+          )
+        ),
+      db
+        .select({ title: todoItems.title })
+        .from(todoItems)
+        .where(
+          and(
+            eq(todoItems.lesson_id, predId),
+            eq(todoItems.status, "failed")
+          )
+        ),
+    ]);
+    predLevel = predRow?.lesson_level ?? null;
+    retryContext = {
+      failedTaskTitles: [
+        ...failedHw.map((h) => h.title),
+        ...failedTd.map((t) => t.title),
+      ],
+      teacherReviewNote: predRow?.teacher_review_note ?? null,
+      lessonLevel: predLevel,
+    };
+  }
+
   // 2. Build prompt
   const prompt = buildLessonGenerationPrompt({
     studentName: studentRow.full_name,
@@ -193,6 +261,7 @@ export async function generateLesson(
     teacherStyleSummary: teacherRow?.teaching_style_summary ?? null,
     similarLessons: [], // Phase 2: add vector retrieval here
     learningMap,
+    retryContext,
   });
 
   // 3. Call Claude
@@ -212,9 +281,52 @@ export async function generateLesson(
     feedback_count: pendingFeedback.length,
     course_id: opts?.courseId ?? null,
     topic_id: opts?.topicId ?? null,
+    // Phase AI-0.5 — traceability of retries. Stored in the existing jsonb
+    // column (no schema change). Not indexed; for lineage only.
+    ...(opts?.retryOfLessonId
+      ? { mode: "retry", retry_of_lesson_id: opts.retryOfLessonId }
+      : {}),
   };
 
-  const lesson = await db.transaction(async (tx) => {
+  const { lesson, created } = await db.transaction(async (tx) => {
+    // Retry path (Phase AI-0.5): archive the predecessor and enforce the
+    // one-active-lesson invariant atomically with the insert.
+    if (opts?.retryOfLessonId) {
+      // Archive the predecessor — only while it is still active. This
+      // conditional UPDATE also serializes concurrent retries on the same
+      // predecessor row (the second one updates 0 rows).
+      await tx
+        .update(lessonSessions)
+        .set({ status: "archived" })
+        .where(
+          and(
+            eq(lessonSessions.id, opts.retryOfLessonId),
+            eq(lessonSessions.status, "active")
+          )
+        );
+
+      // Duplicate-active guard: after archiving, if an active lesson already
+      // exists on (student, course, topic) it was created by a concurrent or
+      // already-completed retry — return it instead of inserting a second.
+      // This is the API-level idempotency the frontend disable must not be
+      // trusted to provide (LEARNING_MAP_CONTRACT.md §6).
+      const [existing] = await tx
+        .select()
+        .from(lessonSessions)
+        .where(
+          and(
+            eq(lessonSessions.student_id, studentId),
+            eq(lessonSessions.course_id, opts.courseId),
+            opts.topicId
+              ? eq(lessonSessions.topic_id, opts.topicId)
+              : isNull(lessonSessions.topic_id),
+            eq(lessonSessions.status, "active")
+          )
+        )
+        .limit(1);
+      if (existing) return { lesson: existing, created: false };
+    }
+
     const [newLesson] = await tx
       .insert(lessonSessions)
       .values({
@@ -230,6 +342,8 @@ export async function generateLesson(
         // backward-compatible for legacy/unanchored generation.
         course_id: opts?.courseId ?? null,
         topic_id: opts?.topicId ?? null,
+        // Retry stays at the predecessor's level (null today — see predLevel).
+        lesson_level: predLevel,
       })
       .returning();
 
@@ -269,17 +383,20 @@ export async function generateLesson(
       }
     }
 
-    return newLesson;
+    return { lesson: newLesson, created: true };
   });
 
-  // 5. Update AI profile lesson count
-  await db
-    .update(studentAiProfiles)
-    .set({
-      total_lessons: aiProfile.total_lessons + 1,
-      updated_at: new Date(),
-    })
-    .where(eq(studentAiProfiles.student_id, studentId));
+  // 5. Update AI profile lesson count — only when we actually created a new
+  // lesson. The idempotent retry return must not double-count.
+  if (created) {
+    await db
+      .update(studentAiProfiles)
+      .set({
+        total_lessons: aiProfile.total_lessons + 1,
+        updated_at: new Date(),
+      })
+      .where(eq(studentAiProfiles.student_id, studentId));
+  }
 
   return lesson;
 }

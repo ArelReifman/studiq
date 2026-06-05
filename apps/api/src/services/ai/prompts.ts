@@ -8,6 +8,18 @@ export interface LessonLearningMapContext {
   resources: Array<{ title: string; description: string | null }>;
 }
 
+// Phase AI-0.5: context passed when this generation is a *retry* of a previous
+// (failed) lesson. Text only — the student's uploaded solution file is never
+// read or included here.
+export interface LessonRetryContext {
+  failedTaskTitles: string[];
+  teacherReviewNote: string | null;
+  // The predecessor's level (base/medium/exam), carried so the retry stays at
+  // the SAME level. Currently a dormant column (usually null) — when null the
+  // prompt falls back to the generic "same level" framing.
+  lessonLevel: "base" | "medium" | "exam" | null;
+}
+
 export function buildLessonGenerationPrompt(params: {
   studentName: string;
   profile: StudentAiProfile;
@@ -18,6 +30,9 @@ export function buildLessonGenerationPrompt(params: {
   // Optional Learning Map anchoring. When null, the block is omitted entirely
   // and the prompt is byte-identical to the pre-AI-1 version.
   learningMap?: LessonLearningMapContext | null;
+  // Optional retry framing (Phase AI-0.5). When null, omitted entirely so the
+  // prompt is unchanged for normal (non-retry) generation.
+  retryContext?: LessonRetryContext | null;
 }): string {
   const {
     studentName,
@@ -27,6 +42,7 @@ export function buildLessonGenerationPrompt(params: {
     teacherStyleSummary,
     similarLessons,
     learningMap,
+    retryContext,
   } = params;
 
   const difficultySummary =
@@ -78,6 +94,35 @@ ${
 `
     : "";
 
+  // Retry framing (Phase AI-0.5) — only when this lesson is a retry of a
+  // previous failed lesson. Same topic, same level, alternative exercises.
+  const retryBlock = retryContext
+    ? `
+## Retry / Practice Lesson — Teacher Decision: repeat
+This is a RETRY lesson on the SAME topic at the SAME level. After reviewing the
+student's previous submission, the teacher decided the student needs more
+practice before moving on (decision: repeat).
+- Tasks the student previously struggled with: ${
+        retryContext.failedTaskTitles.length > 0
+          ? retryContext.failedTaskTitles.join("; ")
+          : "not specified"
+      }
+- Teacher's review note: ${
+        retryContext.teacherReviewNote?.trim()
+          ? `"${retryContext.teacherReviewNote.trim()}"`
+          : "none"
+      }
+- Level: ${
+        retryContext.lessonLevel
+          ? `${retryContext.lessonLevel} — keep the retry at exactly this level`
+          : "same level as the previous lesson"
+      }
+Produce ALTERNATIVE exercises — do NOT repeat the identical tasks. Approach the
+same weak points from a different angle, with fresh examples and clearer
+explanations, keeping the difficulty at the same level.
+`
+    : "";
+
   return `You are an adaptive tutoring AI. Generate a personalized lesson for a student.
 
 ## Student: ${studentName}
@@ -106,7 +151,7 @@ ${difficultySummary}
 
 ## Similar Past Lessons (for context, do not repeat these)
 ${similarLessonsSummary}
-${learningMapBlock}
+${learningMapBlock}${retryBlock}
 ## Generation Instructions
 - Focus 60% of content on weak topics, 40% on reinforcing strong topics
 - Match the student's learning style (${profile.learning_style})
@@ -118,6 +163,10 @@ ${learningMapBlock}
 - Do NOT repeat topics from the similar past lessons listed above${
     learningMap
       ? `\n- Anchor this lesson to the "Current topic" above; do not drift to unrelated material`
+      : ""
+  }${
+    retryContext
+      ? `\n- This is a retry: give the student a fresh angle on the same weak points — new examples and exercises, never the identical previous tasks, same difficulty level`
       : ""
   }
 

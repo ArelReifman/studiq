@@ -8,6 +8,7 @@ import {
   homeworkItems,
   todoItems,
   students,
+  studentCourses,
   difficultyReports,
   teacherAiFeedback,
 } from "../db/schema.js";
@@ -256,11 +257,15 @@ export const lessonRoutes = new Hono()
       z.object({
         student_id: z.string().uuid(),
         topic_id: z.string().uuid().optional(),
+        // Phase AI-0.5 — when present, generate a *retry* lesson for the same
+        // student/course/topic as the given (failed) lesson and archive it.
+        retry_of_lesson_id: z.string().uuid().optional(),
       })
     ),
     async (c) => {
       const teacherId = c.get("userId");
-      const { student_id, topic_id } = c.req.valid("json");
+      const { student_id, topic_id, retry_of_lesson_id } =
+        c.req.valid("json");
 
       // Verify student belongs to teacher
       const [student] = await db
@@ -272,6 +277,102 @@ export const lessonRoutes = new Hono()
         .limit(1);
 
       if (!student) return c.json({ error: "Student not found" }, 404);
+
+      // ── Retry branch (Phase AI-0.5) ─────────────────────────────────────
+      // Anchors the retry to the *predecessor's* course/topic (not the
+      // student's current primary), validates ownership + that the anchor
+      // course is still active, then delegates archive + duplicate-active
+      // guard to generateLesson (atomic with the insert). The legacy branch
+      // below is left byte-for-byte unchanged when this param is absent.
+      if (retry_of_lesson_id) {
+        const [pred] = await db
+          .select({
+            id: lessonSessions.id,
+            teacher_id: lessonSessions.teacher_id,
+            student_id: lessonSessions.student_id,
+            course_id: lessonSessions.course_id,
+            topic_id: lessonSessions.topic_id,
+            teacher_decision: lessonSessions.teacher_decision,
+          })
+          .from(lessonSessions)
+          .where(eq(lessonSessions.id, retry_of_lesson_id))
+          .limit(1);
+
+        // Ownership: the predecessor must belong to this teacher AND the
+        // named student. Mismatch is treated as "not found" (no leakage).
+        if (
+          !pred ||
+          pred.teacher_id !== teacherId ||
+          pred.student_id !== student_id
+        ) {
+          return c.json({ error: "Previous lesson not found" }, 404);
+        }
+
+        // Eligibility: a retry exists only to act on a `repeat` verdict. If the
+        // predecessor was sent forward (next_level / next_topic) or never
+        // reviewed, retry creation is a state conflict — reject it at the API,
+        // never trusting the frontend CTA to be the only gate. (Idempotency is
+        // preserved: a successful retry archives the predecessor but leaves its
+        // teacher_decision = "repeat", so a late duplicate still passes here.)
+        if (pred.teacher_decision !== "repeat") {
+          return c.json(
+            { error: "Previous lesson was not marked for repeat" },
+            409
+          );
+        }
+
+        // A retry must be anchored to a course, else it would be invisible on
+        // the map (the map filters on course_id).
+        if (!pred.course_id) {
+          return c.json(
+            { error: "Previous lesson is not anchored to a course" },
+            400
+          );
+        }
+
+        // The anchor course must still be active for the student — otherwise
+        // the retry would be created but never render on the map. Fail loudly
+        // instead of producing a map-invisible lesson.
+        const [activeCourse] = await db
+          .select({ course_id: studentCourses.course_id })
+          .from(studentCourses)
+          .where(
+            and(
+              eq(studentCourses.student_id, student_id),
+              eq(studentCourses.course_id, pred.course_id),
+              eq(studentCourses.is_active, true)
+            )
+          )
+          .limit(1);
+        if (!activeCourse) {
+          return c.json(
+            { error: "Previous lesson's course is no longer active" },
+            400
+          );
+        }
+
+        // Topic anchor: in retry mode the predecessor's topic is AUTHORITATIVE —
+        // a retry must stay on the same topic (and course). An explicit topic_id
+        // is accepted only when it matches the predecessor's; a different one is
+        // rejected rather than silently switching topics. The predecessor's
+        // topic_id is already consistent with its course_id by construction
+        // (validated at creation; the FK nulls it if the topic is deleted), so
+        // no re-validation against course_topics is needed.
+        if (topic_id && topic_id !== pred.topic_id) {
+          return c.json(
+            { error: "Retry must stay on the predecessor's topic" },
+            400
+          );
+        }
+        const anchorTopicId = pred.topic_id;
+
+        const lesson = await generateLesson(student_id, teacherId, {
+          courseId: pred.course_id,
+          topicId: anchorTopicId,
+          retryOfLessonId: pred.id,
+        });
+        return c.json(lesson, 201);
+      }
 
       // Resolve the Learning Map anchor. A topic_id that doesn't belong to the
       // student's course is a client error; "no course" falls back to legacy
