@@ -396,6 +396,8 @@ export async function generateLesson(
       model: LESSON_MODEL,
       maxTokens: LESSON_MAX_TOKENS,
       flow: opts?.retryOfLessonId ? "lesson_retry" : "lesson_regular",
+      // One bounded JSON-syntax repair on a malformed (non-truncated) response.
+      repairJsonOnce: true,
     }
   );
 
