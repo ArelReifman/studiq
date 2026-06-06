@@ -14,12 +14,21 @@ import {
   courses,
   courseTopics,
   learningResources,
+  studentInsights,
 } from "../../db/schema.js";
 import { callClaude } from "./claude.js";
 import {
   buildLessonGenerationPrompt,
+  truncate,
   type LessonRetryContext,
 } from "./prompts.js";
+
+// Cap titles sent into the retry context (Phase 1C-b). Descriptions/reflection/
+// insights are already capped inside buildLessonGenerationPrompt; titles are not,
+// so bound them here (120 chars incl. ellipsis) to avoid prompt-token inflation
+// from a pathologically long title. Applies only to the prompt context, never
+// to the DB rows.
+const RETRY_TITLE_CAP = 120;
 
 // Phase 1A — lesson + retry generation runs on Sonnet for real pedagogical
 // depth. Shared by both flows for now (regular and retry use the same model and
@@ -220,43 +229,145 @@ export async function generateLesson(
   let predLevel: "base" | "medium" | "exam" | null = null;
   if (opts?.retryOfLessonId) {
     const predId = opts.retryOfLessonId;
-    const [predRow, failedHw, failedTd] = await Promise.all([
-      db
+
+    // ── Wave 1: independent reads, in parallel ──────────────────────────────
+    // predecessor row (title/description/reflection/note/level), the FAILED
+    // homework + todos (id/title/description), ALL previous task titles (any
+    // status, ordered by order_index for a deterministic anti-repeat list), and
+    // recent teacher insights for this student.
+    const [predRow, failedHw, failedTd, prevHw, prevTd, insightRows] =
+      await Promise.all([
+        db
+          .select({
+            title: lessonSessions.title,
+            description: lessonSessions.description,
+            student_reflection: lessonSessions.student_reflection,
+            teacher_review_note: lessonSessions.teacher_review_note,
+            lesson_level: lessonSessions.lesson_level,
+          })
+          .from(lessonSessions)
+          .where(eq(lessonSessions.id, predId))
+          .limit(1)
+          .then((r) => r[0]),
+        db
+          .select({
+            id: homeworkItems.id,
+            title: homeworkItems.title,
+            description: homeworkItems.description,
+          })
+          .from(homeworkItems)
+          .where(
+            and(
+              eq(homeworkItems.lesson_id, predId),
+              eq(homeworkItems.status, "failed")
+            )
+          ),
+        db
+          .select({
+            id: todoItems.id,
+            title: todoItems.title,
+            description: todoItems.description,
+          })
+          .from(todoItems)
+          .where(
+            and(eq(todoItems.lesson_id, predId), eq(todoItems.status, "failed"))
+          ),
+        db
+          .select({ title: homeworkItems.title })
+          .from(homeworkItems)
+          .where(eq(homeworkItems.lesson_id, predId))
+          .orderBy(homeworkItems.order_index),
+        db
+          .select({ title: todoItems.title })
+          .from(todoItems)
+          .where(eq(todoItems.lesson_id, predId))
+          .orderBy(todoItems.order_index),
+        db
+          .select({ content: studentInsights.content })
+          .from(studentInsights)
+          .where(eq(studentInsights.student_id, studentId))
+          .orderBy(desc(studentInsights.created_at))
+          .limit(10),
+      ]);
+
+    // ── Wave 2: linked difficulty reports — depends on the failed task ids ──
+    // Match by source_id AND source_type (homework ids only against homework
+    // reports, todo ids only against todo reports) — do not rely on source_id
+    // uniqueness alone. Skipped entirely when there are no failed task ids
+    // (never issues an `IN ()`).
+    const failedHwIds = failedHw.map((h) => h.id);
+    const failedTdIds = failedTd.map((t) => t.id);
+    let linkedDiffs: Array<{
+      description: string | null;
+      topic_tags: string[];
+      teacher_note: string | null;
+    }> = [];
+    const diffConds = [];
+    if (failedHwIds.length > 0) {
+      diffConds.push(
+        and(
+          eq(difficultyReports.source_type, "homework"),
+          inArray(difficultyReports.source_id, failedHwIds)
+        )
+      );
+    }
+    if (failedTdIds.length > 0) {
+      diffConds.push(
+        and(
+          eq(difficultyReports.source_type, "todo"),
+          inArray(difficultyReports.source_id, failedTdIds)
+        )
+      );
+    }
+    if (diffConds.length > 0) {
+      linkedDiffs = await db
         .select({
-          teacher_review_note: lessonSessions.teacher_review_note,
-          lesson_level: lessonSessions.lesson_level,
+          description: difficultyReports.description,
+          topic_tags: difficultyReports.topic_tags,
+          teacher_note: difficultyReports.teacher_note,
         })
-        .from(lessonSessions)
-        .where(eq(lessonSessions.id, predId))
-        .limit(1)
-        .then((r) => r[0]),
-      db
-        .select({ title: homeworkItems.title })
-        .from(homeworkItems)
-        .where(
-          and(
-            eq(homeworkItems.lesson_id, predId),
-            eq(homeworkItems.status, "failed")
-          )
-        ),
-      db
-        .select({ title: todoItems.title })
-        .from(todoItems)
-        .where(
-          and(
-            eq(todoItems.lesson_id, predId),
-            eq(todoItems.status, "failed")
-          )
-        ),
-    ]);
+        .from(difficultyReports)
+        .where(diffConds.length === 1 ? diffConds[0] : or(...diffConds));
+    }
+
     predLevel = predRow?.lesson_level ?? null;
     retryContext = {
-      failedTaskTitles: [
-        ...failedHw.map((h) => h.title),
-        ...failedTd.map((t) => t.title),
+      // failedTasks supersedes failedTaskTitles (do not pass both).
+      failedTasks: [
+        ...failedHw.map((h) => ({
+          title: truncate(h.title, RETRY_TITLE_CAP),
+          description: h.description,
+        })),
+        ...failedTd.map((t) => ({
+          title: truncate(t.title, RETRY_TITLE_CAP),
+          description: t.description,
+        })),
       ],
       teacherReviewNote: predRow?.teacher_review_note ?? null,
       lessonLevel: predLevel,
+      linkedDifficulties: linkedDiffs.map((d) => ({
+        description: d.description,
+        topicTags: d.topic_tags,
+        teacherNote: d.teacher_note,
+      })),
+      studentReflection: predRow?.student_reflection ?? null,
+      // When the predecessor row is missing (deleted / race), do NOT fabricate a
+      // misleading object — leave previousLesson null (the prompt omits the
+      // anti-repeat block). Preserves the prior "predRow may be absent" behaviour.
+      previousLesson: predRow
+        ? {
+            title: truncate(predRow.title, RETRY_TITLE_CAP),
+            description: predRow.description,
+            taskTitles: [
+              ...prevHw.map((h) => truncate(h.title, RETRY_TITLE_CAP)),
+              ...prevTd.map((t) => truncate(t.title, RETRY_TITLE_CAP)),
+            ],
+          }
+        : null,
+      // Drop empty / whitespace-only insight content before it reaches the prompt.
+      studentInsights: insightRows
+        .map((i) => i.content)
+        .filter((c) => c.trim().length > 0),
     };
   }
 
