@@ -8,16 +8,73 @@ export interface LessonLearningMapContext {
   resources: Array<{ title: string; description: string | null }>;
 }
 
-// Phase AI-0.5: context passed when this generation is a *retry* of a previous
-// (failed) lesson. Text only — the student's uploaded solution file is never
-// read or included here.
+// Phase AI-0.5 / 1C: context passed when this generation is a *retry* of a
+// previous (failed) lesson. Text only — the student's uploaded solution file is
+// never read or included here.
+//
+// Phase 1C-a (this change) defines the *contract* — the richer optional fields
+// below plus the prompt rendering + caps for them. The code that populates them
+// from the DB lands in Phase 1C-b; until then generate-lesson.ts keeps passing
+// only `failedTaskTitles` (kept optional for backward compatibility).
 export interface LessonRetryContext {
-  failedTaskTitles: string[];
+  /**
+   * @deprecated Superseded by `failedTasks` in Phase 1C-b. Kept optional so the
+   * current generate-lesson.ts (which still passes titles only) keeps compiling
+   * and working. When `failedTasks` is provided it takes precedence and this is
+   * ignored (no duplication).
+   */
+  failedTaskTitles?: string[];
+  /** Failed tasks with their descriptions (richer than titles-only). */
+  failedTasks?: Array<{ title: string; description: string | null }>;
   teacherReviewNote: string | null;
   // The predecessor's level (base/medium/exam), carried so the retry stays at
   // the SAME level. Currently a dormant column (usually null) — when null the
   // prompt falls back to the generic "same level" framing.
   lessonLevel: "base" | "medium" | "exam" | null;
+  /** Difficulty reports linked to THIS lesson's failed tasks (focused evidence). */
+  linkedDifficulties?: Array<{
+    description: string | null;
+    topicTags: string[];
+    teacherNote: string | null;
+  }>;
+  /** The student's own reflection on the predecessor lesson. */
+  studentReflection?: string | null;
+  /** The predecessor lesson's content — used ONLY as anti-repeat guidance. */
+  previousLesson?: {
+    title: string;
+    description: string | null;
+    taskTitles: string[];
+  } | null;
+  /** Teacher-authored insights about the student (background only). */
+  studentInsights?: string[];
+}
+
+// Per-source length caps for the retry context (Phase 1C-a). Keep the prompt
+// bounded so richer context does not inflate tokens/latency unchecked.
+const RETRY_CAPS = {
+  failedTaskDescription: 300,
+  previousLessonDescription: 200,
+  previousTaskTitles: 10,
+  linkedDifficultyDescription: 200,
+  linkedDifficultyTeacherNote: 200,
+  linkedDifficulties: 10,
+  studentReflection: 500,
+  studentInsight: 200,
+  studentInsights: 10,
+} as const;
+
+/**
+ * Pure, non-mutating truncation. Trims first; when the trimmed text exceeds
+ * `max`, cuts it and appends a single ellipsis — counted INSIDE the cap, so the
+ * returned string is always at most `max` characters. Returns "" for
+ * empty/whitespace input. Exported for direct unit testing of the boundaries.
+ */
+export function truncate(text: string, max: number): string {
+  const t = text.trim();
+  if (t.length <= max) return t;
+  // The ellipsis (1 char) is part of the budget, so slice to `max - 1`.
+  if (max <= 1) return "…".slice(0, max); // max=1 → "…", max<=0 → ""
+  return `${t.slice(0, max - 1).trimEnd()}…`;
 }
 
 export function buildLessonGenerationPrompt(params: {
@@ -94,18 +151,28 @@ ${
 `
     : "";
 
-  // Phase 1B — retry lessons use a SEPARATE, failure-first prompt. When the
+  // Phase 1B/1C — retry lessons use a SEPARATE, failure-first prompt. When the
   // teacher chose "repeat", the general lesson-planning rules (the 60/40 split,
   // etc.) are deliberately dropped: the whole lesson must target the specific
   // failure point, led by the teacher's note and the failed tasks, using a
-  // different pedagogical angle. Uses ONLY data already present in retryContext
-  // today (titles, note, level) — no new fields, no new DB reads (those are
-  // Phase 1C). The regular path below is reached only for non-retry generation
-  // and stays byte-identical to before.
+  // different pedagogical angle. Phase 1C-a renders the richer optional context
+  // (failed-task descriptions, linked difficulties, reflection, previous-lesson
+  // anti-repeat, insights) with per-source caps — each block is omitted entirely
+  // when its data is absent. The regular path below is reached only for non-retry
+  // generation and stays byte-identical to before.
   if (retryContext) {
-    const failedTitles =
-      retryContext.failedTaskTitles.length > 0
-        ? retryContext.failedTaskTitles.join("; ")
+    // Resolve the failed tasks: prefer the rich `failedTasks`; fall back to the
+    // legacy titles-only list. Never render both (no duplication).
+    const failedTasks =
+      retryContext.failedTasks?.length
+        ? retryContext.failedTasks
+        : (retryContext.failedTaskTitles ?? []).map((title) => ({
+            title,
+            description: null as string | null,
+          }));
+    const failedTitlesLine =
+      failedTasks.length > 0
+        ? failedTasks.map((t) => t.title).join("; ")
         : "not specified";
     const reviewNote = retryContext.teacherReviewNote?.trim()
       ? `"${retryContext.teacherReviewNote.trim()}"`
@@ -114,12 +181,83 @@ ${
       ? `${retryContext.lessonLevel} — keep the retry at exactly this level`
       : "the same level as the previous lesson";
 
+    // Priority-2 detail: failed tasks WITH their descriptions. Rendered only
+    // when at least one failed task carries a description (otherwise the compact
+    // titles line in the PRIORITY ORDER already covers them — no duplication).
+    const hasFailedDescriptions = failedTasks.some((t) => t.description?.trim());
+    const failedTasksBlock = hasFailedDescriptions
+      ? `\n## Failed tasks — target these directly\n${failedTasks
+          .map(
+            (t) =>
+              `- ${t.title}${
+                t.description?.trim()
+                  ? `: ${truncate(t.description, RETRY_CAPS.failedTaskDescription)}`
+                  : ""
+              }`
+          )
+          .join("\n")}\n`
+      : "";
+
+    // Priority-3: difficulty reports linked to those failed tasks — the focused
+    // diagnostic evidence of what actually went wrong.
+    const linkedDifficultiesBlock = retryContext.linkedDifficulties?.length
+      ? `\n## Diagnosed difficulties (focused evidence — what actually went wrong)\n${retryContext.linkedDifficulties
+          .slice(0, RETRY_CAPS.linkedDifficulties)
+          .map((d) => {
+            const desc = d.description?.trim()
+              ? truncate(d.description, RETRY_CAPS.linkedDifficultyDescription)
+              : "unspecified";
+            const tags = d.topicTags.length
+              ? ` [topics: ${d.topicTags.join(", ")}]`
+              : "";
+            const note = d.teacherNote?.trim()
+              ? ` (teacher note: ${truncate(d.teacherNote, RETRY_CAPS.linkedDifficultyTeacherNote)})`
+              : "";
+            return `- ${desc}${tags}${note}`;
+          })
+          .join("\n")}\n`
+      : "";
+
+    // Priority-4: the student's own words.
+    const reflectionBlock = retryContext.studentReflection?.trim()
+      ? `\n## Student's own reflection (their words after the lesson)\n"${truncate(
+          retryContext.studentReflection,
+          RETRY_CAPS.studentReflection
+        )}"\n`
+      : "";
+
+    // Priority-5: the previous lesson, as ANTI-REPEAT guidance only.
+    const prev = retryContext.previousLesson;
+    const previousLessonBlock = prev
+      ? `\n## Previous lesson — do NOT repeat these (anti-repeat)\nThe previous lesson was "${prev.title}"${
+          prev.description?.trim()
+            ? `: ${truncate(prev.description, RETRY_CAPS.previousLessonDescription)}`
+            : ""
+        }.${
+          prev.taskTitles.length
+            ? `\nIt already used these tasks — do NOT reuse them or their teaching approach:\n${prev.taskTitles
+                .slice(0, RETRY_CAPS.previousTaskTitles)
+                .map((t) => `- ${t}`)
+                .join("\n")}`
+            : ""
+        }\n`
+      : "";
+
+    // Priority-6 (background): teacher-authored insights about the student.
+    const insightsBlock = retryContext.studentInsights?.length
+      ? `\n## What helps this student (teacher insights — background)\n${retryContext.studentInsights
+          .slice(0, RETRY_CAPS.studentInsights)
+          .map((i) => `- ${truncate(i, RETRY_CAPS.studentInsight)}`)
+          .filter((line) => line !== "- ")
+          .join("\n")}\n`
+      : "";
+
     return `You are an adaptive tutoring AI generating a REMEDIAL RETRY lesson. The student already attempted this material and did NOT master it; the teacher reviewed the submission and chose "repeat". Build a focused second pass.
 
 ## PRIORITY ORDER — read this first; it governs the entire lesson
 Teacher feedback and failed tasks override all general lesson-planning guidance. Build the whole lesson around the items below, in this priority:
 1. Teacher's review note (highest priority): ${reviewNote}
-2. Tasks the student failed previously: ${failedTitles}
+2. Tasks the student failed previously: ${failedTitlesLine}
 3. Teacher decision = repeat — stay at ${levelFraming}; the student needs another pass before advancing.
 4. The student profile and other context further down are SECONDARY background only — never let them override 1–3.
 
@@ -140,7 +278,7 @@ Each homework item's "description" must spell out, in order:
 Every homework item AND every todo must state concretely: what the student does, what they are shown, what they must conclude or answer, and how it connects to the failure point. Todo items are short but must still be specific, actionable practice tied to the failure — never vague.
 Do NOT output vague tasks such as "practice more", "review the topic", "solve similar questions", or "understand the concept".
 Include 3–5 homework items and 2–4 todo items, all targeting the failure point.
-
+${failedTasksBlock}${linkedDifficultiesBlock}${reflectionBlock}${previousLessonBlock}${insightsBlock}
 ## Student: ${studentName}
 
 ## Student Profile (secondary background)
