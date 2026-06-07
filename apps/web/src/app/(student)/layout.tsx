@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useAuthStore } from "@/store/auth";
 import { api } from "@/lib/api";
 import { useT } from "@/i18n";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { BookOpen, BarChart2, CalendarDays, Map, LogOut, Menu, X, UserCog } from "lucide-react";
 import { useRealtimeSync } from "@/hooks/use-realtime-sync";
 import { Logo } from "@/components/brand/logo";
+import { CourseSelector } from "@/components/student/course-selector";
 
 export default function StudentLayout({
   children,
@@ -55,6 +56,12 @@ export default function StudentLayout({
         </Link>
         <p className="text-xs text-gray-500 mt-2">{user?.full_name}</p>
       </div>
+
+      {/* CourseSelector uses useSearchParams internally; Suspense keeps the
+          build happy without wrapping the whole layout. */}
+      <Suspense fallback={null}>
+        <CourseSelector />
+      </Suspense>
 
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {nav.map(({ href, label, icon: Icon }) => (
