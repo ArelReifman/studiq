@@ -809,21 +809,25 @@ export const bookingRoutes = new Hono()
         }
 
         void (async () => {
-          const studentId = sorted[0]!.student_id;
-          const [studentRow] = await db
-            .select({ name: profiles.full_name })
-            .from(profiles)
-            .where(eq(profiles.id, studentId))
-            .limit(1);
-          const studentName = studentRow?.name ?? "Student";
-          const totalMin =
-            timeToMin(sorted[sorted.length - 1]!.end_time) -
-            timeToMin(sorted[0]!.start_time);
-          const courseName = await resolveCourseName(sorted[0]?.course_id, studentId);
-          const courseTag  = courseName ? ` · ${escapeTelegramHtml(courseName)}` : "";
-          notifyTelegramAsync(
-            `🚫 <b>Lesson cancelled by you</b>\n${escapeTelegramHtml(studentName)} · ${sorted[0]!.date} · ${sorted[0]!.start_time}–${sorted[sorted.length - 1]!.end_time} · ${formatDurationMin(totalMin)}${courseTag}`
-          );
+          try {
+            const studentId = sorted[0]!.student_id;
+            const [studentRow] = await db
+              .select({ name: profiles.full_name })
+              .from(profiles)
+              .where(eq(profiles.id, studentId))
+              .limit(1);
+            const studentName = studentRow?.name ?? "Student";
+            const totalMin =
+              timeToMin(sorted[sorted.length - 1]!.end_time) -
+              timeToMin(sorted[0]!.start_time);
+            const courseName = await resolveCourseName(sorted[0]?.course_id, studentId);
+            const courseTag  = courseName ? ` · ${escapeTelegramHtml(courseName)}` : "";
+            notifyTelegramAsync(
+              `🚫 <b>Lesson cancelled by you</b>\n${escapeTelegramHtml(studentName)} · ${sorted[0]!.date} · ${sorted[0]!.start_time}–${sorted[sorted.length - 1]!.end_time} · ${formatDurationMin(totalMin)}${courseTag}`
+            );
+          } catch (err) {
+            console.error("[batch-status cancel] Telegram notification threw:", (err as Error).message);
+          }
         })();
       }
 
@@ -1415,17 +1419,24 @@ export const bookingRoutes = new Hono()
       // notify hook later.)
       if (body.status === "cancelled") {
         void (async () => {
-          const [studentRow] = await db
-            .select({ name: profiles.full_name })
-            .from(profiles)
-            .where(eq(profiles.id, updated.student_id))
-            .limit(1);
-          const studentName = studentRow?.name ?? "Student";
-          const courseName  = await resolveCourseName(updated.course_id, updated.student_id);
-          const courseTag   = courseName ? ` · ${escapeTelegramHtml(courseName)}` : "";
-          notifyTelegramAsync(
-            `🚫 <b>Lesson cancelled by you</b>\n${escapeTelegramHtml(studentName)} · ${updated.date} · ${updated.start_time}–${updated.end_time}${courseTag}`
-          );
+          try {
+            const [studentRow] = await db
+              .select({ name: profiles.full_name })
+              .from(profiles)
+              .where(eq(profiles.id, updated.student_id))
+              .limit(1);
+            const studentName = studentRow?.name ?? "Student";
+            const durationLabel = formatDurationMin(
+              timeToMin(updated.end_time) - timeToMin(updated.start_time)
+            );
+            const courseName  = await resolveCourseName(updated.course_id, updated.student_id);
+            const courseTag   = courseName ? ` · ${escapeTelegramHtml(courseName)}` : "";
+            notifyTelegramAsync(
+              `🚫 <b>Lesson cancelled by you</b>\n${escapeTelegramHtml(studentName)} · ${updated.date} · ${updated.start_time}–${updated.end_time} · ${durationLabel}${courseTag}`
+            );
+          } catch (err) {
+            console.error("[single cancel] Telegram notification threw:", (err as Error).message);
+          }
         })();
       }
 
@@ -1492,10 +1503,6 @@ export const bookingRoutes = new Hono()
           .update(lessonBookings)
           .set({ status: "cancelled", updated_at: new Date() })
           .where(inArray(lessonBookings.id, pendingIds));
-
-        notifyTelegramAsync(
-          `❌ <b>Booking cancelled</b>\n${escapeTelegramHtml(studentName)} · ${date} · ${lessonStart}–${lessonEnd}`
-        );
       }
 
       if (approvedIds.length > 0) {
@@ -1503,10 +1510,30 @@ export const bookingRoutes = new Hono()
           .update(lessonBookings)
           .set({ status: "cancel_requested", updated_at: new Date() })
           .where(inArray(lessonBookings.id, approvedIds));
+      }
 
-        notifyTelegramAsync(
-          `⚠️ <b>Cancellation requested</b>\n${escapeTelegramHtml(studentName)} wants to cancel ${date} · ${lessonStart}–${lessonEnd}`
+      // All DB updates are committed above. Resolve course name once for the
+      // whole batch, then send one notification per updated status bucket.
+      // Awaited before the response so the try/catch can suppress Telegram
+      // errors without affecting the already-committed DB state.
+      try {
+        const courseName = await resolveCourseName(sorted[0]?.course_id ?? null, studentId);
+        const courseTag = courseName ? ` · ${escapeTelegramHtml(courseName)}` : "";
+        const durationLabel = formatDurationMin(
+          timeToMin(lessonEnd) - timeToMin(lessonStart)
         );
+        if (pendingIds.length > 0) {
+          notifyTelegramAsync(
+            `❌ <b>Booking cancelled</b>\n${escapeTelegramHtml(studentName)} · ${date} · ${lessonStart}–${lessonEnd} · ${durationLabel}${courseTag}`
+          );
+        }
+        if (approvedIds.length > 0) {
+          notifyTelegramAsync(
+            `⚠️ <b>Cancellation requested</b>\n${escapeTelegramHtml(studentName)} wants to cancel\n${date} · ${lessonStart}–${lessonEnd} · ${durationLabel}${courseTag}`
+          );
+        }
+      } catch (err) {
+        console.error("[batch-cancel] Telegram notification threw:", (err as Error).message);
       }
 
       return c.json({ message: "Cancellation processed" });
@@ -1551,15 +1578,24 @@ export const bookingRoutes = new Hono()
         .returning();
 
       void (async () => {
-        const [studentRow] = await db
-          .select({ name: profiles.full_name })
-          .from(profiles)
-          .where(eq(profiles.id, studentId))
-          .limit(1);
-        const studentName = studentRow?.name ?? "Student";
-        notifyTelegramAsync(
-          `❌ <b>Booking cancelled</b>\n${escapeTelegramHtml(studentName)} · ${updated!.date} · ${updated!.start_time}–${updated!.end_time}`
-        );
+        try {
+          const [studentRow] = await db
+            .select({ name: profiles.full_name })
+            .from(profiles)
+            .where(eq(profiles.id, studentId))
+            .limit(1);
+          const studentName = studentRow?.name ?? "Student";
+          const durationLabel = formatDurationMin(
+            timeToMin(updated!.end_time) - timeToMin(updated!.start_time)
+          );
+          const courseName = await resolveCourseName(updated!.course_id, studentId);
+          const courseTag = courseName ? ` · ${escapeTelegramHtml(courseName)}` : "";
+          notifyTelegramAsync(
+            `❌ <b>Booking cancelled</b>\n${escapeTelegramHtml(studentName)} · ${updated!.date} · ${updated!.start_time}–${updated!.end_time} · ${durationLabel}${courseTag}`
+          );
+        } catch (err) {
+          console.error("[single-cancel pending] Telegram notification threw:", (err as Error).message);
+        }
       })();
 
       return c.json({ message: "Booking cancelled", status: "cancelled" });
@@ -1574,15 +1610,24 @@ export const bookingRoutes = new Hono()
 
       // Telegram: tell the teacher this needs their attention.
       void (async () => {
-        const [studentRow] = await db
-          .select({ name: profiles.full_name })
-          .from(profiles)
-          .where(eq(profiles.id, studentId))
-          .limit(1);
-        const studentName = studentRow?.name ?? "Student";
-        notifyTelegramAsync(
-          `⚠️ <b>Cancellation requested</b>\n${escapeTelegramHtml(studentName)} wants to cancel ${updated!.date} · ${updated!.start_time}–${updated!.end_time}`
-        );
+        try {
+          const [studentRow] = await db
+            .select({ name: profiles.full_name })
+            .from(profiles)
+            .where(eq(profiles.id, studentId))
+            .limit(1);
+          const studentName = studentRow?.name ?? "Student";
+          const durationLabel = formatDurationMin(
+            timeToMin(updated!.end_time) - timeToMin(updated!.start_time)
+          );
+          const courseName = await resolveCourseName(updated!.course_id, studentId);
+          const courseTag = courseName ? ` · ${escapeTelegramHtml(courseName)}` : "";
+          notifyTelegramAsync(
+            `⚠️ <b>Cancellation requested</b>\n${escapeTelegramHtml(studentName)} wants to cancel\n${updated!.date} · ${updated!.start_time}–${updated!.end_time} · ${durationLabel}${courseTag}`
+          );
+        } catch (err) {
+          console.error("[single-cancel approved] Telegram notification threw:", (err as Error).message);
+        }
       })();
 
       return c.json({

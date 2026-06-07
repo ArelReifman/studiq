@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
 // Mutable impersonation context so tests can switch the logged-in student.
@@ -671,6 +671,196 @@ describe("Telegram course tag — batch booking", () => {
     expect(created).toHaveLength(1);
 
     // Restore mock to normal vi.fn() for subsequent tests.
+    mockNotify.mockImplementation(() => undefined);
+  });
+});
+
+// ── Telegram course tag in batch-cancel notifications ─────────────────────────
+// POST /batch-cancel is awaited before the response, so mockNotify is
+// synchronously verifiable — no race conditions, no fake timers needed.
+//
+// MANUAL CHECKLIST — fire-and-forget routes (DELETE /:id):
+//   1. Student cancels a PENDING booking → ❌ message includes duration and
+//      course name; no UUID visible.
+//   2. Student requests cancellation of an APPROVED booking → ⚠️ message has
+//      student name on its own line, date/time/duration/course on the next.
+//   3. Course A and Course B produce different course names in their messages.
+//   4. Telegram or resolveCourseName failure → booking still returns success;
+//      no 500 returned; status in DB is updated correctly.
+describe("Telegram course tag — batch-cancel", () => {
+  const mockNotify = notifyTelegramAsync as ReturnType<typeof vi.fn>;
+
+  beforeAll(async () => {
+    await initTestDb();
+    await testDb
+      .insert(profiles)
+      .values({
+        id: TEACHER_ID,
+        role: "teacher",
+        full_name: "Teacher",
+        email: "teacher@test.dev",
+      })
+      .onConflictDoNothing();
+    await testDb.insert(teachers).values({ id: TEACHER_ID }).onConflictDoNothing();
+  });
+
+  it("pending batch with course: 200, status=cancelled, one message with duration and course name", async () => {
+    mockNotify.mockClear();
+    const sid = randomUUID();
+    const courseId = randomUUID();
+    await seedCourse(courseId, "Linear Algebra");
+    await seedStudent(sid);
+    const date = nextDate();
+    // Two consecutive 30-min slots = 1h total
+    const bId1 = await seedBooking(sid, courseId, date, "10:00", "10:30");
+    const bId2 = await seedBooking(sid, courseId, date, "10:30", "11:00");
+
+    ctx.USER_ID = sid;
+    ctx.ROLE = "student";
+    const res = await bookingRoutes.request("/batch-cancel", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids: [bId1, bId2] }),
+    });
+    expect(res.status).toBe(200);
+
+    // Both rows committed as cancelled before Telegram fires
+    const rows = await testDb
+      .select({ status: lessonBookings.status })
+      .from(lessonBookings)
+      .where(inArray(lessonBookings.id, [bId1, bId2]));
+    expect(rows.every((r) => r.status === "cancelled")).toBe(true);
+
+    // Exactly one Telegram message for the whole batch
+    expect(mockNotify).toHaveBeenCalledTimes(1);
+    const msg: string = mockNotify.mock.calls[0]![0] as string;
+    expect(msg).toContain("Booking cancelled");
+    expect(msg).toContain("Linear Algebra");
+    expect(msg).toContain("1h");
+    expect(msg).not.toContain(courseId); // no raw UUID
+  });
+
+  it("approved batch with course: 200, status=cancel_requested, one message with Cancellation requested + duration + course name", async () => {
+    mockNotify.mockClear();
+    const sid = randomUUID();
+    const courseId = randomUUID();
+    await seedCourse(courseId, "Calculus");
+    await seedStudent(sid);
+    const date = nextDate();
+    // Insert two approved slots directly
+    const bId1 = randomUUID();
+    const bId2 = randomUUID();
+    await testDb.insert(lessonBookings).values([
+      {
+        id: bId1,
+        student_id: sid,
+        teacher_id: TEACHER_ID,
+        date,
+        start_time: "14:00",
+        end_time: "14:30",
+        course_id: courseId,
+        status: "approved",
+      },
+      {
+        id: bId2,
+        student_id: sid,
+        teacher_id: TEACHER_ID,
+        date,
+        start_time: "14:30",
+        end_time: "15:00",
+        course_id: courseId,
+        status: "approved",
+      },
+    ]);
+
+    ctx.USER_ID = sid;
+    ctx.ROLE = "student";
+    const res = await bookingRoutes.request("/batch-cancel", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids: [bId1, bId2] }),
+    });
+    expect(res.status).toBe(200);
+
+    // Both rows committed as cancel_requested before Telegram fires
+    const rows = await testDb
+      .select({ status: lessonBookings.status })
+      .from(lessonBookings)
+      .where(inArray(lessonBookings.id, [bId1, bId2]));
+    expect(rows.every((r) => r.status === "cancel_requested")).toBe(true);
+
+    // Exactly one Telegram message
+    expect(mockNotify).toHaveBeenCalledTimes(1);
+    const msg: string = mockNotify.mock.calls[0]![0] as string;
+    expect(msg).toContain("Cancellation requested");
+    expect(msg).toContain("Calculus");
+    expect(msg).toContain("1h");
+    expect(msg).not.toContain(courseId); // no raw UUID
+  });
+
+  it("batch-cancel without course_id: cancellation succeeds, message sent, no undefined or UUID in message", async () => {
+    mockNotify.mockClear();
+    const sid = randomUUID();
+    await seedStudent(sid);
+    const date = nextDate();
+    const bId = await seedBooking(sid, null, date, "15:00", "16:00");
+
+    ctx.USER_ID = sid;
+    ctx.ROLE = "student";
+    const res = await bookingRoutes.request("/batch-cancel", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids: [bId] }),
+    });
+    expect(res.status).toBe(200);
+
+    // Row committed before Telegram fires
+    const [row] = await testDb
+      .select({ status: lessonBookings.status })
+      .from(lessonBookings)
+      .where(eq(lessonBookings.id, bId));
+    expect(row?.status).toBe("cancelled");
+
+    expect(mockNotify).toHaveBeenCalledTimes(1);
+    const msg: string = mockNotify.mock.calls[0]![0] as string;
+    expect(msg).toContain("Booking cancelled");
+    expect(msg).not.toContain("undefined");
+    // No UUID pattern — no raw course_id or booking_id in message
+    expect(msg).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/i);
+  });
+
+  it("Telegram failure does not prevent batch-cancel: status updated, response 200, not 500", async () => {
+    mockNotify.mockClear();
+    // notifyTelegramAsync throws on this invocation only
+    mockNotify.mockImplementationOnce(() => {
+      throw new Error("Telegram down");
+    });
+
+    const sid = randomUUID();
+    const courseId = randomUUID();
+    await seedCourse(courseId, "Physics");
+    await seedStudent(sid);
+    const date = nextDate();
+    const bId = await seedBooking(sid, courseId, date, "16:00", "17:00");
+
+    ctx.USER_ID = sid;
+    ctx.ROLE = "student";
+    const res = await bookingRoutes.request("/batch-cancel", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids: [bId] }),
+    });
+    // Cancellation must succeed even when Telegram throws
+    expect(res.status).toBe(200);
+
+    // DB: row is still cancelled
+    const [row] = await testDb
+      .select({ status: lessonBookings.status })
+      .from(lessonBookings)
+      .where(eq(lessonBookings.id, bId));
+    expect(row?.status).toBe("cancelled");
+
+    // Restore mock for subsequent tests
     mockNotify.mockImplementation(() => undefined);
   });
 });
