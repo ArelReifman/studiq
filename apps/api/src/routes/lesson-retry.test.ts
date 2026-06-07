@@ -24,19 +24,25 @@ vi.mock("../middleware/auth.js", () => ({
   requireRole: () => async (_c: any, next: any) => next(),
 }));
 
-// Deterministic Claude — no network. Returns a fixed generated lesson.
+// Deterministic Claude — no network. generateLesson now uses the structured
+// tool-use path (callClaudeTool), whose `input` is already an object; the mock
+// hands a fixed lesson object straight to the parser (Zod). callClaude is also
+// stubbed for any text-JSON caller, but the lesson path uses callClaudeTool.
+const FIXED_LESSON = {
+  title: "Retry Lesson",
+  description: "A fresh pass on the same topic.",
+  homework_items: [
+    { title: "alt homework", description: "different angle", order_index: 0 },
+  ],
+  todo_items: [{ title: "alt todo", order_index: 0 }],
+};
 vi.mock("../services/ai/claude.js", () => ({
   callClaude: vi.fn(async (_prompt: string, parse: (t: string) => unknown) =>
-    parse(
-      JSON.stringify({
-        title: "Retry Lesson",
-        description: "A fresh pass on the same topic.",
-        homework_items: [
-          { title: "alt homework", description: "different angle", order_index: 0 },
-        ],
-        todo_items: [{ title: "alt todo", order_index: 0 }],
-      })
-    )
+    parse(JSON.stringify(FIXED_LESSON))
+  ),
+  callClaudeTool: vi.fn(
+    async (_prompt: string, parseInput: (input: unknown) => unknown) =>
+      parseInput(FIXED_LESSON)
   ),
 }));
 
@@ -51,7 +57,7 @@ vi.mock("../services/ai/update-teacher-style.js", () => ({
 import { initTestDb, testDb } from "../test/pglite-db.js";
 import { lessonRoutes } from "./lessons.js";
 import { generateLesson } from "../services/ai/generate-lesson.js";
-import { callClaude } from "../services/ai/claude.js";
+import { callClaudeTool } from "../services/ai/claude.js";
 import {
   profiles,
   teachers,
@@ -299,12 +305,12 @@ async function seedRichScenario() {
   return { sid, cid, tid, pred: lesson! };
 }
 
-/** Fire a retry and return the exact prompt string handed to callClaude. */
+/** Fire a retry and return the exact prompt string handed to callClaudeTool. */
 async function captureRetryPrompt(sid: string, predId: string) {
-  vi.mocked(callClaude).mockClear();
+  vi.mocked(callClaudeTool).mockClear();
   const res = await postRetry(sid, predId);
   expect(res.status).toBe(201);
-  const prompt = vi.mocked(callClaude).mock.calls[0]![0] as string;
+  const prompt = vi.mocked(callClaudeTool).mock.calls[0]![0] as string;
   return { res, prompt };
 }
 
@@ -509,7 +515,7 @@ describe("POST /lessons/generate — retry lesson (Phase AI-0.5)", () => {
 
   it("12. Claude failure leaves the predecessor active (archive never happens)", async () => {
     const { sid, cid, tid, pred } = await fullScenario();
-    vi.mocked(callClaude).mockRejectedValueOnce(new Error("claude down"));
+    vi.mocked(callClaudeTool).mockRejectedValueOnce(new Error("claude down"));
 
     const res = await postRetry(sid, pred.id);
     expect(res.status).toBe(500);
