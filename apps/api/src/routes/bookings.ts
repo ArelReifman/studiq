@@ -104,17 +104,47 @@ async function resolveCourseName(
   return "";
 }
 
+/**
+ * Returns true when `studentId` has an ACTIVE enrollment in `courseId`.
+ * Used only by the student booking routes to gate an explicit course_id;
+ * never called when course_id is omitted, so the no-course path runs no
+ * extra query. Does not mutate anything.
+ */
+async function isActivelyEnrolled(
+  studentId: string,
+  courseId: string
+): Promise<boolean> {
+  const [row] = await db
+    .select({ course_id: studentCourses.course_id })
+    .from(studentCourses)
+    .where(
+      and(
+        eq(studentCourses.student_id, studentId),
+        eq(studentCourses.course_id, courseId),
+        eq(studentCourses.is_active, true)
+      )
+    )
+    .limit(1);
+  return !!row;
+}
+
 // ── Validation schemas ────────────────────────────────────────────────────────
 
 const bookSchema = z.object({
   availability_id: z.string().uuid(),
   note: z.string().max(500).optional(),
+  // Optional. When sent, the route verifies the student is actively enrolled
+  // and stores it on the booking. When absent, behaviour is unchanged.
+  course_id: z.string().uuid().optional(),
 });
 
 /** Atomic batch booking: one or more consecutive slots = one lesson. */
 const batchBookSchema = z.object({
   availability_ids: z.array(z.string().uuid()).min(1).max(6),
   note: z.string().max(500).optional(),
+  // Optional. Same contract as bookSchema.course_id — verified once, then
+  // written to every row in the batch.
+  course_id: z.string().uuid().optional(),
 });
 
 const respondSchema = z.object({
@@ -265,6 +295,12 @@ export const bookingRoutes = new Hono()
 
     if (!student) return c.json({ error: "Student not found" }, 404);
 
+    // Only when a course is explicitly requested: verify active enrollment.
+    // Omitted course_id runs no extra query and leaves behaviour unchanged.
+    if (body.course_id && !(await isActivelyEnrolled(studentId, body.course_id))) {
+      return c.json({ error: "Not enrolled in this course" }, 403);
+    }
+
     const [slot] = await db
       .select()
       .from(teacherAvailability)
@@ -317,6 +353,7 @@ export const bookingRoutes = new Hono()
         start_time: slot.start_time,
         end_time: slot.end_time,
         student_note: body.note,
+        course_id: body.course_id ?? null,
       })
       .returning();
 
@@ -509,7 +546,7 @@ export const bookingRoutes = new Hono()
   // Creates all booking rows and sends ONE Telegram notification.
   .post("/batch", requireRole("student"), zValidator("json", batchBookSchema), async (c) => {
     const studentId = c.get("userId");
-    const { availability_ids, note } = c.req.valid("json");
+    const { availability_ids, note, course_id } = c.req.valid("json");
 
     const [student] = await db
       .select({ teacher_id: students.teacher_id })
@@ -518,6 +555,12 @@ export const bookingRoutes = new Hono()
       .limit(1);
 
     if (!student) return c.json({ error: "Student not found" }, 404);
+
+    // Only when a course is explicitly requested: verify active enrollment.
+    // Omitted course_id runs no extra query and leaves behaviour unchanged.
+    if (course_id && !(await isActivelyEnrolled(studentId, course_id))) {
+      return c.json({ error: "Not enrolled in this course" }, 403);
+    }
 
     const slots = await db
       .select()
@@ -590,6 +633,7 @@ export const bookingRoutes = new Hono()
           start_time: slot.start_time,
           end_time: slot.end_time,
           student_note: note ?? null,
+          course_id: course_id ?? null,
         }))
       )
       .returning();
