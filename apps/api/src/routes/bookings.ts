@@ -14,6 +14,7 @@ import {
 } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { notifyTelegramAsync, escapeTelegramHtml } from "../lib/notify.js";
+import { resolveCourseName } from "../lib/course-resolver.js";
 import { ensureDefaultSlots } from "../services/scheduling/ensure-default-slots.js";
 import { createCalendarEvent, deleteCalendarEvent, updateCalendarEvent } from "../services/google-calendar.js";
 import { syncBookingsByIds } from "../services/calendar-sync-worker.js";
@@ -40,68 +41,6 @@ function addMinutes(hhmm: string, min: number): string {
   const h = Math.floor(total / 60);
   const m = total % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-}
-
-// ── Course name resolver ──────────────────────────────────────────────────────
-//
-// Returns a human-readable course name for GCal titles and Telegram messages.
-//
-// Resolution order:
-//   1. booking.course_id  — explicit course set at lesson creation (Phase 2.2+)
-//   2. student.primary_course_id — legacy single-course default
-//   3. sole entry in student_courses — student has exactly one course but no primary
-//
-// Returns "" when the course cannot be determined (multi-course student without
-// an explicit booking course_id). Callers treat "" as "omit course from title".
-// Never throws — a missing name degrades gracefully in GCal/Telegram.
-async function resolveCourseName(
-  courseId: string | null | undefined,
-  studentId: string
-): Promise<string> {
-  // Path 1: explicit course_id on this booking
-  if (courseId) {
-    const [row] = await db
-      .select({ name: courses.name })
-      .from(courses)
-      .where(eq(courses.id, courseId))
-      .limit(1);
-    return row?.name ?? "";
-  }
-
-  // Path 2: student's primary_course_id (backward-compat for older lessons)
-  const [student] = await db
-    .select({ primary_course_id: students.primary_course_id })
-    .from(students)
-    .where(eq(students.id, studentId))
-    .limit(1);
-
-  if (student?.primary_course_id) {
-    const [row] = await db
-      .select({ name: courses.name })
-      .from(courses)
-      .where(eq(courses.id, student.primary_course_id))
-      .limit(1);
-    return row?.name ?? "";
-  }
-
-  // Path 3: sole active entry in student_courses (no primary set, exactly one
-  // active course). Archived courses (is_active = false) are excluded so they
-  // don't inflate the count and suppress name resolution for live courses.
-  const sc = await db
-    .select({ course_id: studentCourses.course_id })
-    .from(studentCourses)
-    .where(and(eq(studentCourses.student_id, studentId), eq(studentCourses.is_active, true)));
-
-  if (sc.length === 1) {
-    const [row] = await db
-      .select({ name: courses.name })
-      .from(courses)
-      .where(eq(courses.id, sc[0]!.course_id))
-      .limit(1);
-    return row?.name ?? "";
-  }
-
-  return "";
 }
 
 /**
