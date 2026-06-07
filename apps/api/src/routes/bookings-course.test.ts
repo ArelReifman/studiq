@@ -103,6 +103,26 @@ async function bookingsFor(studentId: string) {
     .where(eq(lessonBookings.student_id, studentId));
 }
 
+// Inserts a booking row directly (no availability required — availability_id
+// is nullable). Used by the GET /my tests which need existing rows to read.
+async function seedBooking(
+  studentId: string,
+  courseId: string | null,
+  date: string
+): Promise<string> {
+  const id = randomUUID();
+  await testDb.insert(lessonBookings).values({
+    id,
+    student_id: studentId,
+    teacher_id: TEACHER_ID,
+    date,
+    start_time: "10:00",
+    end_time: "11:00",
+    course_id: courseId,
+  });
+  return id;
+}
+
 describe("Bookings course_id (Scope 2)", () => {
   beforeAll(async () => {
     await initTestDb();
@@ -278,5 +298,109 @@ describe("Bookings course_id (Scope 2)", () => {
     });
     expect(res.status).toBe(403);
     expect(await bookingsFor(sid)).toHaveLength(0);
+  });
+});
+
+describe("GET /my course_id filtering", () => {
+  it("without course_id returns all student bookings including different courses and null-course", async () => {
+    const sid = randomUUID();
+    const courseA = randomUUID();
+    const courseB = randomUUID();
+    await seedCourse(courseA, "A");
+    await seedCourse(courseB, "B");
+    await seedStudent(sid);
+    const bA = await seedBooking(sid, courseA, "2099-02-01");
+    const bB = await seedBooking(sid, courseB, "2099-02-02");
+    const bNull = await seedBooking(sid, null, "2099-02-03");
+
+    ctx.USER_ID = sid;
+    ctx.ROLE = "student";
+    const res = await bookingRoutes.request("/my");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ id: string }>;
+    const ids = body.map((b) => b.id).sort();
+    expect(ids).toEqual([bA, bB, bNull].sort());
+  });
+
+  it("with course_id=A returns only bookings of course A", async () => {
+    const sid = randomUUID();
+    const courseA = randomUUID();
+    const courseB = randomUUID();
+    await seedCourse(courseA, "A");
+    await seedCourse(courseB, "B");
+    await seedStudent(sid);
+    const bA = await seedBooking(sid, courseA, "2099-03-01");
+    await seedBooking(sid, courseB, "2099-03-02");
+    await seedBooking(sid, null, "2099-03-03");
+
+    ctx.USER_ID = sid;
+    ctx.ROLE = "student";
+    const res = await bookingRoutes.request(`/my?course_id=${courseA}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ id: string }>;
+    expect(body.map((b) => b.id)).toEqual([bA]);
+  });
+
+  it("with course_id=B returns only bookings of course B", async () => {
+    const sid = randomUUID();
+    const courseA = randomUUID();
+    const courseB = randomUUID();
+    await seedCourse(courseA, "A");
+    await seedCourse(courseB, "B");
+    await seedStudent(sid);
+    await seedBooking(sid, courseA, "2099-04-01");
+    const bB = await seedBooking(sid, courseB, "2099-04-02");
+
+    ctx.USER_ID = sid;
+    ctx.ROLE = "student";
+    const res = await bookingRoutes.request(`/my?course_id=${courseB}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ id: string }>;
+    expect(body.map((b) => b.id)).toEqual([bB]);
+  });
+
+  it("with a UUID not in the student's bookings returns empty array", async () => {
+    const sid = randomUUID();
+    const courseA = randomUUID();
+    const unrelatedCourse = randomUUID();
+    await seedCourse(courseA, "A");
+    await seedCourse(unrelatedCourse, "Unrelated");
+    await seedStudent(sid);
+    await seedBooking(sid, courseA, "2099-05-01");
+
+    ctx.USER_ID = sid;
+    ctx.ROLE = "student";
+    const res = await bookingRoutes.request(`/my?course_id=${unrelatedCourse}`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual([]);
+  });
+
+  it("with a non-UUID course_id returns a validation error without hitting DB", async () => {
+    const sid = randomUUID();
+    await seedStudent(sid);
+
+    ctx.USER_ID = sid;
+    ctx.ROLE = "student";
+    const res = await bookingRoutes.request("/my?course_id=not-a-uuid");
+    expect(res.status).toBe(400);
+  });
+
+  it("never returns another student's bookings even with the same course_id", async () => {
+    const studentA = randomUUID();
+    const studentB = randomUUID();
+    const sharedCourse = randomUUID();
+    await seedCourse(sharedCourse, "Shared");
+    await seedStudent(studentA);
+    await seedStudent(studentB);
+    await seedBooking(studentA, sharedCourse, "2099-06-01");
+    const bB = await seedBooking(studentB, sharedCourse, "2099-06-02");
+
+    ctx.USER_ID = studentB;
+    ctx.ROLE = "student";
+    const res = await bookingRoutes.request(`/my?course_id=${sharedCourse}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ id: string }>;
+    expect(body.map((b) => b.id)).toEqual([bB]);
   });
 });

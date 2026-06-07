@@ -118,8 +118,16 @@ export default function StudentBookPage() {
   });
 
   const { data: bookings = [], isLoading: bookingsLoading } = useQuery<Booking[]>({
-    queryKey: ["my-bookings"],
-    queryFn: () => api.get("/bookings/my"),
+    queryKey: ["my-bookings", selectedCourseId ?? "all"],
+    queryFn: () =>
+      api.get(
+        selectedCourseId
+          ? `/bookings/my?course_id=${selectedCourseId}`
+          : `/bookings/my`
+      ),
+    // Wait for course context before fetching so multi-course students never
+    // see an unfiltered flash of all-course bookings.
+    enabled: !isCourseLoading,
   });
 
   const activeDates = useMemo(
@@ -271,7 +279,7 @@ export default function StudentBookPage() {
 
   // ── Loading ───────────────────────────────────────────────────────────────
 
-  if (slotsLoading || bookingsLoading) {
+  if (slotsLoading || bookingsLoading || isCourseLoading) {
     return <p className="text-gray-500">{t("common.loading")}</p>;
   }
 
