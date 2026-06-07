@@ -273,3 +273,161 @@ export async function callClaude<T>(
     }
   }
 }
+
+// ── Structured tool-use path (lesson generation) ────────────────────────────
+// Separate from callClaude on purpose: the response is a `tool_use` block whose
+// `.input` is already a parsed object (no JSON string, no fences, no regex, no
+// repair). This is what makes math/LaTeX content (backslashes, newlines) safe —
+// the values never pass through JSON.parse. callClaude and all its text callers
+// stay byte-for-byte unchanged.
+
+const redactApiKeys = (s: string) =>
+  s.replace(/sk-ant-[A-Za-z0-9_\-]+/g, "sk-ant-***");
+
+function wrapClaudeError(err: unknown): Error {
+  const cause = (err as { cause?: unknown })?.cause;
+  const causeMsg =
+    cause instanceof Error
+      ? `${cause.name}: ${redactApiKeys(cause.message)}`
+      : cause
+        ? redactApiKeys(String(cause))
+        : "no cause";
+  const baseMsg = err instanceof Error ? redactApiKeys(err.message) : redactApiKeys(String(err));
+  return new Error(`Claude call failed — ${baseMsg} (cause: ${causeMsg})`);
+}
+
+/** A JSON-Schema object describing the tool's input shape. */
+export interface ToolInputSchema {
+  type: "object";
+  properties?: Record<string, unknown>;
+  required?: string[];
+  additionalProperties?: boolean;
+  [k: string]: unknown;
+}
+
+export interface CallClaudeToolOptions {
+  /** Override the model. */
+  model?: string;
+  /** Override the output token budget. */
+  maxTokens?: number;
+  /** When set, emit one structured metrics line (metadata only — no content). */
+  flow?: string;
+  /** The single tool the model is forced to call. */
+  tool: {
+    name: string;
+    description: string;
+    inputSchema: ToolInputSchema;
+  };
+}
+
+/**
+ * Calls Claude forcing a single `tool_use` with `tool.inputSchema`, then hands
+ * the resulting `input` object straight to `parseInput` (e.g. a Zod
+ * `Schema.parse`). No JSON.parse, no markdown extraction, no repair. On any
+ * failure (API error, missing/mismatched tool, schema rejection) it throws a
+ * categorized error and never mutates anything.
+ */
+export async function callClaudeTool<T>(
+  prompt: string,
+  parseInput: (input: unknown) => T,
+  options: CallClaudeToolOptions
+): Promise<T> {
+  const client = getClaudeClient();
+  const model = options.model ?? DEFAULT_MODEL;
+  const maxTokens = options.maxTokens ?? DEFAULT_MAX_TOKENS;
+  const flow = options.flow;
+  const tool = options.tool;
+  const callStartedAt = Date.now();
+  let claudeMs = 0;
+
+  // One metric line per call; metadata only (lengths/timings/category). Never
+  // the prompt, the tool input, the response, task content, names, or ids.
+  const emit = (fields: Record<string, unknown>): void => {
+    if (!flow) return;
+    console.log(
+      JSON.stringify({
+        tag: "ai_metrics",
+        flow,
+        model,
+        max_tokens: maxTokens,
+        prompt_chars: prompt.length,
+        response_mode: "tool_use",
+        ...fields,
+      })
+    );
+  };
+
+  // ── Single Anthropic call, forcing the tool ───────────────────────────────
+  let message;
+  try {
+    const calledAt = Date.now();
+    message = await client.messages.create({
+      model,
+      max_tokens: maxTokens,
+      messages: [{ role: "user", content: prompt }],
+      tools: [
+        {
+          name: tool.name,
+          description: tool.description,
+          input_schema: tool.inputSchema,
+        },
+      ],
+      tool_choice: {
+        type: "tool",
+        name: tool.name,
+        disable_parallel_tool_use: true,
+      },
+    });
+    claudeMs += Date.now() - calledAt;
+  } catch (err) {
+    emit({ success: false, error_type: "api_error", call_ms: Date.now() - callStartedAt });
+    throw wrapClaudeError(err);
+  }
+
+  const stopReason = message.stop_reason ?? null;
+  const outputTokens = message.usage?.output_tokens ?? null;
+  const baseFields = () => ({
+    claude_ms: claudeMs,
+    call_ms: Date.now() - callStartedAt,
+    stop_reason: stopReason,
+    output_tokens: outputTokens,
+  });
+
+  // Deterministically pick the first tool_use block with the expected name.
+  // Text / thinking / differently-named tool blocks are ignored.
+  const toolUse = message.content.find(
+    (b) => b.type === "tool_use" && b.name === tool.name
+  );
+  if (!toolUse || toolUse.type !== "tool_use") {
+    emit({
+      success: false,
+      error_type: "tool_use_missing",
+      tool_use_found: false,
+      schema_validation: "failure",
+      ...baseFields(),
+    });
+    throw new Error("Expected tool_use block not found in Claude response");
+  }
+
+  // Validate the structured input with the caller's schema (Zod). The object is
+  // returned ONLY after this succeeds.
+  try {
+    const result = parseInput(toolUse.input);
+    emit({
+      success: true,
+      tool_use_found: true,
+      schema_validation: "success",
+      ...baseFields(),
+    });
+    return result;
+  } catch (err) {
+    emit({
+      success: false,
+      error_type: "schema_error",
+      tool_use_found: true,
+      schema_validation: "failure",
+      ...baseFields(),
+    });
+    throw err;
+  }
+}

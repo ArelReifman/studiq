@@ -16,7 +16,7 @@ import {
   learningResources,
   studentInsights,
 } from "../../db/schema.js";
-import { callClaude } from "./claude.js";
+import { callClaudeTool, type ToolInputSchema } from "./claude.js";
 import {
   buildLessonGenerationPrompt,
   truncate,
@@ -55,6 +55,44 @@ const GeneratedLessonSchema = z.object({
     })
   ),
 });
+
+// JSON-Schema mirror of GeneratedLessonSchema for the Anthropic tool. It guides
+// the model's structured output; GeneratedLessonSchema (Zod, above) remains the
+// single source of truth for VALIDATION of the returned tool input.
+const LESSON_TOOL_INPUT_SCHEMA: ToolInputSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["title", "description", "homework_items", "todo_items"],
+  properties: {
+    title: { type: "string" },
+    description: { type: "string" },
+    homework_items: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "description", "order_index"],
+        properties: {
+          title: { type: "string" },
+          description: { type: "string" },
+          order_index: { type: "number" },
+        },
+      },
+    },
+    todo_items: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "order_index"],
+        properties: {
+          title: { type: "string" },
+          order_index: { type: "number" },
+        },
+      },
+    },
+  },
+};
 
 /**
  * Optional Learning Map anchoring. When provided, the generated lesson is
@@ -383,21 +421,24 @@ export async function generateLesson(
     retryContext,
   });
 
-  // 3. Call Claude. Phase 1A: full lesson + retry generation runs on Sonnet
-  // (richer pedagogy, larger token budget) while every other AI flow stays on
-  // the Haiku default inside callClaude. The flow label drives metrics logging.
-  const generated = await callClaude(
+  // 3. Call Claude via STRUCTURED tool use (Sonnet). The model returns a
+  // tool_use block whose `input` is already a parsed object — no JSON string, so
+  // math/LaTeX content (backslashes, newlines, quotes) can never break parsing.
+  // GeneratedLessonSchema (Zod) validates that object; only a valid lesson is
+  // returned. Every other AI flow keeps using callClaude (text JSON).
+  const generated = await callClaudeTool(
     prompt,
-    (text) => {
-      const parsed = JSON.parse(text);
-      return GeneratedLessonSchema.parse(parsed);
-    },
+    (input) => GeneratedLessonSchema.parse(input),
     {
       model: LESSON_MODEL,
       maxTokens: LESSON_MAX_TOKENS,
       flow: opts?.retryOfLessonId ? "lesson_retry" : "lesson_regular",
-      // One bounded JSON-syntax repair on a malformed (non-truncated) response.
-      repairJsonOnce: true,
+      tool: {
+        name: "emit_lesson",
+        description:
+          "Return the generated lesson. Put each field's content verbatim into the structured input — do NOT JSON-encode or escape values yourself; math/LaTeX and multi-line text are passed as plain strings.",
+        inputSchema: LESSON_TOOL_INPUT_SCHEMA,
+      },
     }
   );
 

@@ -11,7 +11,7 @@ vi.mock("@anthropic-ai/sdk", () => ({
 // getClaudeClient() requires an API key (read lazily on first call).
 process.env["ANTHROPIC_API_KEY"] = "sk-ant-test-key";
 
-import { callClaude } from "./claude.js";
+import { callClaude, callClaudeTool, type ToolInputSchema } from "./claude.js";
 
 /** Build a Claude `messages.create` response with a single text block. */
 function textMsg(
@@ -217,6 +217,161 @@ describe("callClaude — JSON syntax repair (bounded)", () => {
     const result = await callClaude("p", parseJson); // no options at all
     expect(result).toEqual({ a: 1 });
     expect(createMock).toHaveBeenCalledTimes(1);
+    expect(metricLines()).toHaveLength(0);
+  });
+});
+
+// ── callClaudeTool (structured tool use) ────────────────────────────────────
+
+const TOOL_SCHEMA: ToolInputSchema = { type: "object" };
+const TOOL = {
+  name: "emit_lesson",
+  description: "Return the lesson.",
+  inputSchema: TOOL_SCHEMA,
+};
+const TOOL_OPTS = { flow: "lesson_regular", tool: TOOL } as const;
+
+/** A response containing a single tool_use block. */
+function toolMsg(
+  input: unknown,
+  name = "emit_lesson",
+  stop_reason: "tool_use" | "end_turn" = "tool_use",
+  output_tokens = 200
+) {
+  return {
+    content: [{ type: "tool_use", id: "t1", name, input }],
+    stop_reason,
+    usage: { output_tokens },
+  };
+}
+
+// A minimal structural validator standing in for GeneratedLessonSchema.parse.
+const parseLesson = (input: unknown) => {
+  const o = input as { title?: unknown; homework_items?: unknown };
+  if (typeof o?.title !== "string") throw new Error("schema: title must be a string");
+  if (!Array.isArray(o?.homework_items)) throw new Error("schema: homework_items");
+  return o;
+};
+
+describe("callClaudeTool — structured tool use", () => {
+  it("1. valid tool_use → one call, parsed lesson returned", async () => {
+    createMock.mockResolvedValueOnce(
+      toolMsg({ title: "Fractions", homework_items: [], todo_items: [] })
+    );
+    const result = await callClaudeTool("p", parseLesson, TOOL_OPTS);
+    expect(result).toMatchObject({ title: "Fractions" });
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(metricLines()[0]).toMatchObject({
+      response_mode: "tool_use",
+      tool_use_found: true,
+      schema_validation: "success",
+      success: true,
+    });
+  });
+
+  it("2. complex math/LaTeX content passes through as an object (no JSON.parse)", async () => {
+    const input = {
+      title: "מטריצות \\begin{bmatrix} a & b \\end{bmatrix}",
+      description: 'Solve \\frac{1}{2} then evaluate\nline two with "quotes" and \\ backslash',
+      homework_items: [
+        {
+          title: "חישוב \\frac{a}{b}",
+          description: "[ a  b |\n  c  d ]  — mixed עברית and English with \\ and \"",
+          order_index: 0,
+        },
+      ],
+      todo_items: [{ title: "פתור \\begin{bmatrix}1\\\\2\\end{bmatrix}", order_index: 0 }],
+    };
+    createMock.mockResolvedValueOnce(toolMsg(input));
+    const result = (await callClaudeTool("p", parseLesson, TOOL_OPTS)) as typeof input;
+    // Values survive verbatim — they were never serialized/parsed as a string.
+    expect(result.title).toContain("\\begin{bmatrix}");
+    expect(result.description).toContain('"quotes"'); // unescaped quotes survive
+    expect(result.description).toContain("\\frac{1}{2}");
+    expect(result.homework_items[0]!.description).toContain("[ a  b |"); // matrix + newline
+    expect(result.homework_items[0]!.description).toContain("עברית");
+    expect(result.todo_items[0]!.title).toContain("\\begin{bmatrix}");
+    expect(result.todo_items[0]!.title).toContain("\\\\"); // double backslash row break
+    expect(metricLines()[0]).toMatchObject({ schema_validation: "success" });
+  });
+
+  it("3. no tool_use block → throws, no JSON.parse, one call", async () => {
+    createMock.mockResolvedValueOnce(textMsg('{"title":"x"}')); // only text
+    await expect(callClaudeTool("p", parseLesson, TOOL_OPTS)).rejects.toThrow(
+      /tool_use block not found/
+    );
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(metricLines()[0]).toMatchObject({
+      error_type: "tool_use_missing",
+      tool_use_found: false,
+    });
+  });
+
+  it("4. tool_use with the wrong name → not selected, throws", async () => {
+    createMock.mockResolvedValueOnce(toolMsg({ title: "x" }, "some_other_tool"));
+    await expect(callClaudeTool("p", parseLesson, TOOL_OPTS)).rejects.toThrow();
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(metricLines()[0]).toMatchObject({ error_type: "tool_use_missing" });
+  });
+
+  it("5. tool input fails schema validation → schema_error, no fallback/repair", async () => {
+    createMock.mockResolvedValueOnce(toolMsg({ title: 123 })); // title not a string
+    await expect(callClaudeTool("p", parseLesson, TOOL_OPTS)).rejects.toThrow(
+      /schema: title/
+    );
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(metricLines()[0]).toMatchObject({
+      error_type: "schema_error",
+      tool_use_found: true,
+      schema_validation: "failure",
+    });
+  });
+
+  it("6. API error → one call, no fallback", async () => {
+    createMock.mockRejectedValueOnce(new Error("network boom"));
+    await expect(callClaudeTool("p", parseLesson, TOOL_OPTS)).rejects.toThrow(
+      /Claude call failed/
+    );
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(metricLines()[0]).toMatchObject({ error_type: "api_error" });
+  });
+
+  it("7. multiple content blocks → only the expected-name tool_use is chosen", async () => {
+    createMock.mockResolvedValueOnce({
+      content: [
+        { type: "text", text: "thinking out loud" },
+        { type: "tool_use", id: "a", name: "other_tool", input: { title: "WRONG" } },
+        { type: "tool_use", id: "b", name: "emit_lesson", input: { title: "RIGHT", homework_items: [] } },
+      ],
+      stop_reason: "tool_use",
+      usage: { output_tokens: 10 },
+    });
+    const result = (await callClaudeTool("p", parseLesson, TOOL_OPTS)) as { title: string };
+    expect(result.title).toBe("RIGHT");
+    expect(createMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("8. emits exactly one metric line, no prompt/tool-input content", async () => {
+    const PROMPT = "TOOL_PROMPT_MARKER";
+    createMock.mockResolvedValueOnce(
+      toolMsg({ title: "SECRET_LESSON_TITLE", homework_items: [] })
+    );
+    await callClaudeTool(PROMPT, parseLesson, TOOL_OPTS);
+    const lines = (logSpy.mock.calls as unknown[][])
+      .map((c) => String(c[0]))
+      .filter((s: string) => s.includes('"tag":"ai_metrics"'));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).not.toContain("TOOL_PROMPT_MARKER");
+    expect(lines[0]).not.toContain("SECRET_LESSON_TITLE");
+    expect(metricLines()[0]).toMatchObject({
+      response_mode: "tool_use",
+      prompt_chars: PROMPT.length,
+    });
+  });
+
+  it("does not emit a metric line when flow is unset", async () => {
+    createMock.mockResolvedValueOnce(toolMsg({ title: "x", homework_items: [] }));
+    await callClaudeTool("p", parseLesson, { tool: TOOL });
     expect(metricLines()).toHaveLength(0);
   });
 });
