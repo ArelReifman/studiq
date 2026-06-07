@@ -68,6 +68,8 @@ export interface BookingLike {
   created_at: string;
   /** Course this lesson is associated with. Null for legacy lessons. */
   course_id?: string | null;
+  /** Resolved course name. Null for legacy lessons or when course is not set. */
+  course_name?: string | null;
   /**
    * Google Calendar event id. All slots created by a single teacher action
    * share one gcal_event_id; two back-to-back lessons created separately have
@@ -111,6 +113,8 @@ export interface BookingGroup<T extends BookingLike = BookingLike> {
   hours: number;
   /** Course this lesson group is associated with. Null for legacy lessons. */
   course_id?: string | null;
+  /** Resolved course name. Null for legacy lessons or when course is not set. */
+  course_name?: string | null;
   /** GCal event id shared by every slot in this group. Null for legacy. */
   gcal_event_id?: string | null;
 }
@@ -152,10 +156,11 @@ export function groupConsecutiveBookings<T extends BookingLike>(
       if (b.teacher_note) last.teacher_note = b.teacher_note;
     } else {
       groups.push({
-        // gcal_event_id is appended (when present) so two same-time-same-student
-        // groups get unique React keys even before the consecutive check splits
-        // them (defensive — gcal_event_id is already in the consecutive check).
-        key: `${b.student_id}|${b.date}|${b.start_time}|${b.status}|${b.gcal_event_id ?? ""}`,
+        // course_id and gcal_event_id are both included so that two same-time
+        // same-student groups from different courses always produce distinct
+        // React keys (course_id is the primary splitter; gcal_event_id is a
+        // defensive secondary for any remaining edge-cases).
+        key: `${b.student_id}|${b.date}|${b.start_time}|${b.status}|${b.course_id ?? ""}|${b.gcal_event_id ?? ""}`,
         ids: [b.id],
         student_id: b.student_id,
         student_name: b.student_name,
@@ -168,6 +173,7 @@ export function groupConsecutiveBookings<T extends BookingLike>(
         bookings: [b],
         hours: (timeToMin(b.end_time) - timeToMin(b.start_time)) / 60,
         course_id: b.course_id ?? null,
+        course_name: b.course_name ?? null,
         gcal_event_id: b.gcal_event_id ?? null,
       });
     }

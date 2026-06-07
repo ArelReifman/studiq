@@ -30,6 +30,8 @@ interface PendingBooking {
   created_at: string;
   /** Course associated with this lesson. Null for legacy lessons. */
   course_id?: string | null;
+  /** Resolved course name. Null for legacy lessons. */
+  course_name?: string | null;
   /** GCal event id — needed so groupConsecutiveBookings splits distinct lessons. */
   gcal_event_id?: string | null;
 }
@@ -320,6 +322,17 @@ export default function ApprovalsPage() {
                         {formatDurationI18n(g.hours, t)}
                       </span>
                     </div>
+                    {/* Course — shown only when the booking has a course name */}
+                    {g.course_name && (
+                      <div className="flex items-baseline gap-1.5 text-sm text-gray-600 mt-0.5">
+                        <span className="text-xs text-gray-400 shrink-0">
+                          {t("teacher.courseLabel")}:
+                        </span>
+                        <span className="text-xs font-medium text-brand-700">
+                          {g.course_name}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <span className="text-[11px] text-gray-400 whitespace-nowrap">
                     {new Date(g.bookings[0]!.created_at).toLocaleDateString()}
@@ -432,6 +445,17 @@ export default function ApprovalsPage() {
                         {formatDurationI18n(g.hours, t)}
                       </span>
                     </div>
+                    {/* Course — shown only when the booking has a course name */}
+                    {g.course_name && (
+                      <div className="flex items-baseline gap-1.5 text-sm text-gray-600 mt-0.5">
+                        <span className="text-xs text-gray-400 shrink-0">
+                          {t("teacher.courseLabel")}:
+                        </span>
+                        <span className="text-xs font-medium text-brand-700">
+                          {g.course_name}
+                        </span>
+                      </div>
+                    )}
                     <p className="text-xs text-red-600 mt-1.5">
                       {t("approvals.studentRequestedCancel")}
                     </p>
