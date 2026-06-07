@@ -20,11 +20,11 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { createClient } from "@supabase/supabase-js";
 import { db } from "../db/client.js";
-import { profiles } from "../db/schema.js";
-import { authMiddleware } from "../middleware/auth.js";
+import { profiles, students, studentCourses, courses } from "../db/schema.js";
+import { authMiddleware, requireRole } from "../middleware/auth.js";
 
 const updateSchema = z
   .object({
@@ -68,6 +68,42 @@ export const profileRoutes = new Hono()
 
     if (!profile) return c.json({ error: "Profile not found" }, 404);
     return c.json(profile);
+  })
+
+  // GET /profile/courses — the logged-in student's ACTIVE course enrollments.
+  // Additive and read-only: scoped to the caller's own id (never accepts a
+  // student_id), reads from student_courses, and never mutates anything —
+  // primary_course_id included only as informational `is_primary`.
+  .get("/courses", requireRole("student"), async (c) => {
+    const userId = c.get("userId");
+
+    const [rows, studentRow] = await Promise.all([
+      db
+        .select({
+          id: courses.id,
+          name: courses.name,
+          exam_date: courses.exam_date,
+        })
+        .from(studentCourses)
+        .innerJoin(courses, eq(courses.id, studentCourses.course_id))
+        .where(
+          and(
+            eq(studentCourses.student_id, userId),
+            eq(studentCourses.is_active, true)
+          )
+        )
+        .orderBy(studentCourses.added_at),
+      db
+        .select({ primary_course_id: students.primary_course_id })
+        .from(students)
+        .where(eq(students.id, userId))
+        .limit(1),
+    ]);
+
+    const primaryCourseId = studentRow[0]?.primary_course_id ?? null;
+    return c.json(
+      rows.map((r) => ({ ...r, is_primary: r.id === primaryCourseId }))
+    );
   })
 
   // PATCH /profile — update full_name / email / password

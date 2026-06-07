@@ -18,24 +18,60 @@ import { resolveTopic } from "../services/ai/resolve-topic.js";
 import { updateStudentProfile } from "../services/ai/update-profile.js";
 import { updateTeacherStyleIfDue } from "../services/ai/update-teacher-style.js";
 import { createAdminSupabase } from "../lib/supabase.js";
-import { studentIdQuerySchema, uuidParamSchema } from "../lib/validators.js";
+import { lessonsQuerySchema, uuidParamSchema } from "../lib/validators.js";
 
 export const lessonRoutes = new Hono()
   .use(authMiddleware)
 
   // GET /lessons — student: own; teacher: filter by student_id
-  .get("/", zValidator("query", studentIdQuerySchema), async (c) => {
+  // Optional course_id (student calls only): when sent, hard-filters to that
+  // course after verifying ACTIVE enrollment. When absent, behaviour is
+  // identical to before this field existed — no implicit course scoping.
+  .get("/", zValidator("query", lessonsQuerySchema), async (c) => {
     const userId = c.get("userId");
     const role = c.get("userRole");
     const studentIdParam = c.req.valid("query").student_id;
+    const courseIdParam = c.req.valid("query").course_id;
 
     let rows;
     if (role === "student") {
-      rows = await db
-        .select()
-        .from(lessonSessions)
-        .where(eq(lessonSessions.student_id, userId))
-        .orderBy(desc(lessonSessions.generated_at));
+      if (courseIdParam) {
+        // Explicit course requested: verify the student is actively enrolled,
+        // then hard-filter. Excludes other courses AND null-course lessons.
+        const [enrollment] = await db
+          .select({ course_id: studentCourses.course_id })
+          .from(studentCourses)
+          .where(
+            and(
+              eq(studentCourses.student_id, userId),
+              eq(studentCourses.course_id, courseIdParam),
+              eq(studentCourses.is_active, true)
+            )
+          )
+          .limit(1);
+
+        if (!enrollment) {
+          return c.json({ error: "Not enrolled in this course" }, 403);
+        }
+
+        rows = await db
+          .select()
+          .from(lessonSessions)
+          .where(
+            and(
+              eq(lessonSessions.student_id, userId),
+              eq(lessonSessions.course_id, courseIdParam)
+            )
+          )
+          .orderBy(desc(lessonSessions.generated_at));
+      } else {
+        // No course_id → unchanged: every lesson the student owns.
+        rows = await db
+          .select()
+          .from(lessonSessions)
+          .where(eq(lessonSessions.student_id, userId))
+          .orderBy(desc(lessonSessions.generated_at));
+      }
     } else {
       const whereClause = studentIdParam
         ? and(
