@@ -427,15 +427,32 @@ export const bookingRoutes = new Hono()
   })
 
   // ── Student: my bookings
-  .get("/my", requireRole("student"), async (c) => {
-    const studentId = c.get("userId");
-    const bookings = await db
-      .select()
-      .from(lessonBookings)
-      .where(eq(lessonBookings.student_id, studentId))
-      .orderBy(desc(lessonBookings.date));
-    return c.json(bookings);
-  })
+  .get(
+    "/my",
+    requireRole("student"),
+    zValidator("query", z.object({ course_id: z.string().uuid().optional() })),
+    async (c) => {
+      const studentId = c.get("userId");
+      const { course_id } = c.req.valid("query");
+
+      // When course_id is provided hard-filter to that course so the student
+      // sees only bookings for the selected course. When absent the query is
+      // unchanged from before — all bookings for this student.
+      const whereClause = course_id
+        ? and(
+            eq(lessonBookings.student_id, studentId),
+            eq(lessonBookings.course_id, course_id)
+          )
+        : eq(lessonBookings.student_id, studentId);
+
+      const bookings = await db
+        .select()
+        .from(lessonBookings)
+        .where(whereClause)
+        .orderBy(desc(lessonBookings.date));
+      return c.json(bookings);
+    }
+  )
 
   // ── Teacher: all booking requests
   .get("/requests", requireRole("teacher"), async (c) => {
