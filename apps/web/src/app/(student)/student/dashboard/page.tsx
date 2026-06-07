@@ -8,6 +8,7 @@ import { useT } from "@/i18n";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
+import { useStudentCourse } from "@/hooks/use-student-course";
 import type { LessonSession, HomeworkItem, TodoItem } from "@studiq/types";
 import { BookOpen, ExternalLink, History, Map, CalendarDays } from "lucide-react";
 
@@ -15,10 +16,21 @@ export default function StudentDashboard() {
   const user = useAuthStore((s) => s.user);
   const t = useT();
 
-  const { data: lessons = [], isLoading } = useQuery<LessonSession[]>({
-    queryKey: ["lessons"],
-    queryFn: () => api.get("/lessons"),
+  // selectedCourseId is undefined for 0/1-course students (legacy path).
+  // Lessons query waits for course context so multi-course students never
+  // see an unscoped flash before selectedCourseId is resolved.
+  const { selectedCourseId, isLoading: isCourseLoading } = useStudentCourse();
+
+  const { data: lessons = [], isLoading: isLessonsLoading } = useQuery<LessonSession[]>({
+    queryKey: ["lessons", selectedCourseId ?? "all"],
+    queryFn: () =>
+      api.get(
+        selectedCourseId ? `/lessons?course_id=${selectedCourseId}` : `/lessons`
+      ),
+    enabled: !isCourseLoading,
   });
+
+  const isLoading = isCourseLoading || isLessonsLoading;
 
   const activeLesson = lessons.find((l) => l.status === "active") ?? lessons[0];
   // Everything that isn't the currently-rendered active lesson is "history" —

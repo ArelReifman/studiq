@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useStudentCourse } from "@/hooks/use-student-course";
 import { useT, useLocaleStore } from "@/i18n";
 import { Card } from "@/components/ui/card";
 import { Calendar, type TimeSlot } from "@/components/calendar/calendar";
@@ -87,6 +88,9 @@ export default function StudentBookPage() {
   const locale = useLocaleStore((s) => s.locale);
   const qc = useQueryClient();
 
+  // selectedCourseId is undefined for 0/1-course students (legacy path).
+  const { selectedCourseId, isLoading: isCourseLoading } = useStudentCourse();
+
   const [selectedDate, setSelectedDate] = useState<string | undefined>();
   const [selectedStartTime, setSelectedStartTime] = useState<string | undefined>();
   const [duration, setDuration] = useState<Duration>(60);
@@ -95,6 +99,18 @@ export default function StudentBookPage() {
   const [error, setError] = useState<string | null>(null);
   const [showAllActive, setShowAllActive] = useState(false);
   const [showCancelled, setShowCancelled] = useState(false);
+
+  // Reset booking form state when the selected course changes so selections
+  // from a previous course are never submitted against the new one.
+  // showAllActive / showCancelled are UI preferences, not booking form state.
+  useEffect(() => {
+    setSelectedDate(undefined);
+    setSelectedStartTime(undefined);
+    setDuration(60);
+    setNote("");
+    setSuccess(false);
+    setError(null);
+  }, [selectedCourseId]);
 
   const { data: slots = [], isLoading: slotsLoading } = useQuery<Slot[]>({
     queryKey: ["booking-slots"],
@@ -189,6 +205,9 @@ export default function StudentBookPage() {
       await api.post("/bookings/batch", {
         availability_ids: selectedChain.map((s) => s.id),
         note: note || undefined,
+        // Only included for multi-course students; undefined for 0/1-course
+        // students preserves the legacy resolveCourseName fallback in the backend.
+        ...(selectedCourseId ? { course_id: selectedCourseId } : {}),
       });
     },
     onSuccess: () => {
@@ -416,7 +435,7 @@ export default function StudentBookPage() {
           <button
             type="button"
             onClick={() => submitMutation.mutate()}
-            disabled={submitMutation.isPending}
+            disabled={submitMutation.isPending || isCourseLoading}
             className="w-full flex items-center justify-center gap-2 bg-brand-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send size={14} />

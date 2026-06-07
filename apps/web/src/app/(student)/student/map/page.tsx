@@ -8,23 +8,44 @@ import { LearningMapSkeleton } from "@/components/learning-map/learning-map-skel
 import { LearningMapHero } from "@/components/learning-map/learning-map-hero";
 import { useT } from "@/i18n";
 import { useAuthStore } from "@/store/auth";
+import { useStudentCourse } from "@/hooks/use-student-course";
 import type { LearningMap, LessonSession } from "@studiq/types";
 
 export default function StudentLearningMapPage() {
   const t = useT();
   const router = useRouter();
   const { user } = useAuthStore();
-  const { data: map, isLoading, error } = useQuery<LearningMap>({
-    queryKey: ["learning-map", "self"],
-    queryFn: () => api.get(`/learning-map`),
+
+  // selectedCourseId is undefined for 0/1-course students (legacy path).
+  // Queries are gated on !isCourseLoading so multi-course students never
+  // fire an unscoped request before the course list is resolved.
+  const { selectedCourseId, isLoading: isCourseLoading } = useStudentCourse();
+
+  const { data: map, isLoading: isMapLoading, error } = useQuery<LearningMap>({
+    queryKey: ["learning-map", "self", selectedCourseId ?? "all"],
+    queryFn: () =>
+      api.get(
+        selectedCourseId
+          ? `/learning-map?course_id=${selectedCourseId}`
+          : `/learning-map`
+      ),
     retry: false,
+    enabled: !isCourseLoading,
   });
+
+  const isLoading = isCourseLoading || isMapLoading;
 
   // Pulled lazily so we can resolve "Continue learning" → the right lesson
   // without paying a network cost on first paint of the map.
   const { data: lessons = [] } = useQuery<LessonSession[]>({
-    queryKey: ["lessons"],
-    queryFn: () => api.get(`/lessons`),
+    queryKey: ["lessons", selectedCourseId ?? "all"],
+    queryFn: () =>
+      api.get(
+        selectedCourseId
+          ? `/lessons?course_id=${selectedCourseId}`
+          : `/lessons`
+      ),
+    enabled: !isCourseLoading,
   });
 
   // When the student clicks "Continue learning" on a topic card we send
