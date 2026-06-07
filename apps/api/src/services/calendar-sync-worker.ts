@@ -33,6 +33,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { createCalendarEvent } from "./google-calendar.js";
+import { resolveCourseName } from "../lib/course-resolver.js";
 
 const BATCH_SIZE = 25;
 const MAX_RETRIES = 5;
@@ -152,14 +153,15 @@ async function syncBookingGroup(seedId: string): Promise<GroupResult> {
     const lessonStart = group[0]!.start_time;
     const lessonEnd = group[group.length - 1]!.end_time;
     try {
+      const courseName = await resolveCourseName(seed.course_id, seed.student_id);
+
       const eventId = await createCalendarEvent({
         date: seed.date,
         start_time: lessonStart,
         end_time: lessonEnd,
         student_id: seed.student_id,
         teacher_id: seed.teacher_id,
-        // course_name / teacher_name are optional in the GCal payload;
-        // the existing service handles their absence gracefully.
+        ...(courseName ? { course_name: courseName } : {}),
       });
 
       if (!eventId) throw new Error("createCalendarEvent returned null");
