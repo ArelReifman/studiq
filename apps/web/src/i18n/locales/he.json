@@ -257,6 +257,7 @@
   "teacher.reject": "דחייה",
   "teacher.addNote": "הוספת הערה (אופציונלי)",
 
+  "student.courseLabel": "קורס",
   "student.bookLesson": "קביעת שיעור",
   "student.availableSlots": "שעות זמינות",
   "student.noSlots": "המורה שלך עדיין לא הגדיר/ה שעות זמינות.",
