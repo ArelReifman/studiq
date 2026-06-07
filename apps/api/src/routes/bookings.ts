@@ -471,6 +471,9 @@ export const bookingRoutes = new Hono()
         student_name: profiles.full_name,
         student_id: lessonBookings.student_id,
         course_id: lessonBookings.course_id,
+        // Resolved course name via leftJoin — null for legacy bookings whose
+        // course_id is null (or the course was deleted via onDelete: set null).
+        course_name: courses.name,
         // Needed client-side so groupConsecutiveBookings can keep distinct
         // lessons apart even when they're back-to-back. All slots created in
         // one teacher action share one id.
@@ -482,6 +485,7 @@ export const bookingRoutes = new Hono()
       })
       .from(lessonBookings)
       .innerJoin(profiles, eq(profiles.id, lessonBookings.student_id))
+      .leftJoin(courses, eq(courses.id, lessonBookings.course_id))
       .where(eq(lessonBookings.teacher_id, teacherId))
       .orderBy(desc(lessonBookings.created_at));
     return c.json(bookings);
@@ -538,6 +542,10 @@ export const bookingRoutes = new Hono()
         start_time: lessonBookings.start_time,
         end_time: lessonBookings.end_time,
         status: lessonBookings.status,
+        // course_id must be part of the continuation key so that two
+        // consecutive slots from the same student on the same day but in
+        // different courses are never collapsed into a single group.
+        course_id: lessonBookings.course_id,
       })
       .from(lessonBookings)
       .where(
@@ -548,11 +556,16 @@ export const bookingRoutes = new Hono()
       );
 
     const prevEnds = new Set(
-      rows.map((r) => `${r.student_id}|${r.date}|${r.status}|${r.end_time}`)
+      rows.map(
+        (r) =>
+          `${r.student_id}|${r.date}|${r.status}|${r.course_id ?? ""}|${r.end_time}`
+      )
     );
     const groupCount = rows.filter(
       (r) =>
-        !prevEnds.has(`${r.student_id}|${r.date}|${r.status}|${r.start_time}`)
+        !prevEnds.has(
+          `${r.student_id}|${r.date}|${r.status}|${r.course_id ?? ""}|${r.start_time}`
+        )
     ).length;
 
     return c.json({ count: groupCount });

@@ -108,7 +108,9 @@ async function bookingsFor(studentId: string) {
 async function seedBooking(
   studentId: string,
   courseId: string | null,
-  date: string
+  date: string,
+  startTime = "10:00",
+  endTime = "11:00"
 ): Promise<string> {
   const id = randomUUID();
   await testDb.insert(lessonBookings).values({
@@ -116,8 +118,8 @@ async function seedBooking(
     student_id: studentId,
     teacher_id: TEACHER_ID,
     date,
-    start_time: "10:00",
-    end_time: "11:00",
+    start_time: startTime,
+    end_time: endTime,
     course_id: courseId,
   });
   return id;
@@ -402,5 +404,132 @@ describe("GET /my course_id filtering", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as Array<{ id: string }>;
     expect(body.map((b) => b.id)).toEqual([bB]);
+  });
+});
+
+// Seed a fresh isolated teacher (so count tests see only their own data).
+async function seedIsolatedTeacher(): Promise<string> {
+  const tid = randomUUID();
+  await testDb.insert(profiles).values({
+    id: tid,
+    role: "teacher",
+    full_name: "Isolated Teacher",
+    email: `${tid}@test.dev`,
+  });
+  await testDb.insert(teachers).values({ id: tid });
+  return tid;
+}
+
+// Seed a student under a specific teacher.
+async function seedStudentFor(studentId: string, teacherId: string) {
+  await testDb.insert(profiles).values({
+    id: studentId,
+    role: "student",
+    full_name: "Test Student",
+    email: `${studentId}@test.dev`,
+  });
+  await testDb.insert(students).values({
+    id: studentId,
+    teacher_id: teacherId,
+    primary_course_id: null,
+  });
+}
+
+// Seed a booking under a specific teacher (for count/requests isolation).
+async function seedBookingFor(
+  studentId: string,
+  teacherId: string,
+  courseId: string | null,
+  date: string,
+  startTime = "10:00",
+  endTime = "11:00"
+): Promise<string> {
+  const id = randomUUID();
+  await testDb.insert(lessonBookings).values({
+    id,
+    student_id: studentId,
+    teacher_id: teacherId,
+    date,
+    start_time: startTime,
+    end_time: endTime,
+    course_id: courseId,
+    status: "pending",
+  });
+  return id;
+}
+
+describe("GET /requests teacher course-aware", () => {
+  it("returns course_name when booking has a course", async () => {
+    const tid = await seedIsolatedTeacher();
+    const sid = randomUUID();
+    const courseId = randomUUID();
+    await testDb.insert(courses).values({ id: courseId, teacher_id: tid, name: "Course Aleph" });
+    await seedStudentFor(sid, tid);
+    await seedBookingFor(sid, tid, courseId, "2099-08-01");
+
+    ctx.USER_ID = tid;
+    ctx.ROLE = "teacher";
+    const res = await bookingRoutes.request("/requests");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ course_id: string | null; course_name: string | null }>;
+    expect(body).toHaveLength(1);
+    expect(body[0]!.course_id).toBe(courseId);
+    expect(body[0]!.course_name).toBe("Course Aleph");
+  });
+
+  it("returns course_name = null for legacy booking with course_id = null", async () => {
+    const tid = await seedIsolatedTeacher();
+    const sid = randomUUID();
+    await seedStudentFor(sid, tid);
+    await seedBookingFor(sid, tid, null, "2099-08-02");
+
+    ctx.USER_ID = tid;
+    ctx.ROLE = "teacher";
+    const res = await bookingRoutes.request("/requests");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ course_id: string | null; course_name: string | null }>;
+    expect(body).toHaveLength(1);
+    expect(body[0]!.course_id).toBeNull();
+    expect(body[0]!.course_name).toBeNull();
+  });
+});
+
+describe("GET /requests/count course-aware", () => {
+  it("two consecutive slots from same student and same course count as 1", async () => {
+    const tid = await seedIsolatedTeacher();
+    const sid = randomUUID();
+    const courseA = randomUUID();
+    await testDb.insert(courses).values({ id: courseA, teacher_id: tid, name: "A" });
+    await seedStudentFor(sid, tid);
+    // Consecutive: 09:00–09:30 then 09:30–10:00, same course → 1 group
+    await seedBookingFor(sid, tid, courseA, "2099-09-01", "09:00", "09:30");
+    await seedBookingFor(sid, tid, courseA, "2099-09-01", "09:30", "10:00");
+
+    ctx.USER_ID = tid;
+    ctx.ROLE = "teacher";
+    const res = await bookingRoutes.request("/requests/count");
+    expect(res.status).toBe(200);
+    const { count } = (await res.json()) as { count: number };
+    expect(count).toBe(1);
+  });
+
+  it("two consecutive slots from same student but different courses count as 2", async () => {
+    const tid = await seedIsolatedTeacher();
+    const sid = randomUUID();
+    const courseA = randomUUID();
+    const courseB = randomUUID();
+    await testDb.insert(courses).values({ id: courseA, teacher_id: tid, name: "A" });
+    await testDb.insert(courses).values({ id: courseB, teacher_id: tid, name: "B" });
+    await seedStudentFor(sid, tid);
+    // Same student, same day, consecutive times, but DIFFERENT courses → 2 groups
+    await seedBookingFor(sid, tid, courseA, "2099-10-01", "11:00", "11:30");
+    await seedBookingFor(sid, tid, courseB, "2099-10-01", "11:30", "12:00");
+
+    ctx.USER_ID = tid;
+    ctx.ROLE = "teacher";
+    const res = await bookingRoutes.request("/requests/count");
+    expect(res.status).toBe(200);
+    const { count } = (await res.json()) as { count: number };
+    expect(count).toBe(2);
   });
 });
