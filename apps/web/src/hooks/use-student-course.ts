@@ -5,6 +5,33 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
+// Durable memory for the student's chosen course. The URL is the live param
+// for the current page, but sidebar nav links don't carry it — so without a
+// fallback the selection is lost on every navigation/refresh. localStorage is
+// that fallback: it survives navigation, refresh, and new tabs until the
+// student deliberately picks another course. Only consulted for multi-course
+// students; the 0/1-course legacy path never reads or writes it.
+const STORAGE_KEY = "studiq.student.selectedCourseId";
+
+function readStoredCourseId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    // Private mode / disabled storage — fall back to URL-only behaviour.
+    return null;
+  }
+}
+
+function writeStoredCourseId(id: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, id);
+  } catch {
+    // Ignore — persistence is best-effort.
+  }
+}
+
 export interface StudentCourse {
   id: string;
   name: string;
@@ -52,11 +79,17 @@ export function useStudentCourse(): UseStudentCourseResult {
   const hasMultipleCourses = courses.length > 1;
 
   // Derive selectedCourseId — only defined for multi-course students.
+  // Priority: valid URL param → valid stored id → primary → first. The stored
+  // fallback is what keeps the choice from snapping back to primary when the
+  // student navigates to a page whose URL has no course_id.
   let selectedCourseId: string | undefined;
   if (hasMultipleCourses) {
     const ids = new Set(courses.map((c) => c.id));
+    const storedCourseId = readStoredCourseId();
     if (urlCourseId && ids.has(urlCourseId)) {
       selectedCourseId = urlCourseId;
+    } else if (storedCourseId && ids.has(storedCourseId)) {
+      selectedCourseId = storedCourseId;
     } else {
       selectedCourseId =
         courses.find((c) => c.is_primary)?.id ?? courses[0]?.id;
@@ -84,12 +117,18 @@ export function useStudentCourse(): UseStudentCourseResult {
 
     if (hasMultipleCourses) {
       const ids = new Set(courses.map((c) => c.id));
+      const storedCourseId = readStoredCourseId();
       if (urlCourseId && ids.has(urlCourseId)) {
         desired = urlCourseId; // already valid
+      } else if (storedCourseId && ids.has(storedCourseId)) {
+        desired = storedCourseId; // restore last pick instead of defaulting
       } else {
         desired =
           courses.find((c) => c.is_primary)?.id ?? courses[0]?.id ?? null;
       }
+      // Keep storage in sync with whatever we resolved to, so an implicit
+      // primary-default landing is remembered for subsequent navigations.
+      if (desired) writeStoredCourseId(desired);
     }
     // 0 or 1 course → desired = null (remove any stale course_id from URL)
 
@@ -106,6 +145,7 @@ export function useStudentCourse(): UseStudentCourseResult {
   }, [isLoading, hasMultipleCourses, courses, urlCourseId, pathname, searchParamsStr, router]);
 
   function setSelectedCourseId(id: string) {
+    writeStoredCourseId(id);
     const params = new URLSearchParams(searchParamsStr);
     params.set("course_id", id);
     router.replace(`${pathname}?${params.toString()}`);
