@@ -146,6 +146,15 @@ export function useStudentCourse(): UseStudentCourseResult {
 
   function setSelectedCourseId(id: string) {
     writeStoredCourseId(id);
+    // A single-lesson page (/student/lessons/<id>) shows a lesson that belongs
+    // to the previously-selected course; switching course there would leave
+    // stale content on screen. Send the student to their self-practice
+    // (dashboard) for the new course instead — it lands on that course's
+    // active lesson. Use push so Back returns to the lesson they were on.
+    if (pathname.startsWith("/student/lessons/")) {
+      router.push(`/student/dashboard?course_id=${id}`);
+      return;
+    }
     const params = new URLSearchParams(searchParamsStr);
     params.set("course_id", id);
     router.replace(`${pathname}?${params.toString()}`);
