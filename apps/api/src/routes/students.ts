@@ -16,8 +16,10 @@ import {
   difficultyReports,
   studentInsights,
   studentCourseExamDates,
+  studentTopicLocks,
   studentCourses,
   courses,
+  courseTopics,
   lessonBookings,
 } from "../db/schema.js";
 import { getIsraelToday } from "../lib/time.js";
@@ -519,6 +521,81 @@ export const studentRoutes = new Hono()
           course?.exam_date?.toISOString() ??
           null,
       });
+    }
+  )
+
+  // PUT /students/:id/topic-lock — set or clear a per-(student, topic) lock
+  // override. course_topics.is_locked is the default for the whole course;
+  // the learning-map endpoint reads this override with priority over it, so
+  // a teacher can open one topic for one student without opening it for
+  // every other student in the same course.
+  //
+  // Body: { topic_id, is_locked }  — is_locked null/undefined clears the
+  // override, falling back to course_topics.is_locked for this student.
+  .put(
+    "/:id/topic-lock",
+    zValidator("param", uuidParamSchema),
+    zValidator(
+      "json",
+      z.object({
+        topic_id: z.string().uuid(),
+        is_locked: z.boolean().nullable().optional(),
+      })
+    ),
+    async (c) => {
+      const teacherId = c.get("userId");
+      const studentId = c.req.valid("param").id;
+      const { topic_id, is_locked } = c.req.valid("json");
+
+      // Ownership: verify the teacher owns both the student and the course
+      // that the topic belongs to. Without this either side could leak
+      // writes via crafted IDs.
+      const [owner] = await db
+        .select({ id: students.id })
+        .from(students)
+        .where(
+          and(eq(students.id, studentId), eq(students.teacher_id, teacherId))
+        )
+        .limit(1);
+      if (!owner) return c.json({ error: "Student not found" }, 404);
+
+      const [topicOwner] = await db
+        .select({ id: courseTopics.id })
+        .from(courseTopics)
+        .innerJoin(courses, eq(courses.id, courseTopics.course_id))
+        .where(
+          and(eq(courseTopics.id, topic_id), eq(courses.teacher_id, teacherId))
+        )
+        .limit(1);
+      if (!topicOwner) return c.json({ error: "Topic not found" }, 404);
+
+      // null/undefined clears the override. Any boolean sets/replaces it.
+      if (is_locked === null || is_locked === undefined) {
+        await db
+          .delete(studentTopicLocks)
+          .where(
+            and(
+              eq(studentTopicLocks.student_id, studentId),
+              eq(studentTopicLocks.topic_id, topic_id)
+            )
+          );
+        return c.json({ is_locked: null });
+      }
+
+      // Upsert. The (student_id, topic_id) tuple is unique by index.
+      await db
+        .insert(studentTopicLocks)
+        .values({
+          student_id: studentId,
+          topic_id,
+          is_locked,
+        })
+        .onConflictDoUpdate({
+          target: [studentTopicLocks.student_id, studentTopicLocks.topic_id],
+          set: { is_locked, updated_at: new Date() },
+        });
+
+      return c.json({ is_locked });
     }
   )
 

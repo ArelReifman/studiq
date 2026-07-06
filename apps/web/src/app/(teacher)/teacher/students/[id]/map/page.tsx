@@ -76,10 +76,10 @@ export default function TeacherLearningMapPage() {
       topicId: string;
       nextLocked: boolean;
     }) =>
-      api.patch(
-        `/courses/${effectiveCourseId}/topics/${topicId}`,
-        { is_locked: nextLocked }
-      ),
+      api.put(`/students/${id}/topic-lock`, {
+        topic_id: topicId,
+        is_locked: nextLocked,
+      }),
     onSettled: () =>
       qc.invalidateQueries({ queryKey: ["learning-map"] }),
   });

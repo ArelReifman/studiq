@@ -19,6 +19,7 @@ progress; it only renders what the API returns.
 |--------|-------|-----------------|----------|
 | **Course** | `courses` | Root of the map; holds default `exam_date` | `course_id` |
 | **Topic** | `course_topics` | Node in the map; hierarchical (`parent_topic_id`), with `prerequisite_topic_ids`, `is_locked`, `target_date` | `topic_id` |
+| **Topic lock override** | `student_topic_locks` | Per-(student, topic) override of `course_topics.is_locked` — see §6a | `student_id`, `topic_id` |
 | **Lesson session** | `lesson_sessions` | Learning content tied to a topic; `status ∈ active | completed | archived`; carries `topic_id`, `course_id` | `lesson_id` |
 | **Task** (homework / todo) | `homework_items`, `todo_items` | Unit of progress; `status ∈ pending | completed | failed`; belongs to a `lesson_id` | `lesson_id` |
 | **Difficulty report** | `difficulty_reports` | Signal for the AI profile; **does not** directly affect progress % | `student_id`, polymorphic `source_id` |
@@ -56,6 +57,38 @@ otherwise          → 0
 > **Single source of truth:** `computeStatus()` and the `pct` formula live in
 > `apps/api/src/routes/learning-map.ts`. The frontend must never recompute them.
 
+### `locked` derivation (per student)
+
+`locked` is **not** a single course-wide flag — it's computed per student,
+per request:
+
+```
+override      = student_topic_locks row for (this student, this topic), if any
+baseLocked    = override.is_locked ?? course_topics.is_locked   ← per-topic default, course-wide
+explicitLocked = any prerequisite_topic_ids not yet "mastered"  ← per-student, from that student's stats
+locked         = baseLocked || explicitLocked
+```
+
+- `course_topics.is_locked` is the **global/default fallback** for the whole
+  course — set via `PATCH /courses/:courseId/topics/:topicId`, unchanged by
+  the per-student override.
+- `student_topic_locks` (student_id, topic_id) stores the **per-student
+  override**. When a row exists for this student + topic, it takes priority
+  over the topic's global default for that student only. Set/cleared via
+  `PUT /students/:id/topic-lock` (`is_locked: null` deletes the override and
+  reverts the student to the course default).
+- `explicitLocked` (unmet prerequisite) **always takes precedence over an
+  unlock** — even a student-specific override that says "unlocked" cannot open
+  a topic whose prerequisites this student hasn't mastered yet.
+- The brand-new-student "Option B" auto-unlock (§8 case 3) is applied *after*
+  this calculation and can still force-unlock the first topic regardless of
+  `course_topics.is_locked` / `student_topic_locks` — it only fires when the
+  student has zero activity in the course.
+
+> **Single source of truth:** the merge logic above lives in `asMapTopic()` in
+> `apps/api/src/routes/learning-map.ts`. The frontend only ever reads the
+> resulting `locked` boolean; it never recomputes it.
+
 ---
 
 ## 3. Required IDs per flow
@@ -68,7 +101,7 @@ otherwise          → 0
 | Delete lesson | — | required (ownership) | — | — | required |
 | Review lesson | — | required | preferred | — | required |
 | Complete / fail task | required | — | — | via lesson | required |
-| Lock / unlock topic | — | required | required | required | — |
+| Lock / unlock topic (per-student override) | required | required | required | required | — |
 | Change student course | required | required | required | — | — |
 
 > **Contract:** every new lesson **must** be saved with both `topic_id` **and**
@@ -91,7 +124,8 @@ behaviour?
 | Complete task | yes | task status → completed | invalidate `["learning-map"]` |
 | Fail task | yes | task status → failed | invalidate `["learning-map"]` |
 | Delete task | yes | remove task row | invalidate `["learning-map"]` |
-| Lock / unlock topic | yes | toggle `is_locked` | invalidate `["learning-map"]` |
+| Lock / unlock topic (default, all students) | yes | toggle `course_topics.is_locked` via `PATCH /courses/:courseId/topics/:topicId` | invalidate `["learning-map"]` |
+| Lock / unlock topic (per-student override) | yes | upsert/delete `student_topic_locks` row via `PUT /students/:id/topic-lock` | invalidate `["learning-map"]` |
 | Edit course topics | yes | topic CRUD | invalidate `["learning-map"]` |
 | Change `exam_date` / override | yes (deadlines) | upsert override | invalidate `["learning-map"]` |
 | Add course to student | yes (map may switch course) | join-table insert | invalidate `["learning-map"]` |
@@ -173,7 +207,8 @@ Post-action expectations:
 | 3 | Brand-new student (zero activity) | Option B: lock everything, unlock only the first root topic (+ first child); per-request, never written to DB |
 | 4 | Delete the only lesson in a topic | `lessons_total → 0`, `pct → 0`, `latest_lesson_id → null`, button → "צור שיעור" |
 | 5 | Multiple lessons in a topic | `latest_lesson_id` = newest; "פתח שיעור" opens it |
-| 6 | Manual lock + unmet prerequisite | `locked = is_locked OR prerequisite_not_mastered` (either source locks) |
+| 6 | Manual lock + unmet prerequisite | `locked = (override.is_locked ?? course_topics.is_locked) OR prerequisite_not_mastered` — either source locks; an unlock override cannot beat an unmet prerequisite |
+| 6a | Per-student lock override | `student_topic_locks` row for (student, topic), when present, overrides `course_topics.is_locked` for that student only — other students in the same course are unaffected. Cleared via `is_locked: null`, reverting to the course default. |
 | 7 | Per-student exam-date override | overrides `course.exam_date`; `effective_deadline = topic.target_date ?? exam` |
 | 8 | Switching a student's active course | map must re-derive; requires invalidation (see §10) |
 | 9 | Teacher without ownership of the student | `GET /learning-map` returns 404 |
@@ -187,8 +222,9 @@ Post-action expectations:
 ## 9. Implementation checklist
 
 **Backend — source of truth for calculation:**
-- `apps/api/src/routes/learning-map.ts` — `computeStatus`, `pct`, `locked`, `latest_lesson_id`, Option B
+- `apps/api/src/routes/learning-map.ts` — `computeStatus`, `pct`, `locked` (merges `student_topic_locks` override with `course_topics.is_locked`), `latest_lesson_id`, Option B
 - `apps/api/src/routes/lessons.ts` — create/delete/review; persist `topic_id` + `course_id`; mark `completed`; null `source_lesson_id` before delete
+- `apps/api/src/routes/students.ts` — `PUT /:id/topic-lock`, the per-student lock override read/write
 - `packages/types/src/database.ts` — `LearningMapTopic`, `TopicStats` (the type contract)
 
 **Frontend — invalidation + UI:**

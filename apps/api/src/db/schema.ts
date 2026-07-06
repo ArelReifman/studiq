@@ -369,6 +369,31 @@ export const studentCourseExamDates = pgTable(
   ]
 );
 
+// ─── Per-student topic lock overrides ────────────────────────────────────────
+// Override row keyed by (student_id, topic_id). course_topics.is_locked is
+// the default lock state for the whole course; when a row exists here it
+// takes priority for that one student, so a teacher can open a topic for one
+// student without opening it for everyone else in the same course.
+export const studentTopicLocks = pgTable(
+  "student_topic_locks",
+  {
+    student_id: uuid("student_id")
+      .notNull()
+      .references(() => students.id, { onDelete: "cascade" }),
+    topic_id: uuid("topic_id")
+      .notNull()
+      .references(() => courseTopics.id, { onDelete: "cascade" }),
+    is_locked: boolean("is_locked").notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("stl_pkey").on(t.student_id, t.topic_id),
+    index("idx_stl_topic_id").on(t.topic_id),
+  ]
+);
+
 // ─── Lesson Sessions ──────────────────────────────────────────────────────────
 
 export const lessonSessions = pgTable(

@@ -10,6 +10,7 @@ import {
   homeworkItems,
   todoItems,
   studentCourseExamDates,
+  studentTopicLocks,
 } from "../db/schema.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { zValidator } from "@hono/zod-validator";
@@ -136,7 +137,13 @@ export const learningMapRoutes = new Hono()
     //   4. lessons       — this student's lessons for this course, newest
     //                      first so the first lesson per topic is the latest
     //                      one (used to populate latest_lesson_id).
-    const [courseRows, overrideRows, topics, lessons] = await Promise.all([
+    //   5. lock overrides — this student's per-topic lock overrides; when
+    //                      present for a topic it wins over that topic's
+    //                      course_topics.is_locked default, so a teacher can
+    //                      open one topic for this student without opening it
+    //                      for every other student in the course.
+    const [courseRows, overrideRows, topics, lessons, lockOverrideRows] =
+      await Promise.all([
       db
         .select({
           id: courses.id,
@@ -177,6 +184,13 @@ export const learningMapRoutes = new Hono()
           )
         )
         .orderBy(desc(lessonSessions.generated_at)),
+      db
+        .select({
+          topic_id: studentTopicLocks.topic_id,
+          is_locked: studentTopicLocks.is_locked,
+        })
+        .from(studentTopicLocks)
+        .where(eq(studentTopicLocks.student_id, studentId)),
     ]);
 
     const [course] = courseRows;
@@ -351,17 +365,26 @@ export const learningMapRoutes = new Hono()
 
     const topicById = new Map(topics.map((t) => [t.id, t]));
 
+    // Per-student lock overrides: when a row exists for this topic, it wins
+    // over course_topics.is_locked for this student only.
+    const lockOverrides = new Map(
+      lockOverrideRows.map((r) => [r.topic_id, r.is_locked])
+    );
+
     // 8. Build tree
     const asMapTopic = (t: typeof topics[number]): LearningMapTopic => {
       const stats = topicIdToStats(t.id);
-      // Locking rules: the teacher's manual switch (is_locked) takes priority,
-      // and any unmet explicit prerequisite also locks — either source is
+      // Locking rules: the teacher's manual switch (is_locked, overridden
+      // per-student by studentTopicLocks when present) takes priority, and
+      // any unmet explicit prerequisite also locks — either source is
       // enough. Sequential auto-locking was removed in favour of the manual
       // toggle so the teacher decides exactly when each topic opens.
+      const override = lockOverrides.get(t.id);
+      const baseLocked = override ?? t.is_locked;
       const explicitLocked = t.prerequisite_topic_ids.some(
         (pid) => topicIdToStats(pid).status !== "mastered"
       );
-      const locked = t.is_locked || explicitLocked;
+      const locked = baseLocked || explicitLocked;
       // Effective deadline: topic-specific date wins, falling back to the
       // course exam date so a topic without its own date still drives
       // urgency on the student's UI. Course exam_date is a timestamptz —
