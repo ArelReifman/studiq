@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { api } from "@/lib/api";
@@ -13,6 +13,7 @@ import {
   Copy,
   Loader2,
   Plus,
+  Search,
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,7 @@ interface StudentRow {
   email: string;
   grade_level: string | null;
   unreviewed_difficulties: number;
+  courses: string[];
 }
 
 export default function StudentsPage() {
@@ -34,11 +36,41 @@ export default function StudentsPage() {
   const [inviteGrade, setInviteGrade] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [search, setSearch] = useState("");
+  const [gradeFilter, setGradeFilter] = useState("");
+  const [courseFilter, setCourseFilter] = useState("");
 
   const { data: students = [], isLoading } = useQuery<StudentRow[]>({
     queryKey: ["students"],
     queryFn: () => api.get("/students"),
   });
+
+  const gradeOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(students.map((s) => s.grade_level).filter((g): g is string => !!g))
+      ).sort(),
+    [students]
+  );
+
+  const courseOptions = useMemo(
+    () => Array.from(new Set(students.flatMap((s) => s.courses))).sort(),
+    [students]
+  );
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return students
+      .filter((s) =>
+        q
+          ? s.full_name.toLowerCase().includes(q) ||
+            s.email.toLowerCase().includes(q) ||
+            s.courses.some((c) => c.toLowerCase().includes(q))
+          : true
+      )
+      .filter((s) => (gradeFilter ? s.grade_level === gradeFilter : true))
+      .filter((s) => (courseFilter ? s.courses.includes(courseFilter) : true));
+  }, [students, search, gradeFilter, courseFilter]);
 
   const inviteMutation = useMutation({
     mutationFn: () =>
@@ -61,8 +93,8 @@ export default function StudentsPage() {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  const needsAttention = students.filter((s) => s.unreviewed_difficulties > 0);
-  const rest = students.filter((s) => s.unreviewed_difficulties === 0);
+  const needsAttention = filtered.filter((s) => s.unreviewed_difficulties > 0);
+  const rest = filtered.filter((s) => s.unreviewed_difficulties === 0);
 
   return (
     <div className="space-y-6">
@@ -165,6 +197,52 @@ export default function StudentsPage() {
         </Card>
       )}
 
+      {students.length > 0 && (
+        <div className="flex flex-col sm:flex-row gap-2">
+          {courseOptions.length > 0 && (
+            <select
+              value={courseFilter}
+              onChange={(e) => setCourseFilter(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 bg-white"
+            >
+              <option value="">{t("teacher.allCourses")}</option>
+              {courseOptions.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          )}
+          {gradeOptions.length > 0 && (
+            <select
+              value={gradeFilter}
+              onChange={(e) => setGradeFilter(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 bg-white"
+            >
+              <option value="">{t("teacher.allGrades")}</option>
+              {gradeOptions.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+          )}
+          <div className="relative flex-1">
+            <Search
+              size={15}
+              className="absolute top-1/2 -translate-y-1/2 start-3 text-gray-300"
+            />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t("teacher.searchStudents")}
+              className="w-full border border-gray-200 rounded-lg ps-9 pe-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+            />
+          </div>
+        </div>
+      )}
+
       {isLoading ? (
         <p className="text-sm text-gray-400">{t("common.loading")}</p>
       ) : students.length === 0 ? (
@@ -173,6 +251,10 @@ export default function StudentsPage() {
             <Users size={20} className="text-brand-500" />
           </div>
           <p className="text-sm text-gray-500">{t("teacher.noStudents")}</p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-16 border border-dashed border-gray-200 rounded-xl bg-white">
+          <p className="text-sm text-gray-500">{t("teacher.noStudentsMatch")}</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -228,6 +310,7 @@ function StudentCard({ student }: { student: StudentRow }) {
         <p className="text-xs text-gray-400 truncate mt-0.5">
           {student.grade_level ? `${student.grade_level} · ` : ""}
           {student.email}
+          {student.courses.length > 0 ? ` · ${student.courses.join(", ")}` : ""}
         </p>
       </div>
       <ArrowLeft

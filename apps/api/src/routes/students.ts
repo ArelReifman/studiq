@@ -72,7 +72,31 @@ export const studentRoutes = new Hono()
       )
       .where(eq(students.teacher_id, teacherId));
 
-    return c.json(roster);
+    const studentIds = roster.map((s) => s.id);
+    const activeCourses = studentIds.length
+      ? await db
+          .select({
+            student_id: studentCourses.student_id,
+            course_name: courses.name,
+          })
+          .from(studentCourses)
+          .innerJoin(courses, eq(courses.id, studentCourses.course_id))
+          .where(
+            and(
+              inArray(studentCourses.student_id, studentIds),
+              eq(studentCourses.is_active, true)
+            )
+          )
+      : [];
+
+    return c.json(
+      roster.map((s) => ({
+        ...s,
+        courses: activeCourses
+          .filter((r) => r.student_id === s.id)
+          .map((r) => r.course_name),
+      }))
+    );
   })
 
   // GET /students/:id — student detail
