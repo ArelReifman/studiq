@@ -9,6 +9,7 @@ import { createAdminSupabase } from "../lib/supabase.js";
 import { uuidParamSchema } from "../lib/validators.js";
 import { notifyTelegram, sendTelegramDocument, escapeTelegramHtml } from "../lib/notify.js";
 import { waitUntil } from "@vercel/functions";
+import { logActivity } from "../lib/activity-log.js";
 
 // Fire-and-forget Telegram ping when a student attaches a homework file.
 // contentType is optional — when not passed (e.g. the signed-URL confirm flow),
@@ -725,6 +726,13 @@ export const uploadRoutes = new Hono()
         .returning();
 
       if (!updated) return c.json({ error: "Failed to update lesson" }, 500);
+
+      logActivity(c, {
+        event_type: "lesson.solution_uploaded",
+        student_id: studentId,
+        actor_id: studentId,
+        detail: { lesson_id: lessonId },
+      });
 
       // Best-effort background notification. sendDocument fetches the file and
       // can take longer than the response, so register the promise with

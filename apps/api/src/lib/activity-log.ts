@@ -5,7 +5,9 @@ import { activityEvents } from "../db/schema.js";
 export type ActivityEventType =
   | "auth.login_succeeded"
   | "lesson.opened"
-  | "learning_map.opened";
+  | "learning_map.opened"
+  | "lesson.reflection_saved"
+  | "lesson.solution_uploaded";
 
 interface ActivityInput {
   event_type: ActivityEventType;

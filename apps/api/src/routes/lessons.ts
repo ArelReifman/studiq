@@ -548,6 +548,16 @@ export const lessonRoutes = new Hono()
         });
 
       if (!updated) return c.json({ error: "Lesson not found" }, 404);
+
+      if (trimmed !== "") {
+        logActivity(c, {
+          event_type: "lesson.reflection_saved",
+          student_id: studentId,
+          actor_id: studentId,
+          detail: { lesson_id: lessonId },
+        });
+      }
+
       return c.json(updated);
     }
   )

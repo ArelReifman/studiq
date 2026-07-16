@@ -826,6 +826,8 @@ export const activityEventTypeEnum = pgEnum("activity_event_type", [
   "auth.login_succeeded",
   "lesson.opened",
   "learning_map.opened",
+  "lesson.reflection_saved",
+  "lesson.solution_uploaded",
 ]);
 
 export const activityEvents = pgTable(
