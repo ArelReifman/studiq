@@ -15,6 +15,7 @@ import {
 import { authMiddleware } from "../middleware/auth.js";
 import { zValidator } from "@hono/zod-validator";
 import { learningMapQuerySchema } from "../lib/validators.js";
+import { logActivity } from "../lib/activity-log.js";
 import type {
   LearningMap,
   LearningMapTopic,
@@ -77,6 +78,12 @@ export const learningMapRoutes = new Hono()
       if (!owner) return c.json({ error: "Student not found" }, 404);
       studentId = studentIdParam;
     }
+
+    logActivity(c, {
+      event_type: "learning_map.opened",
+      student_id: studentId,
+      actor_id: userId,
+    });
 
     // ── Wave 1 ── independent lookups that only need studentId.
     // Resolve which course the map shows. Only ACTIVE course assignments

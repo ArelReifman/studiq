@@ -22,6 +22,7 @@ import { approvalsRoutes } from "./routes/approvals.js";
 import { profileRoutes } from "./routes/profile.js";
 import { googleAuthRoutes } from "./routes/google-auth.js";
 import { cronRoutes } from "./routes/cron.js";
+import { adminAnalyticsRoutes } from "./routes/admin-analytics.js";
 import { rateLimit } from "./middleware/rate-limit.js";
 
 export function createApp(basePath = "") {
@@ -76,6 +77,7 @@ export function createApp(basePath = "") {
   app.use("/learning-resources/*", rateLimit(30, 60 * 1000));
   // Booking churn (cap-of-3 already enforces business rule, this caps abuse).
   app.use("/bookings/*", rateLimit(60, 60 * 1000));
+  app.use("/admin-analytics/*", rateLimit(30, 60 * 1000));
 
   app.route("/auth", authRoutes);
   app.route("/onboarding", onboardingRoutes);
@@ -96,6 +98,7 @@ export function createApp(basePath = "") {
   app.route("/profile", profileRoutes);
   app.route("/auth/google", googleAuthRoutes);
   app.route("/cron", cronRoutes);
+  app.route("/admin-analytics", adminAnalyticsRoutes);
 
   app.get("/health", (c) => c.json({ status: "ok", version: "1.0.1", timestamp: new Date().toISOString() }));
   app.notFound((c) => c.json({ error: "Not found" }, 404));

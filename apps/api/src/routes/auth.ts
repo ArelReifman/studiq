@@ -16,6 +16,7 @@ import {
 import { authMiddleware } from "../middleware/auth.js";
 import { notifyTelegram, escapeTelegramHtml } from "../lib/notify.js";
 import { audit } from "../lib/audit.js";
+import { logActivity } from "../lib/activity-log.js";
 import type { Context } from "hono";
 
 /** Set HttpOnly auth cookie + non-HttpOnly user-info cookie */
@@ -310,6 +311,14 @@ export const authRoutes = new Hono()
 
     // Set HttpOnly cookie with access token
     setAuthCookies(c, data.session.access_token, user);
+
+    if (user.role === "student") {
+      logActivity(c, {
+        event_type: "auth.login_succeeded",
+        student_id: user.id,
+        actor_id: user.id,
+      });
+    }
 
     return c.json({
       access_token: data.session.access_token,

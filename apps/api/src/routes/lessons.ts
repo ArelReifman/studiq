@@ -19,6 +19,7 @@ import { updateStudentProfile } from "../services/ai/update-profile.js";
 import { updateTeacherStyleIfDue } from "../services/ai/update-teacher-style.js";
 import { createAdminSupabase } from "../lib/supabase.js";
 import { lessonsQuerySchema, uuidParamSchema } from "../lib/validators.js";
+import { logActivity } from "../lib/activity-log.js";
 
 export const lessonRoutes = new Hono()
   .use(authMiddleware)
@@ -111,6 +112,13 @@ export const lessonRoutes = new Hono()
     if (role === "teacher" && lesson.teacher_id !== userId) {
       return c.json({ error: "Forbidden" }, 403);
     }
+
+    logActivity(c, {
+      event_type: "lesson.opened",
+      student_id: lesson.student_id,
+      actor_id: userId,
+      detail: { lesson_id: lessonId },
+    });
 
     const [hw, todos] = await Promise.all([
       db

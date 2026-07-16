@@ -814,6 +814,43 @@ export const learningResources = pgTable(
   ]
 );
 
+// ─── Activity events ─────────────────────────────────────────────────────────
+// Append-only usage-analytics log: student logins, lesson opens, learning-map
+// opens. Server-only table — see migration 027 and SUPABASE_DATA_API_GRANTS.md
+// Template B. Distinct from audit_logs (a security event trail); this table is
+// for routine usage counts, not security auditing.
+// Writes are best-effort/fire-and-forget: a failed insert must NEVER block the
+// underlying request.
+
+export const activityEventTypeEnum = pgEnum("activity_event_type", [
+  "auth.login_succeeded",
+  "lesson.opened",
+  "learning_map.opened",
+]);
+
+export const activityEvents = pgTable(
+  "activity_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    event_type: activityEventTypeEnum("event_type").notNull(),
+    // No FK to students/profiles by design — a logging insert must never fail
+    // due to a foreign key violation on a code path we don't fully control.
+    student_id: uuid("student_id"),
+    actor_id: uuid("actor_id"),
+    detail: jsonb("detail"),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("idx_activity_events_student_created").on(
+      t.student_id,
+      t.created_at
+    ),
+    index("idx_activity_events_type_created").on(t.event_type, t.created_at),
+  ]
+);
+
 // ─── Relations ────────────────────────────────────────────────────────────────
 
 export const profilesRelations = relations(profiles, ({ one }) => ({

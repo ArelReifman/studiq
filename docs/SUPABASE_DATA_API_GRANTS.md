@@ -137,8 +137,9 @@ ALTER TABLE public.internal_table ENABLE ROW LEVEL SECURITY;
 -- Not added to supabase_realtime.
 ```
 
-(See `infrastructure/supabase/migrations/012_audit_logs.sql` for an existing
-deny-all, server-only example.)
+(See `infrastructure/supabase/migrations/012_audit_logs.sql` and
+`infrastructure/supabase/migrations/027_activity_events.sql` for existing
+deny-all, server-only examples.)
 
 ---
 
@@ -184,6 +185,9 @@ Before merging a migration that creates a `public` table, answer:
   original schema tables.
 - `infrastructure/supabase/migrations/012_audit_logs.sql` — deny-all, server-only
   pattern.
+- `infrastructure/supabase/migrations/027_activity_events.sql` — same deny-all,
+  server-only pattern for usage-analytics events (logins, lesson/learning-map
+  opens); read only via the `/admin-analytics/overview` API route.
 - `infrastructure/supabase/migrations/008_courses_and_topics.sql` — example of
   `ALTER PUBLICATION supabase_realtime ADD TABLE`.
 - `apps/web/src/hooks/use-realtime-sync.ts` — the Realtime subscription list.
