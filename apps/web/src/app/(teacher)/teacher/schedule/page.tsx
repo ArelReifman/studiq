@@ -147,6 +147,9 @@ export default function TeacherSchedulePage() {
 
   // Recent ended lessons (last 30 days, including today's already-finished
   // ones) — these are the ones the teacher can mark as attended / no-show.
+  // Lessons still missing attendance stay visible regardless of age, so a
+  // forgotten lesson from months ago doesn't vanish from the list while
+  // still counting against the dashboard's "action required" badge.
   const recentPast = useMemo(() => {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 30);
@@ -154,19 +157,24 @@ export default function TeacherSchedulePage() {
     return bookings.filter(
       (b) =>
         (b.status === "approved" || b.status === "cancel_requested") &&
-        b.date >= cutoffStr &&
+        (b.date >= cutoffStr || b.attendance === null) &&
         hasLessonEnded(b.date, b.end_time)
     );
   }, [bookings]);
 
   const recentPastGroups = useMemo(
     () =>
-      groupConsecutiveBookings(recentPast).sort((a, b) =>
+      groupConsecutiveBookings(recentPast).sort((a, b) => {
+        // Groups still missing attendance always sort first, so a forgotten
+        // lesson never gets buried past page 1 by newer already-marked ones.
+        const aNeeds = a.bookings.some((x) => x.attendance === null);
+        const bNeeds = b.bookings.some((x) => x.attendance === null);
+        if (aNeeds !== bNeeds) return aNeeds ? -1 : 1;
         // Most recent first (latest start time wins).
-        b.date === a.date
+        return b.date === a.date
           ? b.start_time.localeCompare(a.start_time)
-          : b.date.localeCompare(a.date)
-      ),
+          : b.date.localeCompare(a.date);
+      }),
     [recentPast]
   );
 
@@ -272,6 +280,7 @@ export default function TeacherSchedulePage() {
     onError: (e: Error) => setError(e.message),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-bookings-as-teacher"] });
+      qc.invalidateQueries({ queryKey: ["bookings", "requests"] });
       qc.invalidateQueries({ queryKey: ["my-availability"] });
       qc.invalidateQueries({ queryKey: ["booking-slots"] });
     },
@@ -296,6 +305,7 @@ export default function TeacherSchedulePage() {
     onError: (e: Error) => setError(e.message),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-bookings-as-teacher"] });
+      qc.invalidateQueries({ queryKey: ["bookings", "requests"] });
       qc.invalidateQueries({ queryKey: ["my-availability"] });
       qc.invalidateQueries({ queryKey: ["booking-slots"] });
     },

@@ -185,7 +185,7 @@ export default function TeacherDashboard() {
                         })}
                   </span>
                 </div>
-                <ArrowLeft size={14} className="text-amber-500 rtl:rotate-180" />
+                <ArrowRight size={14} className="text-amber-500 rtl:rotate-180" />
               </Link>
             )}
 
@@ -208,7 +208,7 @@ export default function TeacherDashboard() {
                         })}
                   </span>
                 </div>
-                <ArrowLeft size={14} className="text-blue-500 rtl:rotate-180" />
+                <ArrowRight size={14} className="text-blue-500 rtl:rotate-180" />
               </Link>
             )}
 
@@ -231,7 +231,7 @@ export default function TeacherDashboard() {
                     })}
                   </span>
                 </div>
-                <ArrowLeft size={14} className="text-orange-400 rtl:rotate-180" />
+                <ArrowRight size={14} className="text-orange-400 rtl:rotate-180" />
               </Link>
             ))}
 
