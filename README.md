@@ -14,6 +14,10 @@ Built solo &nbsp;·&nbsp; [Live](https://studiq-three.vercel.app) &nbsp;·&nbsp;
 
 A tutor approves a student, the AI watches how the tutor teaches *and* how the student learns, and every generated lesson is shaped by both. Two students of the same tutor get different lessons. Two tutors of the same student would too.
 
+![A student's learning map: per-topic mastery, AI lesson recommendations, and a countdown to the exam](docs/assets/learning-map.png)
+
+*The teacher's view of one student's learning map — topic mastery, an AI-recommended next lesson, and 5 days to the exam. The UI is Hebrew-first (RTL); everything ships in English too.*
+
 ### What the AI does
 
 | Loop | Reads | Writes |
