@@ -11,6 +11,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
+import { withDownloadName } from "@/lib/download-url";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -96,7 +97,7 @@ export default function TeacherLessonDetailPage() {
                 {t("student.lessonMaterial")}
               </p>
               <a
-                href={lesson.material_url!}
+                href={withDownloadName(lesson.material_url!, lesson.material_name)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm font-medium text-brand-600 hover:underline truncate block"
@@ -134,7 +135,7 @@ export default function TeacherLessonDetailPage() {
             </p>
             {lesson.student_solution_url ? (
               <a
-                href={lesson.student_solution_url}
+                href={withDownloadName(lesson.student_solution_url, lesson.student_solution_name)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm font-medium text-green-700 hover:underline truncate block"

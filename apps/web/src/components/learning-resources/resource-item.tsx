@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import type { LearningResource } from "@studiq/types";
 import { useT } from "@/i18n";
+import { withDownloadName } from "@/lib/download-url";
 
 interface Props {
   resource: LearningResource;
@@ -60,7 +61,7 @@ export function ResourceItem({
       </div>
 
       <a
-        href={resource.file_url}
+        href={withDownloadName(resource.file_url, resource.file_name)}
         target="_blank"
         rel="noopener noreferrer"
         className="text-gray-500 hover:text-brand-600 flex-shrink-0"

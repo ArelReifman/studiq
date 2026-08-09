@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, XCircle, Paperclip, FileText, X, Upload, Undo2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { withDownloadName } from "@/lib/download-url";
 import { useT } from "@/i18n";
 import type { HomeworkItem, TodoItem } from "@studiq/types";
 
@@ -128,7 +129,7 @@ export function TaskItem({ item, type, lessonId }: TaskItemProps) {
           <div className="flex items-center gap-2 mt-2 bg-gray-50 rounded-md px-2.5 py-1.5 w-fit">
             <FileText size={14} className="text-brand-500 flex-shrink-0" />
             <a
-              href={hwItem!.file_url!}
+              href={withDownloadName(hwItem!.file_url!, hwItem!.file_name)}
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs text-brand-600 hover:underline truncate max-w-[200px]"
