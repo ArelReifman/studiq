@@ -79,11 +79,13 @@ export const learningMapRoutes = new Hono()
       studentId = studentIdParam;
     }
 
-    logActivity(c, {
-      event_type: "learning_map.opened",
-      student_id: studentId,
-      actor_id: userId,
-    });
+    if (role === "student") {
+      logActivity(c, {
+        event_type: "learning_map.opened",
+        student_id: studentId,
+        actor_id: userId,
+      });
+    }
 
     // ── Wave 1 ── independent lookups that only need studentId.
     // Resolve which course the map shows. Only ACTIVE course assignments
