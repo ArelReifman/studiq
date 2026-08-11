@@ -113,12 +113,14 @@ export const lessonRoutes = new Hono()
       return c.json({ error: "Forbidden" }, 403);
     }
 
-    logActivity(c, {
-      event_type: "lesson.opened",
-      student_id: lesson.student_id,
-      actor_id: userId,
-      detail: { lesson_id: lessonId },
-    });
+    if (role === "student") {
+      logActivity(c, {
+        event_type: "lesson.opened",
+        student_id: lesson.student_id,
+        actor_id: userId,
+        detail: { lesson_id: lessonId },
+      });
+    }
 
     const [hw, todos] = await Promise.all([
       db
