@@ -172,3 +172,125 @@ export async function updateStudentProfile(
     console.error("Failed to update student AI profile:", err);
   }
 }
+
+/**
+ * Rewrites ai_summary/strong_topics/weak_topics in the current Hebrew/
+ * ben-adam style, WITHOUT touching total_lessons/avg_completion_rate/
+ * total_homework — those are event-driven counters owned by
+ * updateStudentProfile and must not be double-incremented here.
+ *
+ * For backfilling profiles that were generated before a prompt/style change
+ * (e.g. the English-language profiles that existed before the Hebrew
+ * rewrite) — not part of the normal per-lesson update flow.
+ *
+ * Returns false when there's nothing to rewrite (no profile / no existing
+ * summary) or no lesson exists yet to give the prompt context.
+ */
+export async function refreshProfileLanguage(studentId: string): Promise<boolean> {
+  const [profile, studentRow, lastLesson, insights] = await Promise.all([
+    db
+      .select()
+      .from(studentAiProfiles)
+      .where(eq(studentAiProfiles.student_id, studentId))
+      .limit(1)
+      .then((r) => r[0]),
+    db
+      .select({
+        full_name: profiles.full_name,
+        background_note: students.background_note,
+      })
+      .from(students)
+      .innerJoin(profiles, eq(profiles.id, students.id))
+      .where(eq(students.id, studentId))
+      .limit(1)
+      .then((r) => r[0]),
+    db
+      .select({
+        id: lessonSessions.id,
+        title: lessonSessions.title,
+        student_reflection: lessonSessions.student_reflection,
+        teacher_review_note: lessonSessions.teacher_review_note,
+        teacher_decision: lessonSessions.teacher_decision,
+      })
+      .from(lessonSessions)
+      .where(eq(lessonSessions.student_id, studentId))
+      .orderBy(desc(lessonSessions.generated_at))
+      .limit(1)
+      .then((r) => r[0]),
+    db
+      .select({ content: studentInsights.content, created_at: studentInsights.created_at })
+      .from(studentInsights)
+      .where(eq(studentInsights.student_id, studentId))
+      .orderBy(desc(studentInsights.created_at))
+      .limit(10),
+  ]);
+
+  if (!profile || !studentRow || !profile.ai_summary) return false;
+
+  let completedCount = 0;
+  let failedCount = 0;
+  let failedTopics: string[] = [];
+  if (lastLesson) {
+    const [hw, todos] = await Promise.all([
+      db.select().from(homeworkItems).where(eq(homeworkItems.lesson_id, lastLesson.id)),
+      db.select().from(todoItems).where(eq(todoItems.lesson_id, lastLesson.id)),
+    ]);
+    const allItems = [...hw, ...todos];
+    completedCount = allItems.filter((i) => i.status === "completed").length;
+    failedCount = allItems.filter((i) => i.status === "failed").length;
+    const failedIds = allItems.filter((i) => i.status === "failed").map((i) => i.id);
+    if (failedIds.length > 0) {
+      const reports = await db
+        .select({ topic_tags: difficultyReports.topic_tags })
+        .from(difficultyReports)
+        .where(eq(difficultyReports.student_id, studentId));
+      failedTopics = Array.from(new Set(reports.flatMap((r) => r.topic_tags)));
+    }
+  }
+
+  const prompt = buildProfileUpdatePrompt({
+    studentName: studentRow.full_name,
+    currentSummary: profile.ai_summary,
+    lessonTitle: lastLesson?.title ?? "",
+    completedCount,
+    failedCount,
+    failedTopics,
+    studentReflection: lastLesson?.student_reflection ?? null,
+    teacherReviewNote: lastLesson?.teacher_review_note ?? null,
+    teacherDecision: lastLesson?.teacher_decision ?? null,
+    backgroundNote: studentRow.background_note ?? null,
+    insights: insights.map((i) => ({
+      content: i.content,
+      created_at: i.created_at.toISOString(),
+    })),
+  });
+
+  const rawUpdated = await callClaude(prompt, (text) => {
+    const parsed = JSON.parse(text);
+    return ProfileUpdateSchema.parse(parsed);
+  });
+
+  const updated = {
+    ai_summary: sanitizeHebrewText(rawUpdated.ai_summary),
+    strong_topics: rawUpdated.strong_topics.map(sanitizeHebrewText),
+    weak_topics: rawUpdated.weak_topics.map(sanitizeHebrewText),
+    learning_style: rawUpdated.learning_style,
+  };
+
+  await db
+    .update(studentAiProfiles)
+    .set({
+      ai_summary: updated.ai_summary,
+      strong_topics: updated.strong_topics,
+      weak_topics: updated.weak_topics,
+      learning_style: updated.learning_style,
+      updated_at: new Date(),
+    })
+    .where(eq(studentAiProfiles.student_id, studentId));
+
+  await generateNextSessionBriefing(studentId).catch((err) =>
+    console.error("[briefing] refresh failed:", err)
+  );
+
+  return true;
+}
