@@ -525,6 +525,10 @@ export function buildReportPrompt(params: {
     completionRate: number | null;
     improve: string[];
   }>;
+  studentTopics: {
+    improve: string[];
+    maintain: string[];
+  };
 }): string {
   const {
     studentName,
@@ -540,6 +544,7 @@ export function buildReportPrompt(params: {
     aiSummary,
     learningMap,
     previousReports,
+    studentTopics,
   } = params;
 
   const difficultiesSection =
@@ -615,11 +620,19 @@ ${aiSummary ?? "אין סיכום פרופיל זמין."}
 ## המשימה שלך
 כתוב תקציר קצר וממוקד (2-4 משפטים) המבוסס על הנתונים שסופקו, לא על ניסוח גנרי של "התלמיד השלים X שיעורים". פתח בשם התלמיד. התבסס על הערות המורה, הרפלקציות של התלמיד, ומצב מפת הלמידה.
 
-בנוסף, כתוב המלצות בשני חלקים:
+בנוסף, כתוב המלצות בשני חלקים (למורה בלבד, לא לתלמיד):
 - "improve" (לשיפור): נקודות ספציפיות וקונקרטיות. כשהנתונים תומכים בכך, שלב בכל נקודה עד שלושה דברים: קצב ("בקצב הנוכחי..."), מגמה מול הדוחות הקודמים למעלה ("זה הנושא השלישי ברציפות שחוזר..." או "בניגוד לדוח הקודם..."), ופעולה קונקרטית לשיעור הבא ("בשיעור הבא כדאי להתחיל עם..."). אל תמציא מגמה אם אין דוחות קודמים, פשוט דלג על הזווית הזו.
 - "maintain" (לשימור): מה עובד טוב ומומלץ להמשיך בו, גם כאן באופן ספציפי ולא גנרי.
 
 כל טקסט חופשי (summary, improve, maintain) חייב להיות בעברית בלבד.
+
+## משפט לתלמיד על כל נושא (student_notes)
+בנפרד מהדוח למורה, התלמיד עצמו רואה רק רשימת נושאים פשוטה, בלי הפרטים הפרטיים שלמעלה. עבור כל נושא ברשימות הבאות, כתוב משפט אחד קצר, פונה ישירות לתלמיד בגוף שני ("אתה", לא "התלמיד"), שמלמד אותו משהו קונקרטי על הנושא הזה ומכוון אותו קדימה. אל תצטט או תפרש הערה פרטית של המורה כפי שהיא, רק תן לתלמיד תובנה לימודית בטוחה ושימושית שנובעת מהמידע.
+
+נושאים לשיפור (סדר קבוע, משפט אחד לכל אחד): ${studentTopics.improve.join(", ") || "אין"}
+נושאים לשימור (סדר קבוע, משפט אחד לכל אחד): ${studentTopics.maintain.join(", ") || "אין"}
+
+אם אחת הרשימות ריקה, החזר עבורה מערך ריק. אחרת חובה משפט אחד בדיוק לכל נושא ברשימה, באותו סדר.
 
 ${HEBREW_WRITING_RULES}
 
@@ -630,6 +643,10 @@ Respond ONLY with valid JSON:
     "improve": ["string (Hebrew)"],
     "maintain": ["string (Hebrew)"],
     "suggested_difficulty": "easier" | "same" | "harder"
+  },
+  "student_notes": {
+    "improve": ["string (Hebrew, one sentence per topic in studentTopics.improve, same order)"],
+    "maintain": ["string (Hebrew, one sentence per topic in studentTopics.maintain, same order)"]
   }
 }`;
 }
