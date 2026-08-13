@@ -391,10 +391,24 @@ Respond ONLY with valid JSON:
 }
 
 const DECISION_LABEL: Record<string, string> = {
-  repeat:     "חזרה על אותה רמה — התלמיד עוד לא מוכן",
+  repeat:     "חזרה על אותה רמה, התלמיד עוד לא מוכן",
   next_level: "מעבר לרמה הבאה באותו נושא",
-  next_topic: "מעבר לנושא הבא — התלמיד שלט בחומר",
+  next_topic: "מעבר לנושא הבא, התלמיד שלט בחומר",
 };
+
+// Shared across every Hebrew-facing teacher prompt (briefing, profile
+// summary, report) so the model's writing style is consistent no matter
+// which piece of AI-generated text the teacher is reading. Based on the
+// ben-adam humanization ruleset.
+const HEBREW_WRITING_RULES = `## איך לכתוב, כדי שזה יישמע כמו מורה כתב את זה ולא AI
+- אסור בהחלט להשתמש בתו מקף ארוך (—) או במקף כפול (--) בשום מקום בטקסט. במקום זאת השתמש בפסיק, בנקודה, או פצל למשפט חדש.
+- אסור להשתמש בכוכביות או בכל תחביר Markdown אחר (**מודגש**, כותרות עם #). כתוב טקסט רגיל בלבד, אין עיצוב.
+- אל תשתמש באוגד מנופח: מהווה, הינו/הינה, מתאפיין, נמנה עם. כתוב פשוט "הוא" / "זה".
+- הימנע משבחים ריקים ומגברי גודל ריקים: פורץ דרך, עוצמתי, ייחודי, ענק, מטורף. אם אין תוכן קונקרטי מאחורי המילה, אל תשתמש בה.
+- הימנע ממחברי שיח מיותרים: חשוב לציין, יש לציין, בנוסף, יתרה מכך, לסיכום. עבור ישר לתוכן.
+- הימנע מברירות מחדל פורמליות מיותרות: "אשר" במקום "ש", "כאשר" במקום "כש", "על מנת" במקום "כדי".
+- הימנע מפרשנות נטפלת בסוף משפט ("מה שמדגיש את...", "דבר המעיד על..."). אם המשפט עומד בלי הזנב הזה, השמט אותו.
+- כתוב כמו מורה מקצועי שכותב הערה אמיתית על תלמיד, לא כמו טקסט שיווקי או כמו תבנית.`;
 
 export function buildProfileUpdatePrompt(params: {
   studentName: string;
@@ -424,41 +438,43 @@ export function buildProfileUpdatePrompt(params: {
   } = params;
 
   const reflectionSection = studentReflection?.trim()
-    ? `\n## Student's Own Words (written after the lesson)\n"${studentReflection.trim()}"\n\nThis is the student's direct self-assessment — pay close attention to what they say was hard or easy. It often reveals learning style and emotional state more accurately than completion rates alone.`
+    ? `\n## הרפלקציה של התלמיד (נכתבה אחרי השיעור)\n"${studentReflection.trim()}"\n\nזו ההערכה העצמית הישירה של התלמיד. שים לב במיוחד למה שהוא כתב שהיה קשה או קל, לרוב זה חושף סגנון למידה ומצב רגשי בצורה מדויקת יותר מאחוז השלמה בלבד.`
     : "";
 
   const teacherSection = (teacherDecision || teacherReviewNote?.trim())
-    ? `\n## Teacher's Verdict (most authoritative signal)\nDecision: ${teacherDecision ? DECISION_LABEL[teacherDecision] : "not set"}${teacherReviewNote?.trim() ? `\nNote: "${teacherReviewNote.trim()}"` : ""}\n\nThis is the teacher's direct assessment after reviewing the student's submitted solution. It overrides self-reported data. Use it to calibrate what "mastery" means for this teacher.`
+    ? `\n## הערכת המורה (הסיגנל הכי אמין)\nהחלטה: ${teacherDecision ? DECISION_LABEL[teacherDecision] : "לא נקבעה"}${teacherReviewNote?.trim() ? `\nהערה: "${teacherReviewNote.trim()}"` : ""}\n\nזו ההערכה הישירה של המורה אחרי בדיקת הפתרון שהתלמיד הגיש. היא גוברת על נתונים שהתלמיד דיווח בעצמו, והיא מה שקובע איך "שליטה בחומר" מוגדרת אצל המורה הזה.`
     : "";
 
   const backgroundSection = backgroundNote?.trim()
-    ? `\n## Student Background (static context written by teacher)\n${backgroundNote.trim()}`
+    ? `\n## רקע קבוע על התלמיד (מה שהמורה כתב)\n${backgroundNote.trim()}`
     : "";
 
   const insightsSection = insights.length > 0
-    ? `\n## What Helps This Student (${insights.length} teacher insights, newest first)\n${insights
-        .map((i) => `• ${i.content}  (${new Date(i.created_at).toISOString().slice(0, 10)})`)
-        .join("\n")}\n\nThese are observations the teacher discovered over time. Recent ones weigh more. They describe HOW this student learns best — the AI summary should reflect them.`
+    ? `\n## מה עוזר לתלמיד הזה (${insights.length} תובנות מהמורה, מהחדש לישן)\n${insights
+        .map((i) => `• ${i.content} (${new Date(i.created_at).toISOString().slice(0, 10)})`)
+        .join("\n")}\n\nאלו תצפיות שהמורה צבר לאורך זמן. התובנות החדשות יותר משמעותיות יותר, והן מתארות איך התלמיד הזה לומד הכי טוב, הסיכום צריך לשקף אותן.`
     : "";
 
-  return `Update the AI learning profile summary for a student based on their latest lesson performance.
+  return `עדכן את סיכום פרופיל הלמידה של תלמיד, לפי הביצוע שלו בשיעור האחרון.
 
-## Student: ${studentName}
+## תלמיד: ${studentName}
 
-## Current Profile Summary
-${currentSummary ?? "No existing summary — create a new one."}
+## הסיכום הקיים
+${currentSummary ?? "אין סיכום קיים, בנה אחד חדש."}
 
-## Latest Lesson: "${lessonTitle}"
-- Tasks completed: ${completedCount}
-- Tasks failed: ${failedCount}
-- Topics in failed tasks: ${failedTopics.join(", ") || "none"}${reflectionSection}${teacherSection}${backgroundSection}${insightsSection}
+## שיעור אחרון: "${lessonTitle}"
+- משימות שהושלמו: ${completedCount}
+- משימות שנכשלו: ${failedCount}
+- נושאים במשימות שנכשלו: ${failedTopics.join(", ") || "אין"}${reflectionSection}${teacherSection}${backgroundSection}${insightsSection}
 
-Write an updated 2–4 sentence summary capturing:
-1. What the student is good at
-2. What they struggle with
-3. Any notable patterns or learning style observations (weight the student's own reflection heavily if present)
+כתוב סיכום מעודכן של 2 עד 4 משפטים, בגוף שלישי, על התלמיד, לפי שמו, שמכסה:
+1. במה התלמיד חזק
+2. במה הוא מתקשה
+3. דפוסים בולטים או תצפיות על סגנון הלמידה שלו (תן משקל גבוה לרפלקציה של התלמיד עצמו אם יש כזו)
 
-Write "ai_summary" and every topic name in Hebrew — this is read directly by a Hebrew-speaking teacher.
+${HEBREW_WRITING_RULES}
+
+כל שם נושא ב-strong_topics וב-weak_topics צריך להיות בעברית.
 
 Respond ONLY with valid JSON:
 {
@@ -605,14 +621,7 @@ ${aiSummary ?? "אין סיכום פרופיל זמין."}
 
 כל טקסט חופשי (summary, improve, maintain) חייב להיות בעברית בלבד.
 
-## איך לכתוב, כדי שזה יישמע כמו מורה כתב את זה ולא AI
-- אסור בהחלט להשתמש בתו מקף ארוך (—) או במקף כפול (--) בשום מקום בטקסט. במקום זאת השתמש בפסיק, בנקודה, או פצל למשפט חדש.
-- אל תשתמש באוגד מנופח: מהווה, הינו/הינה, מתאפיין, נמנה עם. כתוב פשוט "הוא" / "זה".
-- הימנע משבחים ריקים ומגברי גודל ריקים: פורץ דרך, עוצמתי, ייחודי, ענק, מטורף. אם אין תוכן קונקרטי מאחורי המילה, אל תשתמש בה.
-- הימנע ממחברי שיח מיותרים: חשוב לציין, יש לציין, בנוסף, יתרה מכך, לסיכום. עבור ישר לתוכן.
-- הימנע מברירות מחדל פורמליות מיותרות: "אשר" במקום "ש", "כאשר" במקום "כש", "על מנת" במקום "כדי".
-- הימנע מפרשנות נטפלת בסוף משפט ("מה שמדגיש את...", "דבר המעיד על..."). אם המשפט עומד בלי הזנב הזה, השמט אותו.
-- כתוב כמו מורה מקצועי שכותב הערה אמיתית על תלמיד, לא כמו טקסט שיווקי או כמו תבנית.
+${HEBREW_WRITING_RULES}
 
 Respond ONLY with valid JSON:
 {
@@ -762,8 +771,8 @@ ${params.lastDecision ? `החלטת המורה: ${params.lastDecision}` : ""}
 ${params.lastReviewNote ? `הערות המורה: ${params.lastReviewNote}` : ""}
 ${params.studentReflection ? `איך התלמיד הרגיש: ${params.studentReflection}` : ""}
 
-נושאים חזקים: ${params.strongTopics.join(", ") || "—"}
-נושאים חלשים: ${params.weakTopics.join(", ") || "—"}
+נושאים חזקים: ${params.strongTopics.join(", ") || "אין"}
+נושאים חלשים: ${params.weakTopics.join(", ") || "אין"}
 
 ${params.aiSummary ? `סיכום AI: ${params.aiSummary}` : ""}
 ${params.backgroundNote ? `רקע התלמיד: ${params.backgroundNote}` : ""}
@@ -777,13 +786,15 @@ ${
 }
 
 המשימה שלך:
-כתוב כרטיס הכנה קצר למורה — 3-4 שורות בעברית, בולטים. ענה על:
+כתוב כרטיס הכנה קצר למורה, 3 עד 4 שורות בעברית, בולטים. ענה על:
 1. איפה עצרנו (נושא + החלטה)
 2. מה היה קשה לתלמיד
 3. על מה להתמקד היום
-4. טיפ אישי אחד מהרקע/תובנות (אם רלוונטי)
+4. טיפ אישי אחד מהרקע או מהתובנות (אם רלוונטי)
 
-אל תכתוב מבוא או סיכום. רק 3-4 בולטים קצרים, בלשון פנייה למורה ("התלמיד התקשה...", "מומלץ להתחיל ב...").
+אל תכתוב מבוא או סיכום. רק 3 עד 4 בולטים קצרים, בלשון פנייה למורה ("התלמיד התקשה...", "מומלץ להתחיל ב...").
+
+${HEBREW_WRITING_RULES}
 
 Respond ONLY with valid JSON:
 {

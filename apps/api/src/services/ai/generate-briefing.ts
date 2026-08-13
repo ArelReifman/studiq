@@ -18,6 +18,7 @@ import {
 } from "../../db/schema.js";
 import { callClaude } from "./claude.js";
 import { buildBriefingPrompt } from "./prompts.js";
+import { sanitizeHebrewText } from "./sanitize-text.js";
 
 export async function generateNextSessionBriefing(
   studentId: string
@@ -89,7 +90,7 @@ export async function generateNextSessionBriefing(
   await db
     .update(studentAiProfiles)
     .set({
-      next_session_briefing: parsed.briefing,
+      next_session_briefing: sanitizeHebrewText(parsed.briefing),
       updated_at: new Date(),
     })
     .where(eq(studentAiProfiles.student_id, studentId));

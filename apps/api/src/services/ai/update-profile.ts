@@ -13,6 +13,7 @@ import {
 } from "../../db/schema.js";
 import { callClaude } from "./claude.js";
 import { buildProfileUpdatePrompt } from "./prompts.js";
+import { sanitizeHebrewText } from "./sanitize-text.js";
 import { generateNextSessionBriefing } from "./generate-briefing.js";
 
 const ProfileUpdateSchema = z.object({
@@ -124,10 +125,19 @@ export async function updateStudentProfile(
   });
 
   try {
-    const updated = await callClaude(prompt, (text) => {
+    const rawUpdated = await callClaude(prompt, (text) => {
       const parsed = JSON.parse(text);
       return ProfileUpdateSchema.parse(parsed);
     });
+
+    // Deterministic safety net: strip em-dashes/markdown the model may have
+    // used despite the prompt's instructions not to.
+    const updated = {
+      ai_summary: sanitizeHebrewText(rawUpdated.ai_summary),
+      strong_topics: rawUpdated.strong_topics.map(sanitizeHebrewText),
+      weak_topics: rawUpdated.weak_topics.map(sanitizeHebrewText),
+      learning_style: rawUpdated.learning_style,
+    };
 
     // Recalculate rolling average completion rate
     const prevTotal = profile.total_lessons;
