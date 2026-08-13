@@ -22,7 +22,20 @@ const ReportSchema = z.object({
     maintain: z.array(z.string()),
     suggested_difficulty: z.enum(["easier", "same", "harder"]),
   }),
+  student_notes: z.object({
+    improve: z.array(z.string()),
+    maintain: z.array(z.string()),
+  }),
 });
+
+/**
+ * Pairs each topic name with the model's one-sentence note for it, matching
+ * by position. Falls back to the bare topic name when the model returned a
+ * different count than requested, so the student never sees a blank line.
+ */
+function pairTopicsWithNotes(topics: string[], notes: string[]): string[] {
+  return topics.map((topic, i) => notes[i] ?? topic);
+}
 
 export async function generateReport(studentId: string, teacherId: string) {
   const periodEnd = new Date();
@@ -124,6 +137,9 @@ export async function generateReport(studentId: string, teacherId: string) {
     .filter((t) => t.stats.status === "in_progress")
     .map((t) => t.name);
 
+  const studentImproveTopics = [...strugglingTopics, ...inProgressTopics];
+  const studentMaintainTopics = masteredTopics;
+
   const prompt = buildReportPrompt({
     studentName: studentRow.full_name,
     periodStart: periodStartStr,
@@ -151,6 +167,7 @@ export async function generateReport(studentId: string, teacherId: string) {
       completionRate: r.completion_rate !== null ? Number(r.completion_rate) : null,
       improve: (r.ai_recommendations as { improve?: string[] } | null)?.improve ?? [],
     })),
+    studentTopics: { improve: studentImproveTopics, maintain: studentMaintainTopics },
   });
 
   const rawGenerated = await callClaude(prompt, (text) => {
@@ -167,15 +184,21 @@ export async function generateReport(studentId: string, teacherId: string) {
       maintain: rawGenerated.ai_recommendations.maintain.map(sanitizeHebrewText),
       suggested_difficulty: rawGenerated.ai_recommendations.suggested_difficulty,
     },
+    student_notes: {
+      improve: rawGenerated.student_notes.improve.map(sanitizeHebrewText),
+      maintain: rawGenerated.student_notes.maintain.map(sanitizeHebrewText),
+    },
   };
 
-  // Student-safe recommendations — no LLM, no private notes. Sourced purely
-  // from the learning map's own (recovery-aware) topic status, since that's
-  // exactly what's already teacher-approved: mastered topics, or ones still
-  // struggling/in progress.
+  // Student-safe recommendations — topics are sourced purely from the
+  // learning map's own (recovery-aware) status, no LLM involved there. Each
+  // topic is then paired with a one-sentence teaching note the model wrote
+  // specifically for the student (second person, no private teacher
+  // commentary quoted) — falls back to the bare topic name if the model's
+  // response didn't line up 1:1 with what was asked for.
   const studentRecommendations = {
-    improve: [...strugglingTopics, ...inProgressTopics],
-    maintain: masteredTopics,
+    improve: pairTopicsWithNotes(studentImproveTopics, generated.student_notes.improve),
+    maintain: pairTopicsWithNotes(studentMaintainTopics, generated.student_notes.maintain),
   };
 
   const [report] = await db
