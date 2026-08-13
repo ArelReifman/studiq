@@ -15,6 +15,7 @@ import { FileText, Upload, X, Paperclip } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { useT } from "@/i18n";
+import { withDownloadName } from "@/lib/download-url";
 
 interface Props {
   lessonId: string;
@@ -137,7 +138,7 @@ export function LessonSolutionUpload({
         <div className="flex items-center gap-2 bg-gray-50 rounded-md px-3 py-2">
           <FileText size={16} className="text-brand-500 flex-shrink-0" />
           <a
-            href={effectiveUrl}
+            href={withDownloadName(effectiveUrl, effectiveName)}
             target="_blank"
             rel="noopener noreferrer"
             className="text-sm text-brand-600 hover:underline truncate flex-1"

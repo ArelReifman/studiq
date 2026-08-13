@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { TaskItem } from "@/components/student/task-item";
 import { LessonSolutionUpload } from "@/components/student/lesson-solution-upload";
 import { formatDate } from "@/lib/utils";
+import { withDownloadName } from "@/lib/download-url";
 import type { LessonWithItems } from "@studiq/types";
 import Link from "next/link";
 import { ArrowLeft, FileText, MessageSquare, Check, Map, Pencil, CheckCircle2 } from "lucide-react";
@@ -120,7 +121,7 @@ export default function LessonDetailPage() {
                 {t("student.lessonMaterial")}
               </p>
               <a
-                href={lesson.material_url!}
+                href={withDownloadName(lesson.material_url!, lesson.material_name)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm font-medium text-brand-600 hover:underline truncate block"
