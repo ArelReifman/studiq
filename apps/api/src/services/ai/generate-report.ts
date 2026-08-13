@@ -15,6 +15,11 @@ import { buildReportPrompt } from "./prompts.js";
 import { sanitizeHebrewText } from "./sanitize-text.js";
 import { getLearningMap, flattenLearningMapTopics } from "../learning-map.js";
 
+// Sonnet instead of the default Haiku — reports are read directly by
+// teachers and students, and the extra cost buys noticeably more natural
+// Hebrew phrasing than the fast/cheap default model produces.
+const REPORT_MODEL = "claude-sonnet-4-6";
+
 const ReportSchema = z.object({
   summary: z.string(),
   ai_recommendations: z.object({
@@ -170,10 +175,14 @@ export async function generateReport(studentId: string, teacherId: string) {
     studentTopics: { improve: studentImproveTopics, maintain: studentMaintainTopics },
   });
 
-  const rawGenerated = await callClaude(prompt, (text) => {
-    const parsed = JSON.parse(text);
-    return ReportSchema.parse(parsed);
-  });
+  const rawGenerated = await callClaude(
+    prompt,
+    (text) => {
+      const parsed = JSON.parse(text);
+      return ReportSchema.parse(parsed);
+    },
+    { model: REPORT_MODEL }
+  );
 
   // Deterministic safety net: the prompt forbids em-dashes/markdown, but a
   // fast model doesn't always comply perfectly. Strip stragglers.
