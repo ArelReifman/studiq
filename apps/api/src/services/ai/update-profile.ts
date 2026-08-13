@@ -16,6 +16,12 @@ import { buildProfileUpdatePrompt } from "./prompts.js";
 import { sanitizeHebrewText } from "./sanitize-text.js";
 import { generateNextSessionBriefing } from "./generate-briefing.js";
 
+// Sonnet instead of the default Haiku — same reasoning as the report
+// generator: this text is read directly by the teacher (and via the
+// briefing card, informs how they run the next session), so phrasing
+// quality matters more than the small extra cost per call.
+const PROFILE_MODEL = "claude-sonnet-4-6";
+
 const ProfileUpdateSchema = z.object({
   ai_summary: z.string(),
   strong_topics: z.array(z.string()),
@@ -125,10 +131,14 @@ export async function updateStudentProfile(
   });
 
   try {
-    const rawUpdated = await callClaude(prompt, (text) => {
-      const parsed = JSON.parse(text);
-      return ProfileUpdateSchema.parse(parsed);
-    });
+    const rawUpdated = await callClaude(
+      prompt,
+      (text) => {
+        const parsed = JSON.parse(text);
+        return ProfileUpdateSchema.parse(parsed);
+      },
+      { model: PROFILE_MODEL }
+    );
 
     // Deterministic safety net: strip em-dashes/markdown the model may have
     // used despite the prompt's instructions not to.
@@ -265,10 +275,14 @@ export async function refreshProfileLanguage(studentId: string): Promise<boolean
     })),
   });
 
-  const rawUpdated = await callClaude(prompt, (text) => {
-    const parsed = JSON.parse(text);
-    return ProfileUpdateSchema.parse(parsed);
-  });
+  const rawUpdated = await callClaude(
+    prompt,
+    (text) => {
+      const parsed = JSON.parse(text);
+      return ProfileUpdateSchema.parse(parsed);
+    },
+    { model: PROFILE_MODEL }
+  );
 
   const updated = {
     ai_summary: sanitizeHebrewText(rawUpdated.ai_summary),

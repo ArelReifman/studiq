@@ -20,6 +20,11 @@ import { callClaude } from "./claude.js";
 import { buildBriefingPrompt } from "./prompts.js";
 import { sanitizeHebrewText } from "./sanitize-text.js";
 
+// Sonnet instead of the default Haiku — same reasoning as the report and
+// profile generators, this is short text the teacher reads right before a
+// session.
+const BRIEFING_MODEL = "claude-sonnet-4-6";
+
 export async function generateNextSessionBriefing(
   studentId: string
 ): Promise<void> {
@@ -76,11 +81,15 @@ export async function generateNextSessionBriefing(
     recentInsights: insights.map((i) => ({ content: i.content })),
   });
 
-  const parsed = await callClaude(prompt, (text) => {
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("no JSON in response");
-    return JSON.parse(jsonMatch[0]) as { briefing: string };
-  }).catch((err) => {
+  const parsed = await callClaude(
+    prompt,
+    (text) => {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("no JSON in response");
+      return JSON.parse(jsonMatch[0]) as { briefing: string };
+    },
+    { model: BRIEFING_MODEL }
+  ).catch((err) => {
     console.error("[briefing] Claude parse failed:", err);
     return null;
   });
