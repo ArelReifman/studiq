@@ -183,6 +183,13 @@
   "reports.generating": "Generating...",
   "reports.noReports": "No reports yet. Generate one to see how this student is progressing.",
   "reports.suggestedDifficulty": "Suggested difficulty",
+  "reports.improve": "To improve",
+  "reports.maintain": "To maintain",
+  "reports.difficulty.easier": "Easier",
+  "reports.difficulty.same": "Same",
+  "reports.difficulty.harder": "Harder",
+  "reports.delete": "Delete report",
+  "reports.confirmDelete": "Delete this report? This can't be undone.",
 
   "studentDetail.backToStudents": "Back to students",
   "studentDetail.generateLesson": "Generate New Lesson",
@@ -639,6 +646,7 @@
   "nav.closeMenu": "Close menu",
 
   "error.generateReport": "Failed to generate report",
+  "error.deleteReport": "Failed to delete report",
   "error.markReviewed": "Action failed",
   "error.updateProfile": "Failed to update profile",
 

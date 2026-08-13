@@ -186,6 +186,24 @@ export default function StudentDetailPage() {
     onError: (err) => alert(err instanceof Error ? err.message : t("error.generateReport")),
   });
 
+  const deleteReport = useMutation({
+    mutationFn: (reportId: string) => api.delete(`/reports/${reportId}`),
+    onMutate: async (reportId) => {
+      const queryKey = ["reports", { student_id: id }];
+      await qc.cancelQueries({ queryKey });
+      const prev = qc.getQueryData<StudentReport[]>(queryKey);
+      qc.setQueryData<StudentReport[]>(queryKey, (old = []) =>
+        old.filter((r) => r.id !== reportId)
+      );
+      return { prev };
+    },
+    onError: (err, _vars, ctx) => {
+      qc.setQueryData(["reports", { student_id: id }], ctx?.prev);
+      alert(err instanceof Error ? err.message : t("error.deleteReport"));
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["reports", { student_id: id }] }),
+  });
+
   // Mark a difficulty report reviewed. Optimistic — flip the row's
   // `reviewed` flag locally so the card disappears instantly. On error we
   // revert and show the message.
@@ -584,44 +602,65 @@ export default function StudentDetailPage() {
             ) : (
               <div className="space-y-3">
                 {reports.map((report) => {
-                  const recs = report.ai_recommendations as {
-                    focus_topics?: string[];
-                    suggested_difficulty?: string;
-                    notes?: string;
-                  } | null;
+                  const recs = report.ai_recommendations;
                   return (
                     <Card key={report.id} className="p-3">
-                      <div className="flex items-center gap-2 mb-2 flex-wrap">
-                        <Badge variant="neutral">
-                          {formatDate(report.period_start)} — {formatDate(report.period_end)}
-                        </Badge>
-                        {report.completion_rate !== null && (
-                          <Badge variant={Number(report.completion_rate) >= 0.7 ? "success" : "warning"}>
-                            {formatPercent(report.completion_rate)} {t("reports.completion")}
+                      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant="neutral">
+                            {formatDate(report.period_start)} — {formatDate(report.period_end)}
                           </Badge>
-                        )}
-                        {report.difficulty_count !== null && report.difficulty_count > 0 && (
-                          <span className="text-xs text-gray-400">
-                            {report.difficulty_count} {t("reports.difficulties")}
-                          </span>
-                        )}
+                          {report.completion_rate !== null && (
+                            <Badge variant={Number(report.completion_rate) >= 0.7 ? "success" : "warning"}>
+                              {formatPercent(report.completion_rate)} {t("reports.completion")}
+                            </Badge>
+                          )}
+                          {report.difficulty_count !== null && report.difficulty_count > 0 && (
+                            <span className="text-xs text-gray-400">
+                              {report.difficulty_count} {t("reports.difficulties")}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => {
+                            if (confirm(t("reports.confirmDelete"))) {
+                              deleteReport.mutate(report.id);
+                            }
+                          }}
+                          className="text-gray-400 hover:text-red-600 transition-colors shrink-0"
+                          aria-label={t("reports.delete")}
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                       {report.summary && (
-                        <p className="text-sm text-gray-700 mb-2">{report.summary}</p>
+                        <p dir="rtl" lang="he" className="text-sm text-gray-700 mb-2">{report.summary}</p>
                       )}
                       {recs && (
-                        <div className="bg-brand-50 rounded-lg p-2.5 text-xs text-brand-700 space-y-1">
-                          {recs.notes && <p>{recs.notes}</p>}
-                          {recs.focus_topics && recs.focus_topics.length > 0 && (
-                            <div className="flex flex-wrap gap-1 pt-1">
-                              {recs.focus_topics.map((topic) => (
-                                <Badge key={topic} variant="neutral" className="text-[10px]">{topic}</Badge>
-                              ))}
+                        <div dir="rtl" lang="he" className="bg-brand-50 rounded-lg p-2.5 text-xs text-brand-700 space-y-2">
+                          {recs.improve.length > 0 && (
+                            <div>
+                              <p className="font-medium mb-1">{t("reports.improve")}</p>
+                              <ul className="list-disc ps-4 space-y-0.5">
+                                {recs.improve.map((point, i) => (
+                                  <li key={i}>{point}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {recs.maintain.length > 0 && (
+                            <div>
+                              <p className="font-medium mb-1">{t("reports.maintain")}</p>
+                              <ul className="list-disc ps-4 space-y-0.5">
+                                {recs.maintain.map((point, i) => (
+                                  <li key={i}>{point}</li>
+                                ))}
+                              </ul>
                             </div>
                           )}
                           {recs.suggested_difficulty && (
                             <p className="text-brand-500 font-medium">
-                              {t("reports.suggestedDifficulty")}: {recs.suggested_difficulty}
+                              {t("reports.suggestedDifficulty")}: {t(`reports.difficulty.${recs.suggested_difficulty}`)}
                             </p>
                           )}
                         </div>

@@ -172,7 +172,7 @@ export default function LoginPage() {
             </div>
             <div className="text-start">
               <p className="font-semibold text-gray-800">{t("login.imStudent")}</p>
-              <p className="text-xs text-gray-400">{t("login.studentSubtext")}</p>
+              <p className="text-xs text-gray-500">{t("login.studentSubtext")}</p>
             </div>
           </button>
 
@@ -185,7 +185,7 @@ export default function LoginPage() {
             </div>
             <div className="text-start">
               <p className="font-semibold text-gray-800">{t("login.imTeacher")}</p>
-              <p className="text-xs text-gray-400">{t("login.teacherSubtext")}</p>
+              <p className="text-xs text-gray-500">{t("login.teacherSubtext")}</p>
             </div>
           </button>
         </div>
@@ -288,7 +288,7 @@ export default function LoginPage() {
             setEmail("");
             setPassword("");
           }}
-          className="text-xs text-gray-400 hover:text-brand-600 hover:underline"
+          className="text-xs text-gray-500 hover:text-brand-600 hover:underline"
         >
           &larr; {t("login.backToRoles")}
         </button>

@@ -75,7 +75,7 @@ export default function PendingApprovalPage() {
 
       {user?.email && (
         <div className="bg-gray-50 border border-gray-100 rounded-lg px-4 py-3 mb-6">
-          <div className="text-[11px] text-gray-400 uppercase tracking-wider mb-1">
+          <div className="text-[11px] text-gray-500 uppercase tracking-wider mb-1">
             {t("pending.registeredAs")}
           </div>
           <div className="text-sm font-medium text-gray-900">{user.full_name}</div>

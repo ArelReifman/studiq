@@ -12,8 +12,24 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://studiq-three.vercel.app"),
   title: "Studiq",
   description: "AI-powered personalized tutoring",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: "Studiq",
+    description: "AI-powered personalized tutoring",
+    type: "website",
+    locale: "he_IL",
+    siteName: "Studiq",
+  },
+  twitter: {
+    card: "summary",
+    title: "Studiq",
+    description: "AI-powered personalized tutoring",
+  },
   icons: {
     icon: "/logo-mark.svg",
   },
