@@ -6,7 +6,7 @@ import { db } from "../db/client.js";
 import { studentReports, students } from "../db/schema.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
 import { generateReport } from "../services/ai/generate-report.js";
-import { studentIdQuerySchema } from "../lib/validators.js";
+import { studentIdQuerySchema, uuidParamSchema } from "../lib/validators.js";
 
 export const reportRoutes = new Hono()
   .use(authMiddleware)
@@ -18,11 +18,18 @@ export const reportRoutes = new Hono()
 
     let rows;
     if (role === "student") {
-      rows = await db
+      const own = await db
         .select()
         .from(studentReports)
         .where(eq(studentReports.student_id, userId))
         .orderBy(desc(studentReports.generated_at));
+
+      // Defense in depth: ai_recommendations/summary are grounded in the
+      // teacher's private notes and reflections the student wrote for the
+      // teacher, not for the student to read back. Strip them server-side
+      // so they never reach the student's browser, even unrendered — the
+      // student page only ever uses student_recommendations.
+      rows = own.map((r) => ({ ...r, ai_recommendations: null, summary: null }));
     } else {
       const whereClause = studentId
         ? and(
@@ -67,5 +74,23 @@ export const reportRoutes = new Hono()
         console.error("[generateReport]", err);
         return c.json({ error: msg }, 500);
       }
+    }
+  )
+
+  .delete(
+    "/:id",
+    requireRole("teacher"),
+    zValidator("param", uuidParamSchema),
+    async (c) => {
+      const teacherId = c.get("userId");
+      const { id } = c.req.valid("param");
+
+      const [deleted] = await db
+        .delete(studentReports)
+        .where(and(eq(studentReports.id, id), eq(studentReports.teacher_id, teacherId)))
+        .returning({ id: studentReports.id });
+
+      if (!deleted) return c.json({ error: "Report not found" }, 404);
+      return c.json({ id: deleted.id });
     }
   );

@@ -53,14 +53,28 @@ export default function StudentReportsPage() {
                 )}
               </div>
 
-              {report.summary && (
-                <p className="text-sm text-gray-700 mb-3">{report.summary}</p>
-              )}
-
-              {report.ai_recommendations && (
-                <div className="bg-brand-50 rounded-lg p-3 text-sm text-brand-700">
-                  <span className="font-medium">{t("reports.aiRecommendation")}</span>
-                  {(report.ai_recommendations as any).notes}
+              {report.student_recommendations && (
+                <div dir="rtl" lang="he" className="bg-brand-50 rounded-lg p-3 text-sm text-brand-700 space-y-2">
+                  {report.student_recommendations.improve.length > 0 && (
+                    <div>
+                      <p className="font-medium mb-1">{t("reports.improve")}</p>
+                      <ul className="list-disc ps-4 space-y-0.5">
+                        {report.student_recommendations.improve.map((topic, i) => (
+                          <li key={i}>{topic}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {report.student_recommendations.maintain.length > 0 && (
+                    <div>
+                      <p className="font-medium mb-1">{t("reports.maintain")}</p>
+                      <ul className="list-disc ps-4 space-y-0.5">
+                        {report.student_recommendations.maintain.map((topic, i) => (
+                          <li key={i}>{topic}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               )}
             </Card>

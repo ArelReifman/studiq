@@ -183,6 +183,13 @@
   "reports.generating": "מייצר...",
   "reports.noReports": "אין דוחות עדיין. צור דוח כדי לראות את התקדמות התלמיד.",
   "reports.suggestedDifficulty": "רמת קושי מוצעת",
+  "reports.improve": "לשיפור",
+  "reports.maintain": "לשימור",
+  "reports.difficulty.easier": "קלה יותר",
+  "reports.difficulty.same": "ללא שינוי",
+  "reports.difficulty.harder": "קשה יותר",
+  "reports.delete": "מחיקת דוח",
+  "reports.confirmDelete": "למחוק את הדוח הזה? הפעולה בלתי הפיכה.",
 
   "studentDetail.backToStudents": "חזרה לתלמידים",
   "studentDetail.generateLesson": "יצירת שיעור חדש",
@@ -639,6 +646,7 @@
   "nav.closeMenu": "סגירת תפריט",
 
   "error.generateReport": "יצירת הדוח נכשלה",
+  "error.deleteReport": "מחיקת הדוח נכשלה",
   "error.markReviewed": "הפעולה נכשלה",
   "error.updateProfile": "עדכון הפרופיל נכשל",
 

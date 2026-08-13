@@ -631,6 +631,10 @@ export const studentReports = pgTable(
     completion_rate: numeric("completion_rate", { precision: 4, scale: 2 }),
     difficulty_count: integer("difficulty_count"),
     ai_recommendations: jsonb("ai_recommendations"),
+    // Student-safe derivation of ai_recommendations — topic names only,
+    // computed from the learning-map snapshot (no LLM, no private notes).
+    // See migration 029.
+    student_recommendations: jsonb("student_recommendations"),
     generated_at: timestamp("generated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

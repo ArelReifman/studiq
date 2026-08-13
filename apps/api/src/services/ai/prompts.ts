@@ -458,15 +458,26 @@ Write an updated 2–4 sentence summary capturing:
 2. What they struggle with
 3. Any notable patterns or learning style observations (weight the student's own reflection heavily if present)
 
+Write "ai_summary" and every topic name in Hebrew — this is read directly by a Hebrew-speaking teacher.
+
 Respond ONLY with valid JSON:
 {
-  "ai_summary": "string",
-  "strong_topics": ["string"],
-  "weak_topics": ["string"],
+  "ai_summary": "string (Hebrew)",
+  "strong_topics": ["string (Hebrew)"],
+  "weak_topics": ["string (Hebrew)"],
   "learning_style": "visual" | "step_by_step" | "example_first" | "theory_first" | "unknown"
 }`;
 }
 
+// ─── Weekly progress report (teacher-facing) ──────────────────────────────
+// Read only by the teacher — never rendered to the student (the student page
+// shows a separate, purely structural derivation from the learning map, no
+// LLM involved — see generate-report.ts). So this is written in third
+// person, by the student's name, in an objective/analytical voice: the
+// teacher is reading a report about their student, not being addressed
+// personally. Facts sourced from the teacher's own notes/decisions are
+// stated as facts ("בסקירת השיעור צוין ש..."), never as the teacher's own
+// first-person voice ("ציינתי").
 export function buildReportPrompt(params: {
   studentName: string;
   periodStart: string;
@@ -474,8 +485,30 @@ export function buildReportPrompt(params: {
   totalLessons: number;
   completionRate: number;
   difficultyCount: number;
-  topDifficultTopics: string[];
+  difficulties: Array<{
+    topicTags: string[];
+    description: string | null;
+    teacherNote: string | null;
+  }>;
+  lessonReviews: Array<{
+    title: string;
+    teacherDecision: string | null;
+    teacherReviewNote: string | null;
+    studentReflection: string | null;
+  }>;
+  insights: Array<{ content: string; created_at: string }>;
+  backgroundNote: string | null;
   aiSummary: string | null;
+  learningMap: {
+    masteredTopics: string[];
+    strugglingTopics: string[];
+    inProgressTopics: string[];
+  } | null;
+  previousReports: Array<{
+    periodEnd: string;
+    completionRate: number | null;
+    improve: string[];
+  }>;
 }): string {
   const {
     studentName,
@@ -484,33 +517,110 @@ export function buildReportPrompt(params: {
     totalLessons,
     completionRate,
     difficultyCount,
-    topDifficultTopics,
+    difficulties,
+    lessonReviews,
+    insights,
+    backgroundNote,
     aiSummary,
+    learningMap,
+    previousReports,
   } = params;
 
-  return `Generate a weekly progress report for a student.
+  const difficultiesSection =
+    difficulties.length > 0
+      ? `\n## דיווחי קושי בתקופה (${difficulties.length})\n${difficulties
+          .map((d) => {
+            const tags = d.topicTags.join(", ") || "לא תויג";
+            const parts = [`נושאים: ${tags}`];
+            if (d.description?.trim()) parts.push(`תיאור: "${d.description.trim()}"`);
+            if (d.teacherNote?.trim()) parts.push(`הערת מורה: "${d.teacherNote.trim()}"`);
+            return `• ${parts.join(" | ")}`;
+          })
+          .join("\n")}`
+      : "";
 
-## Student: ${studentName}
-## Period: ${periodStart} to ${periodEnd}
+  const reviewsSection =
+    lessonReviews.length > 0
+      ? `\n## סקירות שיעורים בתקופה (${lessonReviews.length})\n${lessonReviews
+          .map((r) => {
+            const parts = [`שיעור: "${r.title}"`];
+            if (r.teacherDecision)
+              parts.push(`החלטת מורה: ${DECISION_LABEL[r.teacherDecision] ?? r.teacherDecision}`);
+            if (r.teacherReviewNote?.trim())
+              parts.push(`הערת מורה: "${r.teacherReviewNote.trim()}"`);
+            if (r.studentReflection?.trim())
+              parts.push(`רפלקציית תלמיד: "${r.studentReflection.trim()}"`);
+            return `• ${parts.join(" | ")}`;
+          })
+          .join("\n")}`
+      : "";
 
-## Stats
-- Lessons completed: ${totalLessons}
-- Overall completion rate: ${(completionRate * 100).toFixed(0)}%
-- Difficulty reports generated: ${difficultyCount}
-- Most struggled topics: ${topDifficultTopics.join(", ") || "none"}
+  const insightsSection =
+    insights.length > 0
+      ? `\n## תובנות שהמורה צבר על התלמיד (${insights.length})\n${insights
+          .map((i) => `• ${i.content} (${new Date(i.created_at).toISOString().slice(0, 10)})`)
+          .join("\n")}`
+      : "";
 
-## Current AI Profile
-${aiSummary ?? "No profile summary available."}
+  const backgroundSection = backgroundNote?.trim()
+    ? `\n## רקע קבוע על התלמיד\n${backgroundNote.trim()}`
+    : "";
 
-Write a concise teacher-facing report (3–5 sentences) and provide recommendations.
+  const learningMapSection = learningMap
+    ? `\n## מצב מפת הלמידה (עדכני)\nנושאים שנשלטו: ${learningMap.masteredTopics.join(", ") || "אין"}\nנושאים בתהליך: ${learningMap.inProgressTopics.join(", ") || "אין"}\nנושאים בקושי: ${learningMap.strugglingTopics.join(", ") || "אין"}`
+    : "";
+
+  const trendSection =
+    previousReports.length > 0
+      ? `\n## דוחות קודמים לאותו תלמיד (${previousReports.length}, מהחדש לישן, לצורך זיהוי מגמה)\n${previousReports
+          .map((r) => {
+            const pct = r.completionRate !== null ? `${Math.round(r.completionRate * 100)}%` : "לא ידוע";
+            const improve = r.improve.length > 0 ? r.improve.join(", ") : "אין";
+            return `• עד ${r.periodEnd}, השלמה: ${pct}, נקודות לשיפור שעלו אז: ${improve}`;
+          })
+          .join("\n")}`
+      : "\n## דוחות קודמים\nזהו הדוח הראשון לתלמיד הזה. אין נתוני מגמה קודמים.";
+
+  return `אתה כותב דוח התקדמות שבועי שהמורה קורא על תלמיד שלו/שלה. הדוח נכתב בגוף שלישי, על התלמיד, לפי שמו, לא פנייה למורה ולא פנייה לתלמיד. עובדות שמקורן בהערות המורה מוצגות כעובדות אובייקטיביות ("בסקירת השיעור צוין ש...", "לפי מפת הלמידה..."), לעולם לא בגוף ראשון של המורה ("ציינתי").
+
+## תלמיד: ${studentName}
+## תקופה: ${periodStart} עד ${periodEnd}
+
+## נתונים כמותיים
+- שיעורים שהושלמו: ${totalLessons}
+- אחוז השלמה כולל: ${(completionRate * 100).toFixed(0)}%
+- דיווחי קושי: ${difficultyCount}
+${difficultiesSection}${reviewsSection}${insightsSection}${backgroundSection}${learningMapSection}
+${trendSection}
+
+## פרופיל AI נוכחי
+${aiSummary ?? "אין סיכום פרופיל זמין."}
+
+## המשימה שלך
+כתוב תקציר קצר וממוקד (2-4 משפטים) המבוסס על הנתונים שסופקו, לא על ניסוח גנרי של "התלמיד השלים X שיעורים". פתח בשם התלמיד. התבסס על הערות המורה, הרפלקציות של התלמיד, ומצב מפת הלמידה.
+
+בנוסף, כתוב המלצות בשני חלקים:
+- "improve" (לשיפור): נקודות ספציפיות וקונקרטיות. כשהנתונים תומכים בכך, שלב בכל נקודה עד שלושה דברים: קצב ("בקצב הנוכחי..."), מגמה מול הדוחות הקודמים למעלה ("זה הנושא השלישי ברציפות שחוזר..." או "בניגוד לדוח הקודם..."), ופעולה קונקרטית לשיעור הבא ("בשיעור הבא כדאי להתחיל עם..."). אל תמציא מגמה אם אין דוחות קודמים, פשוט דלג על הזווית הזו.
+- "maintain" (לשימור): מה עובד טוב ומומלץ להמשיך בו, גם כאן באופן ספציפי ולא גנרי.
+
+כל טקסט חופשי (summary, improve, maintain) חייב להיות בעברית בלבד.
+
+## איך לכתוב, כדי שזה יישמע כמו מורה כתב את זה ולא AI
+- אסור בהחלט להשתמש בתו מקף ארוך (—) או במקף כפול (--) בשום מקום בטקסט. במקום זאת השתמש בפסיק, בנקודה, או פצל למשפט חדש.
+- אל תשתמש באוגד מנופח: מהווה, הינו/הינה, מתאפיין, נמנה עם. כתוב פשוט "הוא" / "זה".
+- הימנע משבחים ריקים ומגברי גודל ריקים: פורץ דרך, עוצמתי, ייחודי, ענק, מטורף. אם אין תוכן קונקרטי מאחורי המילה, אל תשתמש בה.
+- הימנע ממחברי שיח מיותרים: חשוב לציין, יש לציין, בנוסף, יתרה מכך, לסיכום. עבור ישר לתוכן.
+- הימנע מברירות מחדל פורמליות מיותרות: "אשר" במקום "ש", "כאשר" במקום "כש", "על מנת" במקום "כדי".
+- הימנע מפרשנות נטפלת בסוף משפט ("מה שמדגיש את...", "דבר המעיד על..."). אם המשפט עומד בלי הזנב הזה, השמט אותו.
+- כתוב כמו מורה מקצועי שכותב הערה אמיתית על תלמיד, לא כמו טקסט שיווקי או כמו תבנית.
 
 Respond ONLY with valid JSON:
 {
-  "summary": "string",
+  "summary": "string (Hebrew)",
   "ai_recommendations": {
-    "focus_topics": ["string"],
-    "suggested_difficulty": "easier" | "same" | "harder",
-    "notes": "string"
+    "improve": ["string (Hebrew)"],
+    "maintain": ["string (Hebrew)"],
+    "suggested_difficulty": "easier" | "same" | "harder"
   }
 }`;
 }

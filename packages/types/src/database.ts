@@ -229,7 +229,19 @@ export interface StudentReport {
   summary: string | null;
   completion_rate: number | null;
   difficulty_count: number | null;
-  ai_recommendations: Record<string, unknown> | null;
+  // Teacher-only — grounded in private signals (teacher review notes,
+  // student reflections). Never render this to a student.
+  ai_recommendations: {
+    improve: string[];
+    maintain: string[];
+    suggested_difficulty: "easier" | "same" | "harder";
+  } | null;
+  // Student-safe — topic names only, derived from the learning-map snapshot
+  // (no LLM, no private notes). This is what the student page renders.
+  student_recommendations: {
+    improve: string[];
+    maintain: string[];
+  } | null;
   generated_at: string;
 }
 

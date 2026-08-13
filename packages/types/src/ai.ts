@@ -33,8 +33,8 @@ export interface AiProfileUpdate {
 export interface AiReportSummary {
   summary: string;
   ai_recommendations: {
-    focus_topics: string[];
+    improve: string[];
+    maintain: string[];
     suggested_difficulty: "easier" | "same" | "harder";
-    notes: string;
   };
 }
