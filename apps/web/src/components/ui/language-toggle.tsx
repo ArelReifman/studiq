@@ -28,7 +28,9 @@ export function LanguageToggle({ className }: { className?: string }) {
       onClick={toggle}
       className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors ${className ?? ""}`}
       title={title}
-      aria-label={title}
+      // WCAG 2.5.3: the accessible name must contain the visible label
+      // ("EN" / "עב") so speech-input users can activate it by its label.
+      aria-label={`${targetLabel} — ${title}`}
     >
       <Globe size={14} />
       {targetLabel}

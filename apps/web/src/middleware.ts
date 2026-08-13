@@ -76,6 +76,8 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api).*)",
+    // Exclude static/metadata files (robots.txt, sitemap.xml, favicon,
+    // logo) so crawlers get the real file instead of a redirect to /login.
+    "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|logo-mark.svg|api).*)",
   ],
 };

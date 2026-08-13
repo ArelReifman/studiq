@@ -216,7 +216,7 @@ export default function RegisterPage() {
             minLength={8}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
-          <p className="text-xs text-gray-400 mt-1">{t("register.password8")}</p>
+          <p className="text-xs text-gray-500 mt-1">{t("register.password8")}</p>
         </div>
 
         {isStudentSelfSignup && courses.length > 0 && (
@@ -239,7 +239,7 @@ export default function RegisterPage() {
                 </option>
               ))}
             </select>
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-gray-500 mt-1">
               {t("register.courseHint")}
             </p>
           </div>

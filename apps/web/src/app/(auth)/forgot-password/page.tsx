@@ -47,7 +47,7 @@ export default function ForgotPasswordPage() {
           <p className="text-sm text-gray-700">
             {t("forgot.sent")}
           </p>
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-gray-500">
             {t("forgot.checkSpam")}
           </p>
           <Link
@@ -93,7 +93,7 @@ export default function ForgotPasswordPage() {
           <div className="mt-6 text-center">
             <Link
               href="/login"
-              className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-brand-600 hover:underline"
+              className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-brand-600 hover:underline"
             >
               <ArrowLeft size={12} className="rtl:rotate-180" />
               {t("forgot.backToLogin")}
