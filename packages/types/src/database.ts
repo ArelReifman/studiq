@@ -231,9 +231,12 @@ export interface StudentReport {
   difficulty_count: number | null;
   // Teacher-only — grounded in private signals (teacher review notes,
   // student reflections). Never render this to a student.
+  // improve/maintain are optional because rows generated before this shape
+  // existed carry the legacy {focus_topics, notes} JSON instead — always
+  // guard with `?.` when reading them.
   ai_recommendations: {
-    improve: string[];
-    maintain: string[];
+    improve?: string[];
+    maintain?: string[];
     suggested_difficulty: "easier" | "same" | "harder";
   } | null;
   // Student-safe — topic names only, derived from the learning-map snapshot
