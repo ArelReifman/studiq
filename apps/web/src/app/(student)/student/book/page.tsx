@@ -71,15 +71,19 @@ function buildLessonChain(
   durationMin: number,
   slots: Slot[]
 ): Slot[] | null {
-  const numSlots = durationMin / 30;
   let cursor = startTime;
+  let covered = 0;
   const chain: Slot[] = [];
-  for (let i = 0; i < numSlots; i++) {
+  while (covered < durationMin) {
     const slot = slots.find((s) => s.start_time === cursor);
     if (!slot) return null;
     chain.push(slot);
+    covered += timeToMin(slot.end_time) - timeToMin(slot.start_time);
     cursor = slot.end_time;
   }
+  // Reject overshoot: a chain must land on exactly the requested duration,
+  // not just meet or exceed it (rows aren't guaranteed to be 30 min each).
+  if (covered !== durationMin) return null;
   return chain;
 }
 
