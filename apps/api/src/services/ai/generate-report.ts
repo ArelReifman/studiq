@@ -12,6 +12,7 @@ import {
 } from "../../db/schema.js";
 import { callClaude } from "./claude.js";
 import { buildReportPrompt } from "./prompts.js";
+import { sanitizeHebrewText } from "./sanitize-text.js";
 import { getLearningMap, flattenLearningMapTopics } from "../learning-map.js";
 
 const ReportSchema = z.object({
@@ -152,10 +153,21 @@ export async function generateReport(studentId: string, teacherId: string) {
     })),
   });
 
-  const generated = await callClaude(prompt, (text) => {
+  const rawGenerated = await callClaude(prompt, (text) => {
     const parsed = JSON.parse(text);
     return ReportSchema.parse(parsed);
   });
+
+  // Deterministic safety net: the prompt forbids em-dashes/markdown, but a
+  // fast model doesn't always comply perfectly. Strip stragglers.
+  const generated = {
+    summary: sanitizeHebrewText(rawGenerated.summary),
+    ai_recommendations: {
+      improve: rawGenerated.ai_recommendations.improve.map(sanitizeHebrewText),
+      maintain: rawGenerated.ai_recommendations.maintain.map(sanitizeHebrewText),
+      suggested_difficulty: rawGenerated.ai_recommendations.suggested_difficulty,
+    },
+  };
 
   // Student-safe recommendations — no LLM, no private notes. Sourced purely
   // from the learning map's own (recovery-aware) topic status, since that's
