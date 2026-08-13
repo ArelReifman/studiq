@@ -638,21 +638,21 @@ export default function StudentDetailPage() {
                       )}
                       {recs && (
                         <div dir="rtl" lang="he" className="bg-brand-50 rounded-lg p-2.5 text-xs text-brand-700 space-y-2">
-                          {recs.improve.length > 0 && (
+                          {(recs.improve ?? []).length > 0 && (
                             <div>
                               <p className="font-medium mb-1">{t("reports.improve")}</p>
                               <ul className="list-disc ps-4 space-y-0.5">
-                                {recs.improve.map((point, i) => (
+                                {(recs.improve ?? []).map((point, i) => (
                                   <li key={i}>{point}</li>
                                 ))}
                               </ul>
                             </div>
                           )}
-                          {recs.maintain.length > 0 && (
+                          {(recs.maintain ?? []).length > 0 && (
                             <div>
                               <p className="font-medium mb-1">{t("reports.maintain")}</p>
                               <ul className="list-disc ps-4 space-y-0.5">
-                                {recs.maintain.map((point, i) => (
+                                {(recs.maintain ?? []).map((point, i) => (
                                   <li key={i}>{point}</li>
                                 ))}
                               </ul>
