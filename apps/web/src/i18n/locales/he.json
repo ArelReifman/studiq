@@ -564,13 +564,11 @@
   "lessonReview.saving": "שומר...",
   "lessonReview.saveFailed": "השמירה נכשלה — נסה שוב",
   "lessonReview.repeatSaved": "ההחלטה נשמרה — חזרה על אותה רמה",
-  "lessonReview.retryHint": "אפשר ליצור עכשיו שיעור חוזר עם אותו חומר ואותם תרגילים בדיוק. ההערה שכתבת למעלה תהפוך לצ'ק ליסט שתוכל לסמן מולו בשיעור החדש.",
+  "lessonReview.retryHint": "אפשר ליצור עכשיו שיעור חוזר עם אותו חומר לימוד. ההערה שכתבת למעלה תהפוך למשימות החדשות שהתלמיד יעבוד עליהן בשיעור.",
   "lessonReview.generateRetry": "צור שיעור חוזר",
   "lessonReview.generatingRetry": "יוצר שיעור...",
   "lessonReview.retrySuccess": "השיעור החוזר נוצר בהצלחה",
   "lessonReview.retryFailed": "יצירת השיעור נכשלה — נסה שוב",
-
-  "retryChecklist.title": "צ'ק ליסט מההערה שלך",
 
   "studentContext.backgroundTitle": "רקע התלמיד",
   "studentContext.backgroundHint": "הקשר קבוע — צרכים מיוחדים, רקע משפחתי, אופי. נכתב פעם אחת ומשתנה רק בנסיבות חיים.",

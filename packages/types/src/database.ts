@@ -119,16 +119,6 @@ export interface LessonSession {
   course_id: string | null;
   topic_id: string | null;
   lesson_level: LessonLevel | null;
-  // Retry lessons duplicate the predecessor's material/exercises; this is
-  // the teacher's review note parsed into a short checklist. Null for
-  // non-retry lessons and for retries where the teacher left no note.
-  retry_checklist: RetryChecklistItem[] | null;
-}
-
-/** A single actionable item derived from a teacher's retry review note. */
-export interface RetryChecklistItem {
-  text: string;
-  done: boolean;
 }
 
 /** Teacher's verdict after inspecting a student's submitted solution. */

@@ -93,7 +93,9 @@ const LESSON_TOOL_INPUT_SCHEMA: ToolInputSchema = {
 
 // Retry lessons duplicate the predecessor's content; the only thing the AI
 // still generates for a retry is the teacher's review note turned into a
-// short checklist. Small/cheap call — default Haiku model, small token budget.
+// handful of short, concrete tasks appended to the new lesson's todo list —
+// real student-facing tasks (marked done/stuck like any other), not a
+// separate teacher-only tracker. Small/cheap call — default Haiku model.
 const ChecklistSchema = z.object({
   items: z.array(z.string().min(1).max(300)).min(1).max(8),
 });
@@ -123,13 +125,14 @@ export interface GenerateLessonOpts {
    * When set, this generation is a *retry* of a previous (failed) lesson.
    * generateLesson then, in order:
    *   1. duplicates the predecessor's material (material_url/material_name)
-   *      and exercises (homework/todo titles+descriptions, reset to pending
-   *      with no files) verbatim — no LLM call for the lesson content itself;
+   *      verbatim — no LLM call for that; the predecessor's own homework/todo
+   *      items are NOT copied;
    *   2. if the teacher left a review note, makes one small AI call turning
-   *      that note into a short checklist (`retry_checklist`), using the
-   *      failed tasks / linked difficulty reports / student reflection as
-   *      secondary grounding (text only — the student's uploaded solution
-   *      file is never read);
+   *      that note into the new lesson's todo items — real tasks the student
+   *      marks done/stuck, using the failed tasks / linked difficulty reports
+   *      / student reflection as secondary grounding (text only — the
+   *      student's uploaded solution file is never read). With no note, the
+   *      retry lesson has no tasks;
    *   3. archives the predecessor and enforces the one-active-lesson invariant
    *      inside the same insert transaction (concurrency-safe idempotency);
    *   4. tags ai_generation_context with { mode: "retry", content_mode:
@@ -225,34 +228,32 @@ interface RetryCloneResult {
   title: string;
   description: string | null;
   lessonLevel: "base" | "medium" | "exam" | null;
-  homeworkItems: Array<{
-    title: string;
-    description: string | null;
-    order_index: number;
-  }>;
+  // Retry lessons do NOT clone the predecessor's exercises — only its
+  // material. The task list is built entirely from the teacher's review
+  // note (see todoItems below); when there's no note, there are no tasks.
   todoItems: Array<{
     title: string;
     description: string | null;
     order_index: number;
   }>;
-  retryChecklist: Array<{ text: string; done: boolean }> | null;
 }
 
 /**
- * Builds the retry clone: predecessor material + exercises copied verbatim,
- * plus (only when the teacher left a review note) a small AI call turning
- * that note into a checklist. No lesson-authoring LLM call happens here.
+ * Builds the retry clone: predecessor material copied verbatim, plus (only
+ * when the teacher left a review note) a small AI call turning that note
+ * into the new lesson's todo items. The predecessor's homework/todo items
+ * themselves are NOT copied — the note-derived tasks are the whole task
+ * list. No lesson-authoring LLM call happens here.
  */
 async function buildRetryClone(
   predId: string,
   studentId: string
 ): Promise<RetryCloneResult> {
   // ── Wave 1: independent reads, in parallel ──────────────────────────────
-  // predecessor row (title/description/reflection/note/level/material), the
-  // FAILED homework + todos (id/title/description — checklist context only),
-  // and ALL previous tasks (any status, ordered by order_index) — these are
-  // the clone source for the new lesson's exercises.
-  const [predRow, failedHw, failedTd, prevHw, prevTd] = await Promise.all([
+  // predecessor row (title/description/reflection/note/level/material) and
+  // its FAILED homework + todos (id/title/description) — used only as
+  // secondary context for the checklist prompt below, never cloned as-is.
+  const [predRow, failedHw, failedTd] = await Promise.all([
     db
       .select({
         title: lessonSessions.title,
@@ -290,24 +291,6 @@ async function buildRetryClone(
       .where(
         and(eq(todoItems.lesson_id, predId), eq(todoItems.status, "failed"))
       ),
-    db
-      .select({
-        title: homeworkItems.title,
-        description: homeworkItems.description,
-        order_index: homeworkItems.order_index,
-      })
-      .from(homeworkItems)
-      .where(eq(homeworkItems.lesson_id, predId))
-      .orderBy(homeworkItems.order_index),
-    db
-      .select({
-        title: todoItems.title,
-        description: todoItems.description,
-        order_index: todoItems.order_index,
-      })
-      .from(todoItems)
-      .where(eq(todoItems.lesson_id, predId))
-      .orderBy(todoItems.order_index),
   ]);
 
   // ── Wave 2: linked difficulty reports — depends on the failed task ids ──
@@ -353,8 +336,12 @@ async function buildRetryClone(
   const teacherReviewNote = predRow?.teacher_review_note ?? null;
 
   // Only spend an AI call when there's actually a note to parse — nothing to
-  // turn into a checklist otherwise.
-  let retryChecklist: Array<{ text: string; done: boolean }> | null = null;
+  // turn into extra tasks otherwise.
+  const checklistTodoItems: Array<{
+    title: string;
+    description: string | null;
+    order_index: number;
+  }> = [];
   if (teacherReviewNote?.trim()) {
     const checklistPrompt = buildRetryChecklistPrompt({
       teacherReviewNote,
@@ -390,10 +377,13 @@ async function buildRetryClone(
         },
       }
     );
-    retryChecklist = checklistResult.items.map((text) => ({
-      text,
-      done: false,
-    }));
+    checklistResult.items.forEach((text, i) => {
+      checklistTodoItems.push({
+        title: text,
+        description: null,
+        order_index: i,
+      });
+    });
   }
 
   return {
@@ -405,17 +395,7 @@ async function buildRetryClone(
     title: predRow?.title ?? "שיעור חוזר",
     description: predRow?.description ?? null,
     lessonLevel: predRow?.lesson_level ?? null,
-    homeworkItems: prevHw.map((h) => ({
-      title: h.title,
-      description: h.description,
-      order_index: h.order_index,
-    })),
-    todoItems: prevTd.map((t) => ({
-      title: t.title,
-      description: t.description,
-      order_index: t.order_index,
-    })),
-    retryChecklist,
+    todoItems: checklistTodoItems,
   };
 }
 
@@ -515,12 +495,14 @@ export async function generateLesson(
   const newDescription = retryClone
     ? retryClone.description
     : generated!.description;
-  const newHomeworkItems = retryClone
-    ? retryClone.homeworkItems
-    : generated!.homework_items;
+  // Retries have no homework items — only the note-derived todo items below.
+  const newHomeworkItems: Array<{
+    title: string;
+    description: string;
+    order_index: number;
+  }> = retryClone ? [] : generated!.homework_items;
   // todo_items from regular generation carry no description (unchanged from
-  // before); retry clones preserve whatever description the predecessor's
-  // todo item had.
+  // before); retry's todo items (from the checklist) also carry none.
   const newTodoItems: Array<{
     title: string;
     description: string | null;
@@ -611,7 +593,6 @@ export async function generateLesson(
         // Retry lesson's material is the predecessor's, duplicated as-is.
         material_url: retryClone?.material_url ?? null,
         material_name: retryClone?.material_name ?? null,
-        retry_checklist: retryClone?.retryChecklist ?? null,
       })
       .returning();
 

@@ -371,7 +371,6 @@ describe("POST /lessons/generate — retry lesson (Phase AI-0.5)", () => {
       ai_generated: boolean;
       material_url: string | null;
       material_name: string | null;
-      retry_checklist: Array<{ text: string; done: boolean }> | null;
       ai_generation_context: Record<string, unknown> | null;
     };
 
@@ -393,30 +392,26 @@ describe("POST /lessons/generate — retry lesson (Phase AI-0.5)", () => {
     expect(retry.material_url).toBe("https://files.test/m.pdf");
     expect(retry.material_name).toBe("m.pdf");
 
-    // The teacher's review note ("Confused fractions with decimals" from
-    // seedPredecessor) became a checklist via the small AI call.
-    expect(retry.retry_checklist).toEqual([
-      { text: "Checklist item one", done: false },
-      { text: "Checklist item two", done: false },
-    ]);
-
-    // Exercises are cloned from the predecessor, reset to pending.
+    // The predecessor's own exercises are NOT cloned — only its material.
     const clonedHw = await testDb
       .select()
       .from(homeworkItems)
       .where(eq(homeworkItems.lesson_id, retry.id));
-    expect(clonedHw).toHaveLength(1);
-    expect(clonedHw[0]!.title).toBe("Add fractions");
-    expect(clonedHw[0]!.status).toBe("pending");
-    expect(clonedHw[0]!.file_url).toBeNull();
+    expect(clonedHw).toHaveLength(0);
 
+    // The teacher's review note ("Confused fractions with decimals" from
+    // seedPredecessor) became the retry's whole task list via the small AI
+    // call — real student-facing todo items.
     const clonedTd = await testDb
       .select()
       .from(todoItems)
-      .where(eq(todoItems.lesson_id, retry.id));
-    expect(clonedTd).toHaveLength(1);
-    expect(clonedTd[0]!.title).toBe("Simplify 4/8");
+      .where(eq(todoItems.lesson_id, retry.id))
+      .orderBy(todoItems.order_index);
+    expect(clonedTd).toHaveLength(2);
+    expect(clonedTd[0]!.title).toBe("Checklist item one");
     expect(clonedTd[0]!.status).toBe("pending");
+    expect(clonedTd[1]!.title).toBe("Checklist item two");
+    expect(clonedTd[1]!.status).toBe("pending");
 
     const active = await activeLessons(sid, cid, tid);
     expect(active).toHaveLength(1);
@@ -599,30 +594,27 @@ describe("POST /lessons/generate — retry lesson (Phase AI-0.5)", () => {
   });
 
   describe("content duplication + retry checklist", () => {
-    it("clones ALL predecessor tasks regardless of status, in order_index order, reset to pending", async () => {
+    it("does not clone any of the predecessor's homework/todo items — only its material", async () => {
       const { sid, pred } = await seedRichScenario();
       const res = await postRetry(sid, pred.id);
       expect(res.status).toBe(201);
-      const retry = (await res.json()) as { id: string };
+      const retry = (await res.json()) as { id: string; material_url: string | null };
 
       const clonedHw = await testDb
         .select()
         .from(homeworkItems)
-        .where(eq(homeworkItems.lesson_id, retry.id))
-        .orderBy(homeworkItems.order_index);
+        .where(eq(homeworkItems.lesson_id, retry.id));
+      expect(clonedHw).toHaveLength(0);
 
-      // Both the completed warm-up (order 0) and the failed task (order 1)
-      // are cloned — retry duplicates the whole exercise set, not just the
-      // failed ones — and every clone resets to pending with no files.
-      expect(clonedHw).toHaveLength(2);
-      expect(clonedHw[0]!.title).toBe("Warm up halves");
-      expect(clonedHw[1]!.title).toBe("Add 1/2 + 1/3");
-      expect(clonedHw[1]!.description).toBe("Common denominator addition");
-      for (const item of clonedHw) {
-        expect(item.status).toBe("pending");
-        expect(item.file_url).toBeNull();
-        expect(item.marked_at).toBeNull();
-      }
+      // The retry's only todo items are the ones derived from the review
+      // note (checked in the next test) — none of the predecessor's own
+      // "Warm up halves" / "Add 1/2 + 1/3" survive.
+      const clonedTd = await testDb
+        .select()
+        .from(todoItems)
+        .where(eq(todoItems.lesson_id, retry.id));
+      expect(clonedTd.map((t) => t.title)).not.toContain("Warm up halves");
+      expect(clonedTd.map((t) => t.title)).not.toContain("Add 1/2 + 1/3");
     });
 
     it("generates a checklist from the teacher's review note, grounded by failed tasks, linked difficulties, and reflection", async () => {
@@ -680,12 +672,14 @@ describe("POST /lessons/generate — retry lesson (Phase AI-0.5)", () => {
       vi.mocked(callClaudeTool).mockClear();
       const res = await postRetry(sid, lesson!.id);
       expect(res.status).toBe(201);
-      const retry = (await res.json()) as {
-        retry_checklist: unknown | null;
-      };
+      const retry = (await res.json()) as { id: string };
 
       expect(callClaudeTool).not.toHaveBeenCalled();
-      expect(retry.retry_checklist).toBeNull();
+      const td = await testDb
+        .select()
+        .from(todoItems)
+        .where(eq(todoItems.lesson_id, retry.id));
+      expect(td).toHaveLength(0);
       expect(await lessonStatus(lesson!.id)).toBe("archived");
     });
 

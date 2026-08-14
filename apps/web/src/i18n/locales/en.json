@@ -564,13 +564,11 @@
   "lessonReview.saving": "Saving...",
   "lessonReview.saveFailed": "Save failed — try again",
   "lessonReview.repeatSaved": "Verdict saved — repeat same level",
-  "lessonReview.retryHint": "You can now generate a retry lesson with the exact same material and exercises. The note you wrote above will become a checklist you can check off in the new lesson.",
+  "lessonReview.retryHint": "You can now generate a retry lesson with the same material. The note you wrote above will become the new tasks for the student to work through in the lesson.",
   "lessonReview.generateRetry": "Generate retry lesson",
   "lessonReview.generatingRetry": "Generating lesson...",
   "lessonReview.retrySuccess": "Retry lesson created successfully",
   "lessonReview.retryFailed": "Lesson generation failed — try again",
-
-  "retryChecklist.title": "Checklist from your note",
 
   "studentContext.backgroundTitle": "Student background",
   "studentContext.backgroundHint": "Static context — special needs, family background, personality. Written once, edited only when life circumstances change.",

@@ -159,14 +159,15 @@ Respond ONLY with valid JSON matching this schema:
 }`;
 }
 
-// ─── Retry checklist (repeat lessons) ──────────────────────────────────────
+// ─── Retry note → tasks (repeat lessons) ───────────────────────────────────
 // When a teacher marks a lesson "חזרה" (repeat), the retry lesson now
 // DUPLICATES the predecessor's material and exercises verbatim (handled in
 // generate-lesson.ts, no LLM call needed for that part). The only thing the
 // AI still generates for a retry is this: the teacher's free-text review
-// note, turned into a short checklist of concrete, independently-actionable
-// items — grounded by the failed tasks / linked difficulties / reflection as
-// secondary context, same priority ordering as before.
+// note, turned into a few short todo items APPENDED to the new lesson —
+// real student-facing tasks (marked done/stuck like any other task), not a
+// teacher-only tracker — grounded by the failed tasks / linked difficulties /
+// reflection as secondary context.
 export interface RetryChecklistPromptContext {
   teacherReviewNote: string | null;
   failedTasks: Array<{ title: string; description: string | null }>;
@@ -223,13 +224,13 @@ export function buildRetryChecklistPrompt(
       )}"\n`
     : "";
 
-  return `You are helping a private tutor prepare a repeat lesson. The student already attempted this material and did NOT master it; the teacher reviewed the submission, chose "repeat", and wrote a review note. The lesson itself (material + exercises) is being duplicated as-is — your ONLY job is to turn the teacher's note into a checklist.
+  return `You are helping a private tutor prepare a repeat lesson. The student already attempted this material and did NOT master it; the teacher reviewed the submission, chose "repeat", and wrote a review note. The lesson itself (material + exercises) is being duplicated as-is — your ONLY job is to turn the teacher's note into a few extra practice tasks the STUDENT will do in the new lesson (each becomes a real todo item the student marks done/stuck).
 
-## Teacher's review note (highest priority — the checklist must come from this)
+## Teacher's review note (highest priority — the tasks must come from this)
 ${reviewNote}
 ${failedTasksBlock}${linkedDifficultiesBlock}${reflectionBlock}
 ## Your task
-Split the teacher's note into its individual points, and return exactly one checklist item per point — a period, semicolon, or clearly separate thought marks a new point. Do NOT split a single point into multiple sub-items, and do NOT merge two separate points into one item, even if they relate to the same topic. The number of items you return must match the number of distinct points actually written in the note (capped at 8 only as a safety limit for an unusually long note). Use the failed tasks / diagnosed difficulties / reflection above only to phrase each item more precisely — never as a source of additional items beyond what the note itself says. Imperative, specific phrasing — never vague filler like "לתרגל יותר" or "לחזור על החומר".
+Split the teacher's note into its individual points, and return exactly one task per point — a period, semicolon, or clearly separate thought marks a new point. Do NOT split a single point into multiple sub-tasks, and do NOT merge two separate points into one task, even if they relate to the same topic. The number of tasks you return must match the number of distinct points actually written in the note (capped at 8 only as a safety limit for an unusually long note). Use the failed tasks / diagnosed difficulties / reflection above only to phrase each task more precisely — never as a source of additional tasks beyond what the note itself says. Phrase each as a short, concrete instruction the student can act on directly (e.g. "רשום את הפתרון הכללי בצורה פרמטרית"), imperative and specific — never vague filler like "לתרגל יותר" or "לחזור על החומר".
 
 ${HEBREW_WRITING_RULES}
 
