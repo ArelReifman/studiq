@@ -26,23 +26,35 @@ vi.mock("../middleware/auth.js", () => ({
 
 // Deterministic Claude — no network. generateLesson now uses the structured
 // tool-use path (callClaudeTool), whose `input` is already an object; the mock
-// hands a fixed lesson object straight to the parser (Zod). callClaude is also
-// stubbed for any text-JSON caller, but the lesson path uses callClaudeTool.
+// hands a fixed object straight to the parser (Zod). callClaude is also
+// stubbed for any text-JSON caller, but the lesson/checklist paths use
+// callClaudeTool. Regular (non-retry) generation still calls the "emit_lesson"
+// tool; retries now only ever call the small "emit_checklist" tool (when the
+// teacher left a review note) — the mock routes on `options.tool.name` so
+// both shapes are exercised correctly instead of always returning one fixed
+// object regardless of which schema is expected.
 const FIXED_LESSON = {
-  title: "Retry Lesson",
-  description: "A fresh pass on the same topic.",
+  title: "Fresh Lesson",
+  description: "A brand new lesson.",
   homework_items: [
-    { title: "alt homework", description: "different angle", order_index: 0 },
+    { title: "new homework", description: "new angle", order_index: 0 },
   ],
-  todo_items: [{ title: "alt todo", order_index: 0 }],
+  todo_items: [{ title: "new todo", order_index: 0 }],
 };
+const FIXED_CHECKLIST = { items: ["Checklist item one", "Checklist item two"] };
 vi.mock("../services/ai/claude.js", () => ({
   callClaude: vi.fn(async (_prompt: string, parse: (t: string) => unknown) =>
     parse(JSON.stringify(FIXED_LESSON))
   ),
   callClaudeTool: vi.fn(
-    async (_prompt: string, parseInput: (input: unknown) => unknown) =>
-      parseInput(FIXED_LESSON)
+    async (
+      _prompt: string,
+      parseInput: (input: unknown) => unknown,
+      options: { tool: { name: string } }
+    ) =>
+      parseInput(
+        options.tool.name === "emit_checklist" ? FIXED_CHECKLIST : FIXED_LESSON
+      )
   ),
 }));
 
@@ -115,6 +127,7 @@ async function seedPredecessor(
   extra: {
     decision?: "repeat" | "next_level" | "next_topic" | null | undefined;
     level?: "base" | "medium" | "exam" | null | undefined;
+    material?: { url: string; name: string } | undefined;
   } = {}
 ) {
   const [lesson] = await testDb
@@ -129,6 +142,8 @@ async function seedPredecessor(
       teacher_review_note: "Confused fractions with decimals",
       teacher_decision: extra.decision === undefined ? "repeat" : extra.decision,
       lesson_level: extra.level ?? null,
+      material_url: extra.material?.url ?? null,
+      material_name: extra.material?.name ?? null,
     })
     .returning();
   await testDb.insert(homeworkItems).values({
@@ -154,6 +169,7 @@ async function fullScenario(
     activeCourse?: boolean;
     decision?: "repeat" | "next_level" | "next_topic" | null;
     level?: "base" | "medium" | "exam" | null;
+    material?: { url: string; name: string };
   } = {}
 ) {
   const sid = randomUUID();
@@ -165,6 +181,7 @@ async function fullScenario(
   const pred = await seedPredecessor(sid, cid, tid, {
     decision: opts.decision,
     level: opts.level,
+    material: opts.material,
   });
   return { sid, cid, tid, pred };
 }
@@ -338,17 +355,23 @@ describe("POST /lessons/generate — retry lesson (Phase AI-0.5)", () => {
     expect(await lessonStatus(pred.id)).toBe("active");
   });
 
-  it("2. clicking generate retry archives the predecessor and creates one active retry", async () => {
-    const { sid, cid, tid, pred } = await fullScenario();
+  it("2. clicking generate retry archives the predecessor and creates one active retry, duplicating its content", async () => {
+    const { sid, cid, tid, pred } = await fullScenario({
+      material: { url: "https://files.test/m.pdf", name: "m.pdf" },
+    });
 
     const res = await postRetry(sid, pred.id);
     expect(res.status).toBe(201);
     const retry = (await res.json()) as {
       id: string;
+      title: string;
       status: string;
       course_id: string;
       topic_id: string | null;
       ai_generated: boolean;
+      material_url: string | null;
+      material_name: string | null;
+      retry_checklist: Array<{ text: string; done: boolean }> | null;
       ai_generation_context: Record<string, unknown> | null;
     };
 
@@ -361,8 +384,39 @@ describe("POST /lessons/generate — retry lesson (Phase AI-0.5)", () => {
     expect(retry.ai_generated).toBe(true);
     expect(retry.ai_generation_context).toMatchObject({
       mode: "retry",
+      content_mode: "duplicate",
       retry_of_lesson_id: pred.id,
     });
+
+    // Content is a duplicate, not AI-authored: same title, same material.
+    expect(retry.title).toBe(pred.title);
+    expect(retry.material_url).toBe("https://files.test/m.pdf");
+    expect(retry.material_name).toBe("m.pdf");
+
+    // The teacher's review note ("Confused fractions with decimals" from
+    // seedPredecessor) became a checklist via the small AI call.
+    expect(retry.retry_checklist).toEqual([
+      { text: "Checklist item one", done: false },
+      { text: "Checklist item two", done: false },
+    ]);
+
+    // Exercises are cloned from the predecessor, reset to pending.
+    const clonedHw = await testDb
+      .select()
+      .from(homeworkItems)
+      .where(eq(homeworkItems.lesson_id, retry.id));
+    expect(clonedHw).toHaveLength(1);
+    expect(clonedHw[0]!.title).toBe("Add fractions");
+    expect(clonedHw[0]!.status).toBe("pending");
+    expect(clonedHw[0]!.file_url).toBeNull();
+
+    const clonedTd = await testDb
+      .select()
+      .from(todoItems)
+      .where(eq(todoItems.lesson_id, retry.id));
+    expect(clonedTd).toHaveLength(1);
+    expect(clonedTd[0]!.title).toBe("Simplify 4/8");
+    expect(clonedTd[0]!.status).toBe("pending");
 
     const active = await activeLessons(sid, cid, tid);
     expect(active).toHaveLength(1);
@@ -544,57 +598,98 @@ describe("POST /lessons/generate — retry lesson (Phase AI-0.5)", () => {
     expect(await activeLessons(sid, cid, tid)).toHaveLength(1);
   });
 
-  describe("enriched retry context (Phase 1C-b)", () => {
-    it("feeds failed-task descriptions, linked difficulties, reflection, previous lesson and insights into the prompt", async () => {
+  describe("content duplication + retry checklist", () => {
+    it("clones ALL predecessor tasks regardless of status, in order_index order, reset to pending", async () => {
+      const { sid, pred } = await seedRichScenario();
+      const res = await postRetry(sid, pred.id);
+      expect(res.status).toBe(201);
+      const retry = (await res.json()) as { id: string };
+
+      const clonedHw = await testDb
+        .select()
+        .from(homeworkItems)
+        .where(eq(homeworkItems.lesson_id, retry.id))
+        .orderBy(homeworkItems.order_index);
+
+      // Both the completed warm-up (order 0) and the failed task (order 1)
+      // are cloned — retry duplicates the whole exercise set, not just the
+      // failed ones — and every clone resets to pending with no files.
+      expect(clonedHw).toHaveLength(2);
+      expect(clonedHw[0]!.title).toBe("Warm up halves");
+      expect(clonedHw[1]!.title).toBe("Add 1/2 + 1/3");
+      expect(clonedHw[1]!.description).toBe("Common denominator addition");
+      for (const item of clonedHw) {
+        expect(item.status).toBe("pending");
+        expect(item.file_url).toBeNull();
+        expect(item.marked_at).toBeNull();
+      }
+    });
+
+    it("generates a checklist from the teacher's review note, grounded by failed tasks, linked difficulties, and reflection", async () => {
       const { sid, cid, tid, pred } = await seedRichScenario();
       const { prompt } = await captureRetryPrompt(sid, pred.id);
 
-      // 1. failed task titles + descriptions
+      // Failed tasks + descriptions (secondary grounding for the checklist).
       expect(prompt).toContain("Add 1/2 + 1/3");
       expect(prompt).toContain("Common denominator addition");
       expect(prompt).toContain("Simplify 4/8");
       expect(prompt).toContain("Reduce to lowest terms");
-      // 2. linked difficulty descriptions
+      // Linked difficulty descriptions + topic tags + teacher notes.
       expect(prompt).toContain("Mixed up numerator and denominator");
       expect(prompt).toContain("Did not reduce");
-      // 3. topic tags
       expect(prompt).toContain("[topics: fractions]");
       expect(prompt).toContain("[topics: fractions, simplify]");
-      // 4. teacher notes on the difficulty reports
       expect(prompt).toContain("teacher note: Saw this twice");
       expect(prompt).toContain("teacher note: Needs reminder");
-      // 5. student reflection
+      // Student reflection.
       expect(prompt).toContain("I got lost when denominators differ");
-      // 6. previous lesson title + description
-      expect(prompt).toContain("Original Fractions Lesson");
-      expect(prompt).toContain("We used a visual pizza model");
-      // 7. previous task titles (including the non-failed warm-up)
-      expect(prompt).toContain("Warm up halves");
-      // 8. student insights
-      expect(prompt).toContain("Responds well to short sessions");
-      expect(prompt).toContain("Likes diagrams");
-      // 9. teacher review note
+      // The teacher's review note — highest priority.
       expect(prompt).toContain("Confused fractions with decimals");
+
+      // The predecessor's own content is NOT re-sent to the model (it's
+      // cloned directly in the DB, not authored by this call).
+      expect(prompt).not.toContain("Original Fractions Lesson");
+      expect(prompt).not.toContain("Warm up halves");
 
       // archive + one-active guard remain intact
       expect(await lessonStatus(pred.id)).toBe("archived");
       expect(await activeLessons(sid, cid, tid)).toHaveLength(1);
     });
 
-    it("10. lists previous task titles in deterministic order_index order in the anti-repeat block", async () => {
-      const { sid, pred } = await seedRichScenario();
-      const { prompt } = await captureRetryPrompt(sid, pred.id);
-      const antiRepeat = prompt.slice(
-        prompt.indexOf("## Previous lesson — do NOT repeat")
-      );
-      expect(antiRepeat).toContain("Warm up halves");
-      // order_index 0 (warm up) appears before order_index 1 (Add 1/2 + 1/3).
-      expect(antiRepeat.indexOf("Warm up halves")).toBeLessThan(
-        antiRepeat.indexOf("Add 1/2 + 1/3")
-      );
+    it("skips the checklist AI call entirely when the teacher left no review note", async () => {
+      const sid = randomUUID();
+      const cid = randomUUID();
+      const tid = randomUUID();
+      await seedStudent(sid, cid);
+      await seedCourse(sid, cid, true);
+      await seedTopic(cid, tid);
+      const [lesson] = await testDb
+        .insert(lessonSessions)
+        .values({
+          student_id: sid,
+          teacher_id: ctx.TEACHER_ID,
+          title: "Lesson",
+          status: "active",
+          course_id: cid,
+          topic_id: tid,
+          teacher_decision: "repeat",
+          teacher_review_note: null,
+        })
+        .returning();
+
+      vi.mocked(callClaudeTool).mockClear();
+      const res = await postRetry(sid, lesson!.id);
+      expect(res.status).toBe(201);
+      const retry = (await res.json()) as {
+        retry_checklist: unknown | null;
+      };
+
+      expect(callClaudeTool).not.toHaveBeenCalled();
+      expect(retry.retry_checklist).toBeNull();
+      expect(await lessonStatus(lesson!.id)).toBe("archived");
     });
 
-    it("edge: no failed tasks — no IN() query, no failed/linked blocks, still generates", async () => {
+    it("edge: no failed tasks — no IN() query, checklist call still succeeds off the note alone", async () => {
       const sid = randomUUID();
       const cid = randomUUID();
       const tid = randomUUID();
@@ -611,16 +706,17 @@ describe("POST /lessons/generate — retry lesson (Phase AI-0.5)", () => {
           course_id: cid,
           topic_id: tid,
           teacher_decision: "repeat",
+          teacher_review_note: "Needs more practice with signs",
         })
         .returning();
 
       const { prompt } = await captureRetryPrompt(sid, lesson!.id);
-      expect(prompt).not.toContain("## Failed tasks — target these directly");
+      expect(prompt).not.toContain("## Failed tasks (secondary context)");
       expect(prompt).not.toContain("## Diagnosed difficulties");
       expect(await lessonStatus(lesson!.id)).toBe("archived");
     });
 
-    it("edge: no reflection or insights — prompt contains no literal undefined/null", async () => {
+    it("edge: no reflection — checklist prompt contains no literal undefined", async () => {
       const sid = randomUUID();
       const cid = randomUUID();
       const tid = randomUUID();
@@ -638,6 +734,7 @@ describe("POST /lessons/generate — retry lesson (Phase AI-0.5)", () => {
           course_id: cid,
           topic_id: tid,
           teacher_decision: "repeat",
+          teacher_review_note: "Some review note",
         })
         .returning();
       await testDb.insert(homeworkItems).values({
@@ -650,9 +747,7 @@ describe("POST /lessons/generate — retry lesson (Phase AI-0.5)", () => {
 
       const { prompt } = await captureRetryPrompt(sid, lesson!.id);
       expect(prompt).not.toContain("## Student's own reflection");
-      expect(prompt).not.toContain("## What helps this student");
       expect(prompt).not.toContain("undefined");
-      expect(prompt).not.toContain("null");
     });
   });
 });

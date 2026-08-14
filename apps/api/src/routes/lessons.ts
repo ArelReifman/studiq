@@ -686,6 +686,67 @@ export const lessonRoutes = new Hono()
     }
   )
 
+  // PATCH /lessons/:id/checklist-item — teacher toggles one item of a retry
+  // lesson's AI-generated checklist (derived from their own review note).
+  // Read-modify-write on the jsonb array; teacher-only, same ownership check
+  // as /review. 404 both when the lesson doesn't exist/belong to this teacher
+  // and when the index is out of range for its checklist (or it has none).
+  .patch(
+    "/:id/checklist-item",
+    requireRole("teacher"),
+    zValidator("param", uuidParamSchema),
+    zValidator(
+      "json",
+      z.object({
+        index: z.number().int().min(0),
+        done: z.boolean(),
+      })
+    ),
+    async (c) => {
+      const teacherId = c.get("userId");
+      const lessonId = c.req.valid("param").id;
+      const { index, done } = c.req.valid("json");
+
+      const [row] = await db
+        .select({ retry_checklist: lessonSessions.retry_checklist })
+        .from(lessonSessions)
+        .where(
+          and(
+            eq(lessonSessions.id, lessonId),
+            eq(lessonSessions.teacher_id, teacherId)
+          )
+        )
+        .limit(1);
+
+      if (!row) return c.json({ error: "Lesson not found" }, 404);
+
+      const checklist = (row.retry_checklist ?? []) as Array<{
+        text: string;
+        done: boolean;
+      }>;
+      if (index >= checklist.length) {
+        return c.json({ error: "Checklist item not found" }, 404);
+      }
+
+      const updatedChecklist = checklist.map((item, i) =>
+        i === index ? { ...item, done } : item
+      );
+
+      const [updated] = await db
+        .update(lessonSessions)
+        .set({ retry_checklist: updatedChecklist })
+        .where(
+          and(
+            eq(lessonSessions.id, lessonId),
+            eq(lessonSessions.teacher_id, teacherId)
+          )
+        )
+        .returning();
+
+      return c.json(updated);
+    }
+  )
+
   // PATCH /lessons/:id/status
   .patch(
     "/:id/status",

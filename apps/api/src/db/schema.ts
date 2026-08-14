@@ -430,6 +430,10 @@ export const lessonSessions = pgTable(
     teacher_review_note: text("teacher_review_note"),
     teacher_decision: teacherDecisionEnum("teacher_decision"),
     teacher_reviewed_at: timestamp("teacher_reviewed_at", { withTimezone: true }),
+    // Retry lessons duplicate the predecessor's material/exercises; this is
+    // the teacher's review note parsed into a short checklist. NULL for
+    // non-retry lessons and for retries with no review note.
+    retry_checklist: jsonb("retry_checklist"),
     // Optional links — lessons without these still work exactly as before.
     course_id: uuid("course_id").references(() => courses.id, {
       onDelete: "set null",

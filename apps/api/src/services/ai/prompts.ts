@@ -8,59 +8,15 @@ export interface LessonLearningMapContext {
   resources: Array<{ title: string; description: string | null }>;
 }
 
-// Phase AI-0.5 / 1C: context passed when this generation is a *retry* of a
-// previous (failed) lesson. Text only — the student's uploaded solution file is
-// never read or included here.
-//
-// Phase 1C-a (this change) defines the *contract* — the richer optional fields
-// below plus the prompt rendering + caps for them. The code that populates them
-// from the DB lands in Phase 1C-b; until then generate-lesson.ts keeps passing
-// only `failedTaskTitles` (kept optional for backward compatibility).
-export interface LessonRetryContext {
-  /**
-   * @deprecated Superseded by `failedTasks` in Phase 1C-b. Kept optional so the
-   * current generate-lesson.ts (which still passes titles only) keeps compiling
-   * and working. When `failedTasks` is provided it takes precedence and this is
-   * ignored (no duplication).
-   */
-  failedTaskTitles?: string[];
-  /** Failed tasks with their descriptions (richer than titles-only). */
-  failedTasks?: Array<{ title: string; description: string | null }>;
-  teacherReviewNote: string | null;
-  // The predecessor's level (base/medium/exam), carried so the retry stays at
-  // the SAME level. Currently a dormant column (usually null) — when null the
-  // prompt falls back to the generic "same level" framing.
-  lessonLevel: "base" | "medium" | "exam" | null;
-  /** Difficulty reports linked to THIS lesson's failed tasks (focused evidence). */
-  linkedDifficulties?: Array<{
-    description: string | null;
-    topicTags: string[];
-    teacherNote: string | null;
-  }>;
-  /** The student's own reflection on the predecessor lesson. */
-  studentReflection?: string | null;
-  /** The predecessor lesson's content — used ONLY as anti-repeat guidance. */
-  previousLesson?: {
-    title: string;
-    description: string | null;
-    taskTitles: string[];
-  } | null;
-  /** Teacher-authored insights about the student (background only). */
-  studentInsights?: string[];
-}
-
-// Per-source length caps for the retry context (Phase 1C-a). Keep the prompt
+// Per-source length caps for the retry checklist context. Keep the prompt
 // bounded so richer context does not inflate tokens/latency unchecked.
 const RETRY_CAPS = {
   failedTaskDescription: 300,
-  previousLessonDescription: 200,
-  previousTaskTitles: 10,
   linkedDifficultyDescription: 200,
   linkedDifficultyTeacherNote: 200,
   linkedDifficulties: 10,
   studentReflection: 500,
-  studentInsight: 200,
-  studentInsights: 10,
+  reviewNote: 2000,
 } as const;
 
 /**
@@ -87,9 +43,6 @@ export function buildLessonGenerationPrompt(params: {
   // Optional Learning Map anchoring. When null, the block is omitted entirely
   // and the prompt is byte-identical to the pre-AI-1 version.
   learningMap?: LessonLearningMapContext | null;
-  // Optional retry framing (Phase AI-0.5). When null, omitted entirely so the
-  // prompt is unchanged for normal (non-retry) generation.
-  retryContext?: LessonRetryContext | null;
 }): string {
   const {
     studentName,
@@ -99,7 +52,6 @@ export function buildLessonGenerationPrompt(params: {
     teacherStyleSummary,
     similarLessons,
     learningMap,
-    retryContext,
   } = params;
 
   const difficultySummary =
@@ -150,171 +102,6 @@ ${
 }
 `
     : "";
-
-  // Phase 1B/1C — retry lessons use a SEPARATE, failure-first prompt. When the
-  // teacher chose "repeat", the general lesson-planning rules (the 60/40 split,
-  // etc.) are deliberately dropped: the whole lesson must target the specific
-  // failure point, led by the teacher's note and the failed tasks, using a
-  // different pedagogical angle. Phase 1C-a renders the richer optional context
-  // (failed-task descriptions, linked difficulties, reflection, previous-lesson
-  // anti-repeat, insights) with per-source caps — each block is omitted entirely
-  // when its data is absent. The regular path below is reached only for non-retry
-  // generation and stays byte-identical to before.
-  if (retryContext) {
-    // Resolve the failed tasks: prefer the rich `failedTasks`; fall back to the
-    // legacy titles-only list. Never render both (no duplication).
-    const failedTasks =
-      retryContext.failedTasks?.length
-        ? retryContext.failedTasks
-        : (retryContext.failedTaskTitles ?? []).map((title) => ({
-            title,
-            description: null as string | null,
-          }));
-    const failedTitlesLine =
-      failedTasks.length > 0
-        ? failedTasks.map((t) => t.title).join("; ")
-        : "not specified";
-    const reviewNote = retryContext.teacherReviewNote?.trim()
-      ? `"${retryContext.teacherReviewNote.trim()}"`
-      : "none";
-    const levelFraming = retryContext.lessonLevel
-      ? `${retryContext.lessonLevel} — keep the retry at exactly this level`
-      : "the same level as the previous lesson";
-
-    // Priority-2 detail: failed tasks WITH their descriptions. Rendered only
-    // when at least one failed task carries a description (otherwise the compact
-    // titles line in the PRIORITY ORDER already covers them — no duplication).
-    const hasFailedDescriptions = failedTasks.some((t) => t.description?.trim());
-    const failedTasksBlock = hasFailedDescriptions
-      ? `\n## Failed tasks — target these directly\n${failedTasks
-          .map(
-            (t) =>
-              `- ${t.title}${
-                t.description?.trim()
-                  ? `: ${truncate(t.description, RETRY_CAPS.failedTaskDescription)}`
-                  : ""
-              }`
-          )
-          .join("\n")}\n`
-      : "";
-
-    // Priority-3: difficulty reports linked to those failed tasks — the focused
-    // diagnostic evidence of what actually went wrong.
-    const linkedDifficultiesBlock = retryContext.linkedDifficulties?.length
-      ? `\n## Diagnosed difficulties (focused evidence — what actually went wrong)\n${retryContext.linkedDifficulties
-          .slice(0, RETRY_CAPS.linkedDifficulties)
-          .map((d) => {
-            const desc = d.description?.trim()
-              ? truncate(d.description, RETRY_CAPS.linkedDifficultyDescription)
-              : "unspecified";
-            const tags = d.topicTags.length
-              ? ` [topics: ${d.topicTags.join(", ")}]`
-              : "";
-            const note = d.teacherNote?.trim()
-              ? ` (teacher note: ${truncate(d.teacherNote, RETRY_CAPS.linkedDifficultyTeacherNote)})`
-              : "";
-            return `- ${desc}${tags}${note}`;
-          })
-          .join("\n")}\n`
-      : "";
-
-    // Priority-4: the student's own words.
-    const reflectionBlock = retryContext.studentReflection?.trim()
-      ? `\n## Student's own reflection (their words after the lesson)\n"${truncate(
-          retryContext.studentReflection,
-          RETRY_CAPS.studentReflection
-        )}"\n`
-      : "";
-
-    // Priority-5: the previous lesson, as ANTI-REPEAT guidance only.
-    const prev = retryContext.previousLesson;
-    const previousLessonBlock = prev
-      ? `\n## Previous lesson — do NOT repeat these (anti-repeat)\nThe previous lesson was "${prev.title}"${
-          prev.description?.trim()
-            ? `: ${truncate(prev.description, RETRY_CAPS.previousLessonDescription)}`
-            : ""
-        }.${
-          prev.taskTitles.length
-            ? `\nIt already used these tasks — do NOT reuse them or their teaching approach:\n${prev.taskTitles
-                .slice(0, RETRY_CAPS.previousTaskTitles)
-                .map((t) => `- ${t}`)
-                .join("\n")}`
-            : ""
-        }\n`
-      : "";
-
-    // Priority-6 (background): teacher-authored insights about the student.
-    const insightsBlock = retryContext.studentInsights?.length
-      ? `\n## What helps this student (teacher insights — background)\n${retryContext.studentInsights
-          .slice(0, RETRY_CAPS.studentInsights)
-          .map((i) => `- ${truncate(i, RETRY_CAPS.studentInsight)}`)
-          .filter((line) => line !== "- ")
-          .join("\n")}\n`
-      : "";
-
-    return `You are an adaptive tutoring AI generating a REMEDIAL RETRY lesson. The student already attempted this material and did NOT master it; the teacher reviewed the submission and chose "repeat". Build a focused second pass.
-
-## PRIORITY ORDER — read this first; it governs the entire lesson
-Teacher feedback and failed tasks override all general lesson-planning guidance. Build the whole lesson around the items below, in this priority:
-1. Teacher's review note (highest priority): ${reviewNote}
-2. Tasks the student failed previously: ${failedTitlesLine}
-3. Teacher decision = repeat — stay at ${levelFraming}; the student needs another pass before advancing.
-4. The student profile and other context further down are SECONDARY background only — never let them override 1–3.
-
-## Hard rules for this retry lesson
-- 100% of this lesson must focus on the failure point above. Do NOT apply the regular weak/strong content split (the 60/40 balance used for normal lessons) — it does not apply to retry lessons.
-- Do not simply rephrase or reorder the previous lesson. Use a different pedagogical angle.
-- The exact previous explanation method is NOT provided here — do not claim to know it. Choose a meaningfully different explanatory angle from the one likely represented by the failed tasks, and teach through a different representation or sequence (for example concrete-before-abstract, a visual model, or a fully worked numeric example first).
-- Match the student's general learning style (${profile.learning_style}) while still changing the angle from what evidently failed.
-
-## Required structure for EVERY task (no vague filler)
-Each homework item's "description" must spell out, in order:
-- the goal, tied explicitly to the failure point;
-- a short explanation;
-- a worked example (fully solved, or guided step by step);
-- a progressive hint (a smaller nudge offered before the full solution);
-- independent practice the student does on their own;
-- an understanding check the teacher can use to confirm the student actually understood.
-Every homework item AND every todo must state concretely: what the student does, what they are shown, what they must conclude or answer, and how it connects to the failure point. Todo items are short but must still be specific, actionable practice tied to the failure — never vague.
-Do NOT output vague tasks such as "practice more", "review the topic", "solve similar questions", or "understand the concept".
-Include 3–5 homework items and 2–4 todo items, all targeting the failure point.
-${failedTasksBlock}${linkedDifficultiesBlock}${reflectionBlock}${previousLessonBlock}${insightsBlock}
-## Student: ${studentName}
-
-## Student Profile (secondary background)
-- Strong topics: ${profile.strong_topics.join(", ") || "Not yet determined"}
-- Weak topics: ${profile.weak_topics.join(", ") || "Not yet determined"}
-- Learning style: ${profile.learning_style}
-- Average completion rate: ${(Number(profile.avg_completion_rate) * 100).toFixed(0)}%
-- Total lessons completed: ${profile.total_lessons}
-
-## AI Summary (secondary background)
-${profile.ai_summary ?? "No summary yet — this may be a new student."}
-
-## Teacher's Teaching Style (secondary background)
-${teacherStyleSummary ?? "No teaching style profile yet — use general best practices."}
-
-## Teacher's Guidance for This Student (secondary background)
-${profile.teacher_feedback_summary ?? "No teacher feedback yet."}
-
-## Pending Teacher Feedback (secondary background)
-${feedbackSummary}
-
-## Recent Difficulties (secondary background)
-${difficultySummary}
-${learningMapBlock}
-Respond ONLY with valid JSON matching this schema. Do not add any prose outside the JSON:
-{
-  "title": "string",
-  "description": "string (2-3 sentences explaining what this lesson covers)",
-  "homework_items": [
-    { "title": "string", "description": "string", "order_index": number }
-  ],
-  "todo_items": [
-    { "title": "string", "order_index": number }
-  ]
-}`;
-  }
 
   return `You are an adaptive tutoring AI. Generate a personalized lesson for a student.
 
@@ -369,6 +156,86 @@ Respond ONLY with valid JSON matching this schema:
   "todo_items": [
     { "title": "string", "order_index": number }
   ]
+}`;
+}
+
+// ─── Retry checklist (repeat lessons) ──────────────────────────────────────
+// When a teacher marks a lesson "חזרה" (repeat), the retry lesson now
+// DUPLICATES the predecessor's material and exercises verbatim (handled in
+// generate-lesson.ts, no LLM call needed for that part). The only thing the
+// AI still generates for a retry is this: the teacher's free-text review
+// note, turned into a short checklist of concrete, independently-actionable
+// items — grounded by the failed tasks / linked difficulties / reflection as
+// secondary context, same priority ordering as before.
+export interface RetryChecklistPromptContext {
+  teacherReviewNote: string | null;
+  failedTasks: Array<{ title: string; description: string | null }>;
+  linkedDifficulties?: Array<{
+    description: string | null;
+    topicTags: string[];
+    teacherNote: string | null;
+  }>;
+  studentReflection?: string | null;
+}
+
+export function buildRetryChecklistPrompt(
+  ctx: RetryChecklistPromptContext
+): string {
+  const reviewNote = ctx.teacherReviewNote?.trim()
+    ? `"${truncate(ctx.teacherReviewNote, RETRY_CAPS.reviewNote)}"`
+    : "none";
+
+  const failedTasksBlock = ctx.failedTasks.length
+    ? `\n## Failed tasks (secondary context)\n${ctx.failedTasks
+        .map(
+          (t) =>
+            `- ${t.title}${
+              t.description?.trim()
+                ? `: ${truncate(t.description, RETRY_CAPS.failedTaskDescription)}`
+                : ""
+            }`
+        )
+        .join("\n")}\n`
+    : "";
+
+  const linkedDifficultiesBlock = ctx.linkedDifficulties?.length
+    ? `\n## Diagnosed difficulties (secondary context)\n${ctx.linkedDifficulties
+        .slice(0, RETRY_CAPS.linkedDifficulties)
+        .map((d) => {
+          const desc = d.description?.trim()
+            ? truncate(d.description, RETRY_CAPS.linkedDifficultyDescription)
+            : "unspecified";
+          const tags = d.topicTags.length
+            ? ` [topics: ${d.topicTags.join(", ")}]`
+            : "";
+          const note = d.teacherNote?.trim()
+            ? ` (teacher note: ${truncate(d.teacherNote, RETRY_CAPS.linkedDifficultyTeacherNote)})`
+            : "";
+          return `- ${desc}${tags}${note}`;
+        })
+        .join("\n")}\n`
+    : "";
+
+  const reflectionBlock = ctx.studentReflection?.trim()
+    ? `\n## Student's own reflection (secondary context)\n"${truncate(
+        ctx.studentReflection,
+        RETRY_CAPS.studentReflection
+      )}"\n`
+    : "";
+
+  return `You are helping a private tutor prepare a repeat lesson. The student already attempted this material and did NOT master it; the teacher reviewed the submission, chose "repeat", and wrote a review note. The lesson itself (material + exercises) is being duplicated as-is — your ONLY job is to turn the teacher's note into a checklist.
+
+## Teacher's review note (highest priority — the checklist must come from this)
+${reviewNote}
+${failedTasksBlock}${linkedDifficultiesBlock}${reflectionBlock}
+## Your task
+Produce 1 to 8 short checklist items in Hebrew, each one a concrete, independently-actionable point the teacher can verify was addressed when the student retries this lesson. Each item must be traceable to something in the teacher's note (or, if the note is thin, to a failed task / diagnosed difficulty above). Imperative, specific phrasing — never vague filler like "לתרגל יותר" or "לחזור על החומר".
+
+${HEBREW_WRITING_RULES}
+
+Respond ONLY with valid JSON:
+{
+  "items": ["string (Hebrew)", "string (Hebrew)"]
 }`;
 }
 

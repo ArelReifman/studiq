@@ -30,6 +30,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LessonReviewModal } from "@/components/teacher/lesson-review-modal";
+import { RetryChecklist } from "@/components/teacher/retry-checklist";
 import { formatDate } from "@/lib/utils";
 import { useT } from "@/i18n";
 import type { LessonWithItems } from "@studiq/types";
@@ -188,6 +189,8 @@ export default function TeacherLessonDetailPage() {
           </p>
         )}
       </Card>
+
+      <RetryChecklist lesson={lesson} />
 
       {/* Teacher review verdict — show what was already decided */}
       {lesson.teacher_decision && (
