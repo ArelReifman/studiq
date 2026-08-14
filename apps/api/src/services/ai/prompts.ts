@@ -229,7 +229,7 @@ export function buildRetryChecklistPrompt(
 ${reviewNote}
 ${failedTasksBlock}${linkedDifficultiesBlock}${reflectionBlock}
 ## Your task
-Produce 1 to 8 short checklist items in Hebrew, each one a concrete, independently-actionable point the teacher can verify was addressed when the student retries this lesson. Each item must be traceable to something in the teacher's note (or, if the note is thin, to a failed task / diagnosed difficulty above). Imperative, specific phrasing — never vague filler like "לתרגל יותר" or "לחזור על החומר".
+Split the teacher's note into its individual points, and return exactly one checklist item per point — a period, semicolon, or clearly separate thought marks a new point. Do NOT split a single point into multiple sub-items, and do NOT merge two separate points into one item, even if they relate to the same topic. The number of items you return must match the number of distinct points actually written in the note (capped at 8 only as a safety limit for an unusually long note). Use the failed tasks / diagnosed difficulties / reflection above only to phrase each item more precisely — never as a source of additional items beyond what the note itself says. Imperative, specific phrasing — never vague filler like "לתרגל יותר" or "לחזור על החומר".
 
 ${HEBREW_WRITING_RULES}
 
