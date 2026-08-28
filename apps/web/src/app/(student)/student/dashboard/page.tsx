@@ -56,39 +56,68 @@ export default function StudentDashboard() {
     enabled: !!activeLesson,
   });
 
+  // Rendered above every branch below (loading, empty, full) whenever the
+  // student has more than one active course — so switching to a course with
+  // no lessons yet never strands the student without a way back to the
+  // other course. Same underlying state as the sidebar CourseSelector.
+  const courseTabs = hasMultipleCourses && (
+    <div className="flex flex-wrap gap-2 mb-6">
+      {courses.map((c) => (
+        <button
+          key={c.id}
+          type="button"
+          onClick={() => setSelectedCourseId(c.id)}
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            c.id === displayCourseId
+              ? "bg-brand-500 text-white"
+              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+          }`}
+        >
+          {c.name}
+        </button>
+      ))}
+    </div>
+  );
+
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64 text-gray-400">
-        {t("common.loading")}
+      <div>
+        {courseTabs}
+        <div className="flex items-center justify-center h-64 text-gray-400">
+          {t("common.loading")}
+        </div>
       </div>
     );
   }
 
   if (lessons.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
-        <BookOpen size={48} className="text-brand-200 mb-4" />
-        <h2 className="text-xl font-semibold text-gray-700 mb-2">
-          {t("student.firstLesson")}
-        </h2>
-        <p className="text-gray-500 text-sm mb-6 max-w-md">
-          {t("student.firstLessonSub")}
-        </p>
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          <Link
-            href="/student/map"
-            className="inline-flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors"
-          >
-            <Map size={14} />
-            {t("student.openMap")}
-          </Link>
-          <Link
-            href="/student/book"
-            className="inline-flex items-center gap-1.5 text-sm text-gray-600 hover:text-brand-700 hover:bg-brand-50 rounded-lg px-4 py-2 transition-colors"
-          >
-            <CalendarDays size={14} />
-            {t("student.bookLesson")}
-          </Link>
+      <div>
+        {courseTabs}
+        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
+          <BookOpen size={48} className="text-brand-200 mb-4" />
+          <h2 className="text-xl font-semibold text-gray-700 mb-2">
+            {t("student.firstLesson")}
+          </h2>
+          <p className="text-gray-500 text-sm mb-6 max-w-md">
+            {t("student.firstLessonSub")}
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Link
+              href="/student/map"
+              className="inline-flex items-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors"
+            >
+              <Map size={14} />
+              {t("student.openMap")}
+            </Link>
+            <Link
+              href="/student/book"
+              className="inline-flex items-center gap-1.5 text-sm text-gray-600 hover:text-brand-700 hover:bg-brand-50 rounded-lg px-4 py-2 transition-colors"
+            >
+              <CalendarDays size={14} />
+              {t("student.bookLesson")}
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -114,26 +143,7 @@ export default function StudentDashboard() {
       </h1>
       <p className="text-gray-500 mb-6">{t("student.currentLesson")}</p>
 
-      {/* Course tabs — replaces the sidebar CourseSelector on this page only,
-          for a more discoverable in-page switcher. Same underlying state. */}
-      {hasMultipleCourses && (
-        <div className="flex flex-wrap gap-2 mb-6">
-          {courses.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => setSelectedCourseId(c.id)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                c.id === displayCourseId
-                  ? "bg-brand-500 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
-            >
-              {c.name}
-            </button>
-          ))}
-        </div>
-      )}
+      {courseTabs}
 
       {/* Summary card only — material, solution upload, tasks, and feedback
           all live on the dedicated lesson page to avoid duplicating the same
