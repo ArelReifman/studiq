@@ -356,7 +356,20 @@ export const studentRoutes = new Hono()
           )
           .limit(1);
 
-        return c.json(courseProfile ?? null);
+        if (courseProfile) return c.json(courseProfile);
+
+        // No course-scoped profile generated yet — fall back to the global
+        // (student-wide) profile so the card doesn't go from populated to
+        // empty the moment this feature ships. Once a lesson under this
+        // course triggers a profile update, the course-scoped row above
+        // takes over.
+        const [fallbackProfile] = await db
+          .select()
+          .from(studentAiProfiles)
+          .where(eq(studentAiProfiles.student_id, studentId))
+          .limit(1);
+
+        return c.json(fallbackProfile ?? null);
       }
 
       const [aiProfile] = await db
