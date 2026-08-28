@@ -113,7 +113,7 @@ describe("GET /lessons course_id filtering", () => {
     expect(body.map((l) => l.id).sort()).toEqual([lA, lB, lNull].sort());
   });
 
-  it("WITH enrolled course_id returns only that course's lessons (excludes other course AND null-course)", async () => {
+  it("WITH enrolled course_id returns that course's lessons plus null-course lessons (excludes other course only)", async () => {
     const sid = randomUUID();
     const courseA = randomUUID();
     const courseB = randomUUID();
@@ -124,7 +124,7 @@ describe("GET /lessons course_id filtering", () => {
     await enroll(sid, courseB, true);
     const lA = await seedLesson(sid, courseA);
     await seedLesson(sid, courseB);
-    await seedLesson(sid, null);
+    const lNull = await seedLesson(sid, null);
 
     ctx.USER_ID = sid;
     ctx.ROLE = "student";
@@ -132,7 +132,10 @@ describe("GET /lessons course_id filtering", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as Array<{ id: string }>;
 
-    expect(body.map((l) => l.id)).toEqual([lA]);
+    // Legacy pre-course-model lessons (course_id IS NULL) must still surface
+    // when scoping to a course — only lessons under a DIFFERENT real course
+    // are excluded.
+    expect(body.map((l) => l.id).sort()).toEqual([lA, lNull].sort());
   });
 
   it("WITH course_id the student is not enrolled in → 403", async () => {
