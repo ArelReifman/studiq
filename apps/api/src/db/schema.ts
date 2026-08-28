@@ -565,6 +565,51 @@ export const studentAiProfiles = pgTable("student_ai_profiles", {
     .defaultNow(),
 });
 
+// ─── Student AI Profiles — per course ────────────────────────────────────────
+// Additive alongside studentAiProfiles (one row per student, no course_id).
+// That table is written from 9+ call sites across lesson generation,
+// homework/todo grading, signup, onboarding, and progress reports, all
+// assuming exactly one row per student — restructuring its unique
+// constraint would mean auditing every one of them. This table exists
+// purely alongside it: written in addition to (never instead of) the
+// existing global row, read only by the teacher's per-course view.
+export const studentCourseAiProfiles = pgTable(
+  "student_course_ai_profiles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    student_id: uuid("student_id")
+      .notNull()
+      .references(() => students.id, { onDelete: "cascade" }),
+    course_id: uuid("course_id")
+      .notNull()
+      .references(() => courses.id, { onDelete: "cascade" }),
+    strong_topics: text("strong_topics").array().notNull().default([]),
+    weak_topics: text("weak_topics").array().notNull().default([]),
+    ai_summary: text("ai_summary"),
+    next_session_briefing: text("next_session_briefing"),
+    avg_completion_rate: numeric("avg_completion_rate", {
+      precision: 4,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+    total_lessons: integer("total_lessons").notNull().default(0),
+    total_homework: integer("total_homework").notNull().default(0),
+    total_failures: integer("total_failures").notNull().default(0),
+    updated_at: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("student_course_ai_profiles_student_course").on(
+      t.student_id,
+      t.course_id
+    ),
+    index("idx_student_course_ai_profiles_student").on(t.student_id),
+    index("idx_student_course_ai_profiles_course").on(t.course_id),
+  ]
+);
+
 // ─── AI Context Vectors ───────────────────────────────────────────────────────
 
 export const aiContextVectors = pgTable(

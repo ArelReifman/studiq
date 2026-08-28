@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../../db/client.js";
 import {
@@ -6,6 +6,7 @@ import {
   todoItems,
   difficultyReports,
   studentAiProfiles,
+  studentCourseAiProfiles,
   profiles,
   students,
   lessonSessions,
@@ -69,6 +70,7 @@ export async function updateStudentProfile(
         student_reflection: lessonSessions.student_reflection,
         teacher_review_note: lessonSessions.teacher_review_note,
         teacher_decision: lessonSessions.teacher_decision,
+        course_id: lessonSessions.course_id,
       })
       .from(lessonSessions)
       .where(eq(lessonSessions.id, lessonId))
@@ -173,9 +175,68 @@ export async function updateStudentProfile(
       })
       .where(eq(studentAiProfiles.student_id, studentId));
 
+    const courseId = lessonRow?.course_id ?? null;
+
+    // Additive: also keep a per-course profile alongside the global row
+    // above, for the teacher's per-course view. Course-less lessons have
+    // nothing to scope this to — the global row already covers them.
+    if (courseId) {
+      const [existingCourseProfile] = await db
+        .select({
+          total_lessons: studentCourseAiProfiles.total_lessons,
+          total_homework: studentCourseAiProfiles.total_homework,
+          total_failures: studentCourseAiProfiles.total_failures,
+          avg_completion_rate: studentCourseAiProfiles.avg_completion_rate,
+        })
+        .from(studentCourseAiProfiles)
+        .where(
+          and(
+            eq(studentCourseAiProfiles.student_id, studentId),
+            eq(studentCourseAiProfiles.course_id, courseId)
+          )
+        )
+        .limit(1);
+
+      const prevCourseTotal = existingCourseProfile?.total_lessons ?? 0;
+      const newCourseAvg =
+        prevCourseTotal === 0
+          ? completionRate
+          : (Number(existingCourseProfile?.avg_completion_rate ?? 0) * prevCourseTotal +
+              completionRate) /
+            (prevCourseTotal + 1);
+
+      await db
+        .insert(studentCourseAiProfiles)
+        .values({
+          student_id: studentId,
+          course_id: courseId,
+          ai_summary: updated.ai_summary,
+          strong_topics: updated.strong_topics,
+          weak_topics: updated.weak_topics,
+          avg_completion_rate: newCourseAvg.toFixed(2),
+          total_homework: (existingCourseProfile?.total_homework ?? 0) + allItems.length,
+          total_lessons: prevCourseTotal + 1,
+          total_failures: (existingCourseProfile?.total_failures ?? 0) + failedCount,
+          updated_at: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [studentCourseAiProfiles.student_id, studentCourseAiProfiles.course_id],
+          set: {
+            ai_summary: updated.ai_summary,
+            strong_topics: updated.strong_topics,
+            weak_topics: updated.weak_topics,
+            avg_completion_rate: newCourseAvg.toFixed(2),
+            total_homework: (existingCourseProfile?.total_homework ?? 0) + allItems.length,
+            total_lessons: prevCourseTotal + 1,
+            total_failures: (existingCourseProfile?.total_failures ?? 0) + failedCount,
+            updated_at: new Date(),
+          },
+        });
+    }
+
     // Fire-and-forget: refresh the pre-session briefing so the teacher sees
     // the latest "where we stopped / what to focus on" before the next lesson.
-    generateNextSessionBriefing(studentId).catch((err) =>
+    generateNextSessionBriefing(studentId, courseId).catch((err) =>
       console.error("[briefing] generation failed:", err)
     );
   } catch (err) {

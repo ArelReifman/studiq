@@ -7,10 +7,11 @@
  *
  * Cheap call (~$0.01 per run) — small focused prompt, short output.
  */
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, or, isNull } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import {
   studentAiProfiles,
+  studentCourseAiProfiles,
   profiles,
   students,
   lessonSessions,
@@ -26,7 +27,8 @@ import { sanitizeHebrewText } from "./sanitize-text.js";
 const BRIEFING_MODEL = "claude-sonnet-4-6";
 
 export async function generateNextSessionBriefing(
-  studentId: string
+  studentId: string,
+  courseId: string | null = null
 ): Promise<void> {
   const [profile, studentRow, lastLesson, insights] = await Promise.all([
     db
@@ -103,4 +105,97 @@ export async function generateNextSessionBriefing(
       updated_at: new Date(),
     })
     .where(eq(studentAiProfiles.student_id, studentId));
+
+  // Additive: when the triggering lesson belongs to a course, also generate
+  // a course-scoped briefing for the teacher's per-course view — the global
+  // write above is untouched and keeps serving every other caller.
+  if (courseId) {
+    await generateCourseScopedBriefing(studentId, courseId, studentRow, insights);
+  }
+}
+
+async function generateCourseScopedBriefing(
+  studentId: string,
+  courseId: string,
+  studentRow: { full_name: string; background_note: string | null },
+  insights: { content: string }[]
+): Promise<void> {
+  const [courseProfile, lastCourseLesson] = await Promise.all([
+    db
+      .select()
+      .from(studentCourseAiProfiles)
+      .where(
+        and(
+          eq(studentCourseAiProfiles.student_id, studentId),
+          eq(studentCourseAiProfiles.course_id, courseId)
+        )
+      )
+      .limit(1)
+      .then((r) => r[0]),
+    // Most recent lesson under this course (or course-less legacy lessons,
+    // same inclusion rule already used for the /lessons course_id filter).
+    db
+      .select({
+        title: lessonSessions.title,
+        student_reflection: lessonSessions.student_reflection,
+        teacher_review_note: lessonSessions.teacher_review_note,
+        teacher_decision: lessonSessions.teacher_decision,
+      })
+      .from(lessonSessions)
+      .where(
+        and(
+          eq(lessonSessions.student_id, studentId),
+          or(
+            eq(lessonSessions.course_id, courseId),
+            isNull(lessonSessions.course_id)
+          )
+        )
+      )
+      .orderBy(desc(lessonSessions.generated_at))
+      .limit(1)
+      .then((r) => r[0]),
+  ]);
+
+  if (!courseProfile || !lastCourseLesson) return;
+
+  const prompt = buildBriefingPrompt({
+    studentName: studentRow.full_name,
+    lastLessonTitle: lastCourseLesson.title,
+    lastDecision: lastCourseLesson.teacher_decision,
+    lastReviewNote: lastCourseLesson.teacher_review_note,
+    studentReflection: lastCourseLesson.student_reflection,
+    weakTopics: courseProfile.weak_topics,
+    strongTopics: courseProfile.strong_topics,
+    aiSummary: courseProfile.ai_summary,
+    backgroundNote: studentRow.background_note,
+    recentInsights: insights,
+  });
+
+  const parsed = await callClaude(
+    prompt,
+    (text) => {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("no JSON in response");
+      return JSON.parse(jsonMatch[0]) as { briefing: string };
+    },
+    { model: BRIEFING_MODEL }
+  ).catch((err) => {
+    console.error("[briefing] course-scoped Claude parse failed:", err);
+    return null;
+  });
+
+  if (!parsed?.briefing) return;
+
+  await db
+    .update(studentCourseAiProfiles)
+    .set({
+      next_session_briefing: sanitizeHebrewText(parsed.briefing),
+      updated_at: new Date(),
+    })
+    .where(
+      and(
+        eq(studentCourseAiProfiles.student_id, studentId),
+        eq(studentCourseAiProfiles.course_id, courseId)
+      )
+    );
 }

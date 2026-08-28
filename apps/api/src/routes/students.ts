@@ -9,6 +9,7 @@ import {
   studentInvites,
   profiles,
   studentAiProfiles,
+  studentCourseAiProfiles,
   studentReports,
   lessonSessions,
   homeworkItems,
@@ -24,7 +25,7 @@ import {
 } from "../db/schema.js";
 import { getIsraelToday } from "../lib/time.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
-import { uuidParamSchema } from "../lib/validators.js";
+import { uuidParamSchema, courseIdQuerySchema } from "../lib/validators.js";
 
 const inviteSchema = z.object({
   full_name: z.string().min(1),
@@ -304,29 +305,69 @@ export const studentRoutes = new Hono()
   )
 
   // GET /students/:id/profile — AI profile + stats
-  .get("/:id/profile", zValidator("param", uuidParamSchema), async (c) => {
-    const teacherId = c.get("userId");
-    const studentId = c.req.valid("param").id;
+  // Optional course_id: when sent, returns the per-course profile
+  // (student_course_ai_profiles) instead of the student-wide one. Additive —
+  // absent course_id behaves exactly as before this param existed.
+  .get(
+    "/:id/profile",
+    zValidator("param", uuidParamSchema),
+    zValidator("query", courseIdQuerySchema),
+    async (c) => {
+      const teacherId = c.get("userId");
+      const studentId = c.req.valid("param").id;
+      const courseIdParam = c.req.valid("query").course_id;
 
-    // Verify ownership
-    const [owner] = await db
-      .select({ id: students.id })
-      .from(students)
-      .where(
-        and(eq(students.id, studentId), eq(students.teacher_id, teacherId))
-      )
-      .limit(1);
+      // Verify ownership
+      const [owner] = await db
+        .select({ id: students.id })
+        .from(students)
+        .where(
+          and(eq(students.id, studentId), eq(students.teacher_id, teacherId))
+        )
+        .limit(1);
 
-    if (!owner) return c.json({ error: "Student not found" }, 404);
+      if (!owner) return c.json({ error: "Student not found" }, 404);
 
-    const [aiProfile] = await db
-      .select()
-      .from(studentAiProfiles)
-      .where(eq(studentAiProfiles.student_id, studentId))
-      .limit(1);
+      if (courseIdParam) {
+        const [enrollment] = await db
+          .select({ course_id: studentCourses.course_id })
+          .from(studentCourses)
+          .where(
+            and(
+              eq(studentCourses.student_id, studentId),
+              eq(studentCourses.course_id, courseIdParam),
+              eq(studentCourses.is_active, true)
+            )
+          )
+          .limit(1);
 
-    return c.json(aiProfile ?? null);
-  })
+        if (!enrollment) {
+          return c.json({ error: "Student not enrolled in this course" }, 403);
+        }
+
+        const [courseProfile] = await db
+          .select()
+          .from(studentCourseAiProfiles)
+          .where(
+            and(
+              eq(studentCourseAiProfiles.student_id, studentId),
+              eq(studentCourseAiProfiles.course_id, courseIdParam)
+            )
+          )
+          .limit(1);
+
+        return c.json(courseProfile ?? null);
+      }
+
+      const [aiProfile] = await db
+        .select()
+        .from(studentAiProfiles)
+        .where(eq(studentAiProfiles.student_id, studentId))
+        .limit(1);
+
+      return c.json(aiProfile ?? null);
+    }
+  )
 
   // GET /students/:id/report — latest report
   .get("/:id/report", zValidator("param", uuidParamSchema), async (c) => {

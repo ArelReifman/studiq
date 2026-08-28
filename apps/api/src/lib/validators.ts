@@ -24,6 +24,10 @@ export const lessonIdQuerySchema = z.object({
   lesson_id: z.string().uuid().optional(),
 });
 
+export const courseIdQuerySchema = z.object({
+  course_id: z.string().uuid().optional(),
+});
+
 export const learningMapQuerySchema = z.object({
   course_id: z.string().uuid().optional(),
   student_id: z.string().uuid().optional(),

@@ -79,18 +79,55 @@ export const lessonRoutes = new Hono()
           .orderBy(desc(lessonSessions.generated_at));
       }
     } else {
-      const whereClause = studentIdParam
-        ? and(
-            eq(lessonSessions.teacher_id, userId),
-            eq(lessonSessions.student_id, studentIdParam)
+      // Optional course_id (only meaningful alongside a specific student_id —
+      // a course_id without a named student is ambiguous across a teacher's
+      // whole roster, so it's ignored in that case, same as before this
+      // field existed).
+      if (courseIdParam && studentIdParam) {
+        const [enrollment] = await db
+          .select({ course_id: studentCourses.course_id })
+          .from(studentCourses)
+          .where(
+            and(
+              eq(studentCourses.student_id, studentIdParam),
+              eq(studentCourses.course_id, courseIdParam),
+              eq(studentCourses.is_active, true)
+            )
           )
-        : eq(lessonSessions.teacher_id, userId);
+          .limit(1);
 
-      rows = await db
-        .select()
-        .from(lessonSessions)
-        .where(whereClause)
-        .orderBy(desc(lessonSessions.generated_at));
+        if (!enrollment) {
+          return c.json({ error: "Student not enrolled in this course" }, 403);
+        }
+
+        rows = await db
+          .select()
+          .from(lessonSessions)
+          .where(
+            and(
+              eq(lessonSessions.teacher_id, userId),
+              eq(lessonSessions.student_id, studentIdParam),
+              or(
+                eq(lessonSessions.course_id, courseIdParam),
+                isNull(lessonSessions.course_id)
+              )
+            )
+          )
+          .orderBy(desc(lessonSessions.generated_at));
+      } else {
+        const whereClause = studentIdParam
+          ? and(
+              eq(lessonSessions.teacher_id, userId),
+              eq(lessonSessions.student_id, studentIdParam)
+            )
+          : eq(lessonSessions.teacher_id, userId);
+
+        rows = await db
+          .select()
+          .from(lessonSessions)
+          .where(whereClause)
+          .orderBy(desc(lessonSessions.generated_at));
+      }
     }
 
     return c.json(rows);

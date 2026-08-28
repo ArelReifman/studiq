@@ -182,7 +182,7 @@ describe("GET /lessons course_id filtering", () => {
     expect(res.status).toBe(403);
   });
 
-  it("teacher branch is unchanged: course_id is ignored, student_id still scopes", async () => {
+  it("teacher branch WITHOUT course_id: unchanged, student_id alone scopes to all their lessons", async () => {
     const sid = randomUUID();
     const courseA = randomUUID();
     const courseB = randomUUID();
@@ -195,16 +195,71 @@ describe("GET /lessons course_id filtering", () => {
     ctx.USER_ID = TEACHER_ID;
     ctx.ROLE = "teacher";
 
-    // Without course_id.
-    const res1 = await lessonRoutes.request(`/?student_id=${sid}`);
-    const body1 = (await res1.json()) as Array<{ id: string }>;
-    expect(body1.map((l) => l.id).sort()).toEqual([lA, lB].sort());
+    const res = await lessonRoutes.request(`/?student_id=${sid}`);
+    const body = (await res.json()) as Array<{ id: string }>;
+    expect(body.map((l) => l.id).sort()).toEqual([lA, lB].sort());
+  });
 
-    // With course_id — teacher branch must ignore it (same result).
-    const res2 = await lessonRoutes.request(
+  it("teacher branch WITH course_id + student_id (enrolled): scopes to that course plus null-course lessons", async () => {
+    const sid = randomUUID();
+    const courseA = randomUUID();
+    const courseB = randomUUID();
+    await seedCourse(courseA, "A");
+    await seedCourse(courseB, "B");
+    await seedStudent(sid);
+    await enroll(sid, courseA, true);
+    const lA = await seedLesson(sid, courseA);
+    await seedLesson(sid, courseB);
+    const lNull = await seedLesson(sid, null);
+
+    ctx.USER_ID = TEACHER_ID;
+    ctx.ROLE = "teacher";
+
+    const res = await lessonRoutes.request(
       `/?student_id=${sid}&course_id=${courseA}`
     );
-    const body2 = (await res2.json()) as Array<{ id: string }>;
-    expect(body2.map((l) => l.id).sort()).toEqual([lA, lB].sort());
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ id: string }>;
+    expect(body.map((l) => l.id).sort()).toEqual([lA, lNull].sort());
+  });
+
+  it("teacher branch WITH course_id + student_id (not enrolled) → 403", async () => {
+    const sid = randomUUID();
+    const courseA = randomUUID();
+    await seedCourse(courseA, "A");
+    await seedStudent(sid);
+    await seedLesson(sid, courseA);
+
+    ctx.USER_ID = TEACHER_ID;
+    ctx.ROLE = "teacher";
+
+    const res = await lessonRoutes.request(
+      `/?student_id=${sid}&course_id=${courseA}`
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("teacher branch WITH course_id but WITHOUT student_id: ambiguous, course_id ignored (returns lessons across courses/students)", async () => {
+    const sid1 = randomUUID();
+    const sid2 = randomUUID();
+    const courseA = randomUUID();
+    const courseB = randomUUID();
+    await seedCourse(courseA, "A");
+    await seedCourse(courseB, "B");
+    await seedStudent(sid1);
+    await seedStudent(sid2);
+    const lA = await seedLesson(sid1, courseA);
+    const lB = await seedLesson(sid2, courseB);
+
+    ctx.USER_ID = TEACHER_ID;
+    ctx.ROLE = "teacher";
+
+    const res = await lessonRoutes.request(`/?course_id=${courseA}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ id: string }>;
+    // Unscoped teacher-wide query — other tests in this file share the same
+    // in-memory DB and TEACHER_ID, so assert a superset rather than equality.
+    const ids = body.map((l) => l.id);
+    expect(ids).toEqual(expect.arrayContaining([lA, lB]));
   });
 });
