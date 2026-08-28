@@ -58,10 +58,13 @@ export default function StudentLayout({
       </div>
 
       {/* CourseSelector uses useSearchParams internally; Suspense keeps the
-          build happy without wrapping the whole layout. */}
-      <Suspense fallback={null}>
-        <CourseSelector />
-      </Suspense>
+          build happy without wrapping the whole layout. Hidden on the
+          self-practice dashboard, which has its own in-page course tabs. */}
+      {pathname !== "/student/dashboard" && (
+        <Suspense fallback={null}>
+          <CourseSelector />
+        </Suspense>
+      )}
 
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {nav.map(({ href, label, icon: Icon }) => (

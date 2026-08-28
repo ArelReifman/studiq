@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and, desc, inArray, or } from "drizzle-orm";
+import { eq, and, desc, inArray, or, isNull } from "drizzle-orm";
 import { db } from "../db/client.js";
 import {
   lessonSessions,
@@ -38,7 +38,9 @@ export const lessonRoutes = new Hono()
     if (role === "student") {
       if (courseIdParam) {
         // Explicit course requested: verify the student is actively enrolled,
-        // then hard-filter. Excludes other courses AND null-course lessons.
+        // then filter. Excludes other courses (including inactive ones), but
+        // still includes legacy lessons that predate the course model
+        // (course_id IS NULL) so scoping to a course never hides them.
         const [enrollment] = await db
           .select({ course_id: studentCourses.course_id })
           .from(studentCourses)
@@ -61,7 +63,10 @@ export const lessonRoutes = new Hono()
           .where(
             and(
               eq(lessonSessions.student_id, userId),
-              eq(lessonSessions.course_id, courseIdParam)
+              or(
+                eq(lessonSessions.course_id, courseIdParam),
+                isNull(lessonSessions.course_id)
+              )
             )
           )
           .orderBy(desc(lessonSessions.generated_at));

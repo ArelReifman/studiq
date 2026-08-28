@@ -16,10 +16,17 @@ export default function StudentDashboard() {
   const user = useAuthStore((s) => s.user);
   const t = useT();
 
-  // selectedCourseId is undefined for 0/1-course students (legacy path).
-  // Lessons query waits for course context so multi-course students never
-  // see an unscoped flash before selectedCourseId is resolved.
-  const { selectedCourseId, isLoading: isCourseLoading } = useStudentCourse();
+  // selectedCourseId is undefined only for a 0-active-course student. Lessons
+  // query waits for course context so we never see an unscoped flash before
+  // selectedCourseId is resolved.
+  const {
+    courses,
+    selectedCourseId,
+    displayCourseId,
+    hasMultipleCourses,
+    setSelectedCourseId,
+    isLoading: isCourseLoading,
+  } = useStudentCourse();
 
   const { data: lessons = [], isLoading: isLessonsLoading } = useQuery<LessonSession[]>({
     queryKey: ["lessons", selectedCourseId ?? "all"],
@@ -106,6 +113,27 @@ export default function StudentDashboard() {
         {t("student.welcomeBack", { name: firstName })}
       </h1>
       <p className="text-gray-500 mb-6">{t("student.currentLesson")}</p>
+
+      {/* Course tabs — replaces the sidebar CourseSelector on this page only,
+          for a more discoverable in-page switcher. Same underlying state. */}
+      {hasMultipleCourses && (
+        <div className="flex flex-wrap gap-2 mb-6">
+          {courses.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setSelectedCourseId(c.id)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                c.id === displayCourseId
+                  ? "bg-brand-500 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              }`}
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Summary card only — material, solution upload, tasks, and feedback
           all live on the dedicated lesson page to avoid duplicating the same

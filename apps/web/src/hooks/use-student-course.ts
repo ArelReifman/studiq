@@ -9,8 +9,8 @@ import { api } from "@/lib/api";
 // for the current page, but sidebar nav links don't carry it — so without a
 // fallback the selection is lost on every navigation/refresh. localStorage is
 // that fallback: it survives navigation, refresh, and new tabs until the
-// student deliberately picks another course. Only consulted for multi-course
-// students; the 0/1-course legacy path never reads or writes it.
+// student deliberately picks another course. Consulted whenever the student
+// has at least one active course; never consulted for a 0-course student.
 const STORAGE_KEY = "studiq.student.selectedCourseId";
 
 function readStoredCourseId(): string | null {
@@ -44,10 +44,10 @@ export interface UseStudentCourseResult {
   isLoading: boolean;
   isError: boolean;
   hasMultipleCourses: boolean;
-  // undefined when 0 or 1 active courses — callers MUST NOT forward this to
-  // the API in those cases: doing so activates the strict course_id filter
-  // which drops legacy null-course lessons from single-course students.
-  // Only safe to send to API when courses.length > 1.
+  // undefined only when the student has zero active courses (nothing to
+  // scope to). Defined whenever courses.length >= 1 — safe to forward to the
+  // API in all those cases: the course_id filter always includes legacy
+  // null-course lessons alongside the selected course's own lessons.
   selectedCourseId: string | undefined;
   // The course shown in the selector UI. May be defined even when
   // selectedCourseId is undefined (e.g. 1-course student). Never forwarded
@@ -78,12 +78,13 @@ export function useStudentCourse(): UseStudentCourseResult {
 
   const hasMultipleCourses = courses.length > 1;
 
-  // Derive selectedCourseId — only defined for multi-course students.
-  // Priority: valid URL param → valid stored id → primary → first. The stored
-  // fallback is what keeps the choice from snapping back to primary when the
-  // student navigates to a page whose URL has no course_id.
+  // Derive selectedCourseId — defined whenever the student has at least one
+  // active course. Priority: valid URL param → valid stored id → primary →
+  // first. The stored fallback is what keeps the choice from snapping back
+  // to primary when the student navigates to a page whose URL has no
+  // course_id.
   let selectedCourseId: string | undefined;
-  if (hasMultipleCourses) {
+  if (courses.length > 0) {
     const ids = new Set(courses.map((c) => c.id));
     const storedCourseId = readStoredCourseId();
     if (urlCourseId && ids.has(urlCourseId)) {
@@ -113,24 +114,20 @@ export function useStudentCourse(): UseStudentCourseResult {
   useEffect(() => {
     if (isLoading || courses.length === 0) return;
 
-    let desired: string | null = null;
-
-    if (hasMultipleCourses) {
-      const ids = new Set(courses.map((c) => c.id));
-      const storedCourseId = readStoredCourseId();
-      if (urlCourseId && ids.has(urlCourseId)) {
-        desired = urlCourseId; // already valid
-      } else if (storedCourseId && ids.has(storedCourseId)) {
-        desired = storedCourseId; // restore last pick instead of defaulting
-      } else {
-        desired =
-          courses.find((c) => c.is_primary)?.id ?? courses[0]?.id ?? null;
-      }
-      // Keep storage in sync with whatever we resolved to, so an implicit
-      // primary-default landing is remembered for subsequent navigations.
-      if (desired) writeStoredCourseId(desired);
+    const ids = new Set(courses.map((c) => c.id));
+    const storedCourseId = readStoredCourseId();
+    let desired: string | null;
+    if (urlCourseId && ids.has(urlCourseId)) {
+      desired = urlCourseId; // already valid
+    } else if (storedCourseId && ids.has(storedCourseId)) {
+      desired = storedCourseId; // restore last pick instead of defaulting
+    } else {
+      desired =
+        courses.find((c) => c.is_primary)?.id ?? courses[0]?.id ?? null;
     }
-    // 0 or 1 course → desired = null (remove any stale course_id from URL)
+    // Keep storage in sync with whatever we resolved to, so an implicit
+    // primary-default landing is remembered for subsequent navigations.
+    if (desired) writeStoredCourseId(desired);
 
     if (desired === urlCourseId) return;
 
@@ -142,7 +139,7 @@ export function useStudentCourse(): UseStudentCourseResult {
     }
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname);
-  }, [isLoading, hasMultipleCourses, courses, urlCourseId, pathname, searchParamsStr, router]);
+  }, [isLoading, courses, urlCourseId, pathname, searchParamsStr, router]);
 
   function setSelectedCourseId(id: string) {
     writeStoredCourseId(id);
