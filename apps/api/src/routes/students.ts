@@ -358,18 +358,58 @@ export const studentRoutes = new Hono()
 
         if (courseProfile) return c.json(courseProfile);
 
-        // No course-scoped profile generated yet — fall back to the global
-        // (student-wide) profile so the card doesn't go from populated to
-        // empty the moment this feature ships. Once a lesson under this
-        // course triggers a profile update, the course-scoped row above
-        // takes over.
-        const [fallbackProfile] = await db
+        // No course-scoped profile generated yet — seed one from the global
+        // (student-wide) profile's current snapshot, so the card doesn't go
+        // from populated to empty the moment this feature ships. This is a
+        // one-time copy, not a live fallback: the global row keeps changing
+        // as ANY course's lessons get reviewed (pre-existing behavior,
+        // unrelated to this course), so serving it live would make an
+        // untouched course's card silently mutate with other courses'
+        // content. Seeding once means this course's card is now independent
+        // and only changes when ITS OWN lessons trigger an update.
+        const [globalProfile] = await db
           .select()
           .from(studentAiProfiles)
           .where(eq(studentAiProfiles.student_id, studentId))
           .limit(1);
 
-        return c.json(fallbackProfile ?? null);
+        if (!globalProfile) return c.json(null);
+
+        const [seeded] = await db
+          .insert(studentCourseAiProfiles)
+          .values({
+            student_id: studentId,
+            course_id: courseIdParam,
+            ai_summary: globalProfile.ai_summary,
+            strong_topics: globalProfile.strong_topics,
+            weak_topics: globalProfile.weak_topics,
+            next_session_briefing: globalProfile.next_session_briefing,
+            avg_completion_rate: globalProfile.avg_completion_rate,
+            total_lessons: globalProfile.total_lessons,
+            total_homework: globalProfile.total_homework,
+            total_failures: globalProfile.total_failures,
+          })
+          .onConflictDoNothing({
+            target: [studentCourseAiProfiles.student_id, studentCourseAiProfiles.course_id],
+          })
+          .returning();
+
+        if (seeded) return c.json(seeded);
+
+        // Lost a race with a concurrent request that seeded it first (or an
+        // update-profile.ts write landed in between) — re-read the row.
+        const [raceWinner] = await db
+          .select()
+          .from(studentCourseAiProfiles)
+          .where(
+            and(
+              eq(studentCourseAiProfiles.student_id, studentId),
+              eq(studentCourseAiProfiles.course_id, courseIdParam)
+            )
+          )
+          .limit(1);
+
+        return c.json(raceWinner ?? null);
       }
 
       const [aiProfile] = await db
