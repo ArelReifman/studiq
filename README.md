@@ -74,7 +74,7 @@ A tutor approves a student, the AI watches how the tutor teaches *and* how the s
 
 ### Stack
 
-Next.js 15 · React 19 · TypeScript · Tailwind v4 · TanStack Query · Hono · Drizzle · Zod · Supabase (Postgres + Auth + Realtime) · Anthropic Claude · pnpm + Turborepo · Vercel
+Next.js 15 · React 19 · TypeScript · Tailwind v3 · TanStack Query · Hono · Drizzle · Zod · Supabase (Postgres + Auth + Realtime) · Anthropic Claude · pnpm + Turborepo · Vercel
 
 ### Latest features
 
@@ -90,7 +90,7 @@ Next.js 15 · React 19 · TypeScript · Tailwind v4 · TanStack Query · Hono ·
 Every commit in this repo carries a `Co-Authored-By: Claude` trailer — that's deliberate, not an accident. AI wrote a lot of this code, and I think that's the least interesting fact about the repo. The interesting part is the process that makes AI-written code safe to ship:
 
 - **Plan before code** — risky changes start as a planning doc with hard constraints and an isolation map of every existing path that must stay byte-identical (see `docs/PHASE_AI_0_5_RETRY_LESSON.md`)
-- **Every change is verified** — CI (lint, type check, tests) runs on every push and every PR; features land with route-level tests
+- **Every change is verified** — CI (type check, tests, build) runs on every push and every PR; features land with route-level tests
 - **Small, reviewable steps** — 330+ focused commits with real commit messages, worked through numbered PRs, never a `wip` dump
 - **Binding contracts** — the learning map has a written behaviour contract; any optimization that violates it is wrong by definition, no matter how fast it is
 
@@ -98,7 +98,7 @@ AI is the power tool. The architecture, the constraints, and the judgment about 
 
 ### By the numbers
 
-27 Postgres tables · 11 realtime-synced tables · 24 pages · 18 Zod-validated routes · 6 Claude-powered services
+26 Postgres tables · 11 realtime-synced tables · 24 pages · 18 Zod-validated routes · 6 Claude-powered services
 
 ---
 
