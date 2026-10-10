@@ -66,7 +66,7 @@ A tutor approves a student, the AI watches how the tutor teaches *and* how the s
 
 - **Race-safe approvals** — three writes in one transaction gated on `WHERE status = 'pending'`. Two teachers approving the same user concurrently can't both win. → `routes/approvals.ts`
 - **Reactive UI by default** — one Supabase channel, 11 tables, one hook translates events to React Query invalidations. No manual refetch anywhere. → `hooks/use-realtime-sync.ts`
-- **Defense-in-depth auth** — HttpOnly JWT + parallel readable `{role, status}` cookie for middleware routing. CSRF via `X-Requested-With`, rate-limited, lifecycle states enforced in middleware. → `middleware/auth.ts`
+- **Defense-in-depth auth** — the token is stored in an HttpOnly cookie, with a copy in `localStorage` for Supabase Realtime; a separate readable user-info cookie (`studiq-user`) drives middleware routing. CSRF via `X-Requested-With`, rate-limited, lifecycle states enforced in middleware. → `middleware/auth.ts`
 - **Production hardening** — CSP assembled at config time with a dynamic `connect-src` (same-origin proxy by default, split API origin when configured), HSTS preload, COOP, and a middleware matcher that lets `robots.txt`/`sitemap.xml` bypass the auth redirect so crawlers see the real files. → `next.config.ts`
 - **Docs as guardrails** — risky changes start as a planning doc with hard constraints and an isolation map before any code; performance work is logged per-phase against a binding behaviour contract. → `docs/`
 - **Cold-start friendly DB** — Drizzle behind a `Proxy`, opens on first use; auto-detects Supabase pooler and disables prepared statements. → `db/client.ts`
@@ -87,10 +87,10 @@ Next.js 15 · React 19 · TypeScript · Tailwind v3 · TanStack Query · Hono ·
 
 ### How this was built
 
-Every commit in this repo carries a `Co-Authored-By: Claude` trailer — that's deliberate, not an accident. AI wrote a lot of this code, and I think that's the least interesting fact about the repo. The interesting part is the process that makes AI-written code safe to ship:
+Most commits in this repo carry a `Co-Authored-By: Claude` trailer — that's deliberate, not an accident. AI wrote a lot of this code, and I think that's the least interesting fact about the repo. The interesting part is the process that makes AI-written code safe to ship:
 
 - **Plan before code** — risky changes start as a planning doc with hard constraints and an isolation map of every existing path that must stay byte-identical (see `docs/PHASE_AI_0_5_RETRY_LESSON.md`)
-- **Every change is verified** — CI (type check, tests, build) runs on every push and every PR; features land with route-level tests
+- **Every change is verified** — CI (type check, tests, build) runs on every push to `main` and every PR targeting `main`; features land with route-level tests
 - **Small, reviewable steps** — 330+ focused commits with real commit messages, worked through numbered PRs, never a `wip` dump
 - **Binding contracts** — the learning map has a written behaviour contract; any optimization that violates it is wrong by definition, no matter how fast it is
 
